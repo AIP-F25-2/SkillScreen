@@ -2,7 +2,6 @@
 
 > **Next-generation AI-powered interview assessment platform for comprehensive candidate evaluation**
 
-[![Build Status](https://github.com/your-org/ai-interview-platform/workflows/CI/badge.svg)](https://github.com/your-org/ai-interview-platform/actions)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue)](https://www.docker.com/)
 [![Python](https://img.shields.io/badge/Python-3.9+-green)](https://www.python.org/)
 [![React](https://img.shields.io/badge/React-18+-blue)](https://reactjs.org/)
@@ -113,8 +112,6 @@ The platform is designed for containerized deployment with support for developme
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
-
 ### Development Workflow
 1. Fork the repository
 2. Create a feature branch
@@ -147,31 +144,6 @@ We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.
 - **Data Protection**: Encryption at rest and in transit
 - **API Security**: Rate limiting, input validation, CORS protection
 - **Anti-Cheating**: Multi-modal detection systems
-
-## 📝 Documentation
-
-- [Architecture Overview](docs/architecture.md)
-- [API Specifications](docs/api-specifications.md)
-- [Deployment Guide](docs/deployment.md)
-- [Prompt Engineering Guidelines](docs/prompt-guidelines.md)
-- [Contributing Guidelines](CONTRIBUTING.md)
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 👥 Team & Support
-
-- **Technical Lead**: [Your Name](mailto:your-email@company.com)
-- **AI/ML Team**: [AI Team Lead](mailto:ai-team@company.com)
-- **Platform Team**: [Platform Lead](mailto:platform@company.com)
-
-For support and questions:
-- 📧 Email: support@your-company.com
-- 💬 Slack: #ai-interview-platform
-- 📚 Wiki: [Internal Documentation](https://wiki.your-company.com)
-
----
 
 <div align="center">
 
