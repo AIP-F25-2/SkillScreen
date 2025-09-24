@@ -62,7 +62,7 @@ Additional system requirements:
 1. **Clone repository**
 
 ```bash
-git clone <repo_url>
+git clone https://github.com/AIP-F25-2/SkillScreen.git
 cd STT_and_TTS_services
 ```
 
