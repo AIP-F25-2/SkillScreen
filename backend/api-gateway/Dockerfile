@@ -1,12 +1,15 @@
-# ⚠️ SAMPLE DOCKERFILE FOR DEVELOPMENT - CUSTOMIZE AS NEEDED
 FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
+# Copy shared utilities
+COPY shared /app/shared
+
+# Copy service files
+COPY backend/api-gateway/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY backend/api-gateway .
 
 EXPOSE 5000
 

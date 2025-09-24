@@ -1,5 +1,3 @@
-# ⚠️ SAMPLE DOCKER COMPOSE - CUSTOMIZE AS NEEDED
-version: '3.8'
 
 services:
   # Database
@@ -13,81 +11,127 @@ services:
       - postgres_dev_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Redis for caching
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # API Gateway
   api-gateway:
     build:
-      context: ./backend/api-gateway
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/api-gateway/Dockerfile
     ports:
       - "5000:5000"
     environment:
       - FLASK_ENV=development
       - FLASK_DEBUG=True
+      - PORT=5000
     volumes:
       - ./backend/api-gateway:/app
+      - ./shared:/app/shared
     depends_on:
       - user-service
       - auth-service
       - interview-service
+      - media-service
+      - video-ai-service
+      - audio-ai-service
+      - text-ai-service
+      - assessment-service
+      - coding-service
+      - logger-service
+      - notification-service
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # Backend Services
   user-service:
     build:
-      context: ./backend/user-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/user-service/Dockerfile
     ports:
       - "5001:5001"
     environment:
       - FLASK_ENV=development
       - FLASK_DEBUG=True
+      - PORT=5001
       - DATABASE_URL=postgresql://postgres:password@postgres:5432/ai_interview_platform_dev
     volumes:
       - ./backend/user-service:/app
+      - ./shared:/app/shared
     depends_on:
       - postgres
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   auth-service:
     build:
-      context: ./backend/auth-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/auth-service/Dockerfile
     ports:
       - "5002:5002"
     environment:
       - FLASK_ENV=development
       - FLASK_DEBUG=True
+      - PORT=5002
       - DATABASE_URL=postgresql://postgres:password@postgres:5432/ai_interview_platform_dev
+      - JWT_SECRET=your-secret-key-change-in-production
     volumes:
       - ./backend/auth-service:/app
+      - ./shared:/app/shared
     depends_on:
       - postgres
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  # Business Services
   interview-service:
     build:
-      context: ./backend/interview-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/interview-service/Dockerfile
     ports:
       - "5003:5003"
     environment:
       - FLASK_ENV=development
       - FLASK_DEBUG=True
+      - PORT=5003
       - DATABASE_URL=postgresql://postgres:password@postgres:5432/ai_interview_platform_dev
     volumes:
       - ./backend/interview-service:/app
+      - ./shared:/app/shared
     depends_on:
       - postgres
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   media-service:
     build:
-      context: ./backend/media-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/media-service/Dockerfile
     ports:
       - "5004:5004"
     volumes:
@@ -96,11 +140,17 @@ services:
     environment:
       - FLASK_ENV=development
       - FLASK_DEBUG=True
+      - PORT=5004
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   video-ai-service:
     build:
-      context: ./backend/video-ai-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/video-ai-service/Dockerfile
     ports:
       - "5005:5005"
     volumes:
@@ -108,13 +158,19 @@ services:
     environment:
       - FLASK_ENV=development
       - FLASK_DEBUG=True
+      - PORT=5005
     depends_on:
       - media-service
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   audio-ai-service:
     build:
-      context: ./backend/audio-ai-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/audio-ai-service/Dockerfile
     ports:
       - "5006:5006"
     volumes:
@@ -122,13 +178,19 @@ services:
     environment:
       - FLASK_ENV=development
       - FLASK_DEBUG=True
+      - PORT=5006
     depends_on:
       - media-service
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5006/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   text-ai-service:
     build:
-      context: ./backend/text-ai-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/text-ai-service/Dockerfile
     ports:
       - "5007:5007"
     volumes:
@@ -136,27 +198,42 @@ services:
     environment:
       - FLASK_ENV=development
       - FLASK_DEBUG=True
+      - PORT=5007
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5007/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   assessment-service:
     build:
-      context: ./backend/assessment-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/assessment-service/Dockerfile
     ports:
       - "5008:5008"
     volumes:
       - ./backend/assessment-service:/app
+      - ./shared:/app/shared
     environment:
       - FLASK_ENV=development
       - FLASK_DEBUG=True
+      - PORT=5008
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/ai_interview_platform_dev
     depends_on:
       - video-ai-service
       - audio-ai-service
       - text-ai-service
+      - postgres
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5008/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   coding-service:
     build:
-      context: ./backend/coding-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/coding-service/Dockerfile
     ports:
       - "5009:5009"
     volumes:
@@ -164,11 +241,17 @@ services:
     environment:
       - FLASK_ENV=development
       - FLASK_DEBUG=True
+      - PORT=5009
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5009/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   logger-service:
     build:
-      context: ./backend/logger-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/logger-service/Dockerfile
     ports:
       - "5010:5010"
     volumes:
@@ -176,11 +259,17 @@ services:
     environment:
       - FLASK_ENV=development
       - FLASK_DEBUG=True
+      - PORT=5010
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5010/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   notification-service:
     build:
-      context: ./backend/notification-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/notification-service/Dockerfile
     ports:
       - "5011:5011"
     volumes:
@@ -188,21 +277,12 @@ services:
     environment:
       - FLASK_ENV=development
       - FLASK_DEBUG=True
-
-  # Frontend
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
-    environment:
-      - NODE_ENV=development
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    depends_on:
-      - api-gateway
+      - PORT=5011
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5011/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   postgres_dev_data:

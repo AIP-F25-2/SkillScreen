@@ -2,10 +2,14 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
+# Copy shared utilities
+COPY shared /app/shared
+
+# Copy service files
+COPY backend/user-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY backend/user-service .
 
 EXPOSE 5001
 

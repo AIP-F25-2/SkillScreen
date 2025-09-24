@@ -1,0 +1,136 @@
+# Docker Compose Override for Development
+# This file provides development-specific configurations
+# It's automatically loaded by docker-compose
+
+
+services:
+  # Development overrides for all services
+  api-gateway:
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend/api-gateway:/app
+      - ./shared:/app/shared
+    command: ["python", "-u", "app.py"]
+
+  user-service:
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend/user-service:/app
+      - ./shared:/app/shared
+    command: ["python", "-u", "app.py"]
+
+  auth-service:
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend/auth-service:/app
+      - ./shared:/app/shared
+    command: ["python", "-u", "app.py"]
+
+  interview-service:
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend/interview-service:/app
+      - ./shared:/app/shared
+    command: ["python", "-u", "app.py"]
+
+  media-service:
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend/media-service:/app
+    command: ["python", "-u", "app.py"]
+
+  video-ai-service:
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend/video-ai-service:/app
+    command: ["python", "-u", "app.py"]
+
+  audio-ai-service:
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend/audio-ai-service:/app
+    command: ["python", "-u", "app.py"]
+
+  text-ai-service:
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend/text-ai-service:/app
+    command: ["python", "-u", "app.py"]
+
+  assessment-service:
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend/assessment-service:/app
+      - ./shared:/app/shared
+    command: ["python", "-u", "app.py"]
+
+  coding-service:
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend/coding-service:/app
+    command: ["python", "-u", "app.py"]
+
+  logger-service:
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend/logger-service:/app
+    command: ["python", "-u", "app.py"]
+
+  notification-service:
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend/notification-service:/app
+    command: ["python", "-u", "app.py"]
+
+  # Development database with additional tools
+  postgres:
+    environment:
+      - POSTGRES_DB=ai_interview_platform_dev
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+
+  # Development Redis with persistence
+  redis:
+    ports:
+      - "6379:6379"

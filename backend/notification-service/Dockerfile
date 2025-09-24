@@ -2,10 +2,14 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
+# Copy shared utilities
+COPY shared /app/shared
+
+# Copy service files
+COPY backend/notification-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY backend/notification-service .
 
 EXPOSE 5011
 

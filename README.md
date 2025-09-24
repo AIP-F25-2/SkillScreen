@@ -1,154 +1,390 @@
-# IntervuAI
+# SkillScreen Backend Services
 
-> **Next-generation AI-powered interview assessment platform for comprehensive candidate evaluation**
-
-[![Docker](https://img.shields.io/badge/Docker-Ready-blue)](https://www.docker.com/)
-[![Python](https://img.shields.io/badge/Python-3.9+-green)](https://www.python.org/)
-[![React](https://img.shields.io/badge/React-18+-blue)](https://reactjs.org/)
-
-## 📖 Overview
-
-The IntervuAI is a comprehensive microservices-based solution that revolutionizes the interview process through advanced AI analysis. Our platform provides real-time assessment of candidates across multiple dimensions including video analysis, speech patterns, coding skills, and behavioral insights.
-
-### 🎯 Key Features
-
-- **🎥 Advanced Video Analysis** - Face detection, emotion recognition, gaze tracking, and anti-cheating detection
-- **🎙️ Speech Intelligence** - Real-time transcription, sentiment analysis, confidence detection, and communication scoring  
-- **📄 Smart Text Processing** - Resume parsing, STAR method detection, bias analysis, and automated report generation
-- **💻 Code Assessment** - Multi-language code execution, automated testing, and real-time feedback
-- **📊 Comprehensive Analytics** - Multi-modal assessment orchestration and detailed candidate scoring
-- **🔒 Enterprise Security** - Role-based access control, JWT authentication, and secure sandboxed execution
-- **🔗 ATS Integration** - Seamless integration with Greenhouse, Lever, Workable, and other ATS platforms
+A comprehensive microservices-based backend system for AI-powered interview assessment platform.
 
 ## 🏗️ Architecture
 
-Our platform follows a **microservices architecture** with clear separation between platform services (infrastructure) and business services (domain logic).
+This project implements a microservices architecture with 12 independent services:
 
-### Platform Services
-- **API Gateway** - Single entry point, request routing, authentication verification
-- **Auth Service** - JWT management, role-based access control, session management
-- **User Service** - User profiles, organization management, team handling
+| Service | Port | Description | Technology |
+|---------|------|-------------|------------|
+| API Gateway | 5000 | Request routing and orchestration | Flask |
+| User Service | 5001 | User management and CRUD operations | Flask + PostgreSQL |
+| Auth Service | 5002 | Authentication and JWT management | Flask + PostgreSQL |
+| Interview Service | 5003 | Interview scheduling and management | Flask + PostgreSQL |
+| Media Service | 5004 | File upload and media processing | Flask |
+| Video AI Service | 5005 | Video analysis and processing | Flask |
+| Audio AI Service | 5006 | Audio analysis and speech processing | Flask |
+| Text AI Service | 5007 | Text analysis and NLP | Flask |
+| Assessment Service | 5008 | Assessment creation and scoring | Flask + PostgreSQL |
+| Coding Service | 5009 | Code execution and sandbox | Flask |
+| Logger Service | 5010 | Centralized logging | Flask |
+| Notification Service | 5011 | Email and SMS notifications | Flask |
 
-### Business Services  
-- **Interview Service** - Scheduling, lifecycle management, question templates
-- **Media Service** - Video/audio processing, file storage, highlight extraction
-- **Video AI Service** - Facial analysis, emotion detection, engagement scoring
-- **Audio AI Service** - Speech analysis, transcription, sentiment detection
-- **Text AI Service** - Resume parsing, question generation, response analysis
-- **Coding Service** - Code execution, multi-language support, automated testing
-- **Assessment Service** - Score orchestration, report generation, evidence linking
-- **Logger Service** - Centralized logging, monitoring, audit trails
-- **Notification Service** - Email/SMS notifications, ATS integrations, webhook management
+## 🚀 Quick Start
 
-> 📋 **Detailed Architecture**: See [docs/architecture.md](docs/architecture.md) for complete technical specifications
+### Prerequisites
 
+- **Docker Desktop** (v20.10+)
+- **Docker Compose** (v2.0+)
+- **Python 3.7+** (for testing scripts)
+- **Make** (optional, for advanced commands)
 
+### Installation
+
+1. **Clone the repository:**
+   ```bash
+   git clone <repository-url>
+   cd SkillScreen
+   ```
+
+2. **Configure environment:**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your configuration
+   ```
+
+3. **Start all services:**
+
+   **Option 1: Using Make (Recommended)**
+   ```bash
+   make start
+   ```
+
+   **Option 2: Using PowerShell (Windows)**
+   ```powershell
+   .\start-services.ps1
+   ```
+
+   **Option 3: Using Docker Compose directly**
+   ```bash
+   docker-compose up --build -d
+   ```
+
+4. **Verify services are running:**
+   ```bash
+   make health
+   # or
+   python test-services.py
+   ```
+
+## 🔧 Development Commands
+
+### Using Make (Cross-platform)
+
+```bash
+# Start all services
+make start
+
+# Stop all services
+make stop
+
+# Restart all services
+make restart
+
+# View logs
+make logs
+
+# Run tests
+make test
+
+# Check service health
+make health
+
+# Clean up everything
+make clean
+
+# Get help
+make help
+```
+
+### Using PowerShell (Windows)
+
+```powershell
+# Start services with health checks
+.\start-services.ps1
+
+# Start with verbose output
+.\start-services.ps1 -Verbose
+
+# Start without health checks
+.\start-services.ps1 -SkipHealthCheck
+
+# Get help
+.\start-services.ps1 -Help
+```
+
+### Using Docker Compose
+
+```bash
+# Start all services
+docker-compose up --build -d
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
+
+# Restart specific service
+docker-compose restart api-gateway
+
+# Access service shell
+docker-compose exec api-gateway /bin/bash
+```
+
+## 🧪 Testing
+
+### Automated Testing
+
+```bash
+# Run comprehensive connectivity tests
+python test-services.py
+
+# Test specific service
+curl http://localhost:5000/health
+```
+
+### Manual Testing Examples
+
+```bash
+# Test API Gateway routing
+curl http://localhost:5000/route-test
+
+# Test authentication flow
+curl -X POST http://localhost:5002/register \
+  -H "Content-Type: application/json" \
+  -d '{"username": "testuser", "email": "test@example.com", "password": "testpass"}'
+
+# Test AI services
+curl -X POST http://localhost:5007/analyze-text \
+  -H "Content-Type: application/json" \
+  -d '{"text": "This is a test text for analysis"}'
+```
+
+## 📊 Monitoring
+
+### Health Checks
+
+All services expose health check endpoints:
+
+```bash
+# Check individual service
+curl http://localhost:<port>/health
+
+# Check all services through gateway
+curl http://localhost:5000/route-test
+```
+
+### Service URLs
+
+- **API Gateway**: http://localhost:5000
+- **User Service**: http://localhost:5001
+- **Auth Service**: http://localhost:5002
+- **Interview Service**: http://localhost:5003
+- **Media Service**: http://localhost:5004
+- **Video AI Service**: http://localhost:5005
+- **Audio AI Service**: http://localhost:5006
+- **Text AI Service**: http://localhost:5007
+- **Assessment Service**: http://localhost:5008
+- **Coding Service**: http://localhost:5009
+- **Logger Service**: http://localhost:5010
+- **Notification Service**: http://localhost:5011
+
+## 🔒 Security
+
+### Environment Variables
+
+Never commit sensitive data. Use the `.env` file for configuration:
+
+```bash
+# Copy example configuration
+cp .env.example .env
+
+# Edit with your values
+nano .env
+```
+
+### JWT Configuration
+
+```bash
+# Generate a strong JWT secret
+JWT_SECRET=$(openssl rand -base64 32)
+```
+
+### Database Security
+
+- Change default PostgreSQL password
+- Use environment variables for credentials
+- Enable SSL in production
+
+## 🏭 Production Deployment
+
+### Environment Setup
+
+```bash
+# Set production environment
+export ENVIRONMENT=production
+
+# Use production configuration
+cp .env.production .env
+```
+
+### Docker Compose Production
+
+```bash
+# Start in production mode
+make prod
+
+# Or with Docker Compose
+ENVIRONMENT=production docker-compose up --build -d
+```
+
+### Health Monitoring
+
+```bash
+# Set up monitoring
+make monitor
+
+# Check service status
+make status
+```
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+1. **Docker not running:**
+   ```bash
+   # Start Docker Desktop
+   # Check Docker status
+   docker info
+   ```
+
+2. **Port conflicts:**
+   ```bash
+   # Check port usage
+   netstat -an | grep :5000
+   
+   # Stop conflicting services
+   docker-compose down
+   ```
+
+3. **Service not starting:**
+   ```bash
+   # Check logs
+   docker-compose logs <service-name>
+   
+   # Restart service
+   docker-compose restart <service-name>
+   ```
+
+4. **Database connection issues:**
+   ```bash
+   # Check PostgreSQL
+   docker-compose logs postgres
+   
+   # Reset database
+   make db-reset
+   ```
+
+### Debug Commands
+
+```bash
+# View all container logs
+docker-compose logs -f
+
+# Access service shell
+make shell-service SERVICE=api-gateway
+
+# Check resource usage
+make monitor
+
+# Database shell access
+make db-shell
+```
 
 ## 📁 Project Structure
 
 ```
-ai-interview-platform/
-├── frontend/                 # React web application
-├── backend/                  # All backend services
-│   ├── api-gateway/         # Request routing & authentication
-│   ├── auth-service/        # JWT & role-based access control
-│   ├── user-service/        # User & organization management
-│   ├── interview-service/   # Interview lifecycle management
-│   ├── media-service/       # Video/audio processing
-│   ├── video-ai-service/    # Video analysis & emotion detection
-│   ├── audio-ai-service/    # Speech analysis & transcription
-│   ├── text-ai-service/     # Text processing & NLP
-│   ├── coding-service/      # Code execution & assessment
-│   ├── assessment-service/  # Score orchestration
-│   ├── logger-service/      # Centralized logging
-│   └── notification-service/ # Notifications & integrations
-├── shared/                   # Common utilities & schemas
-├── docs/                    # Technical documentation
-└── .github/                 # CI/CD workflows
+SkillScreen/
+├── backend/                 # Backend services
+│   ├── api-gateway/        # API Gateway service
+│   ├── auth-service/       # Authentication service
+│   ├── user-service/       # User management service
+│   ├── interview-service/  # Interview management
+│   ├── media-service/      # File handling
+│   ├── video-ai-service/   # Video AI processing
+│   ├── audio-ai-service/   # Audio AI processing
+│   ├── text-ai-service/    # Text AI processing
+│   ├── assessment-service/ # Assessment management
+│   ├── coding-service/     # Code execution
+│   ├── logger-service/     # Centralized logging
+│   └── notification-service/ # Notifications
+├── shared/                 # Shared utilities
+│   ├── database.py        # Database connection
+│   ├── jwt_utils.py       # JWT utilities
+│   └── requirements.txt   # Common dependencies
+├── docker-compose.yml     # Service orchestration
+├── Makefile              # Build automation
+├── start-services.ps1    # PowerShell startup script
+├── test-services.py      # Testing script
+├── .env.example          # Environment template
+└── README.md            # This file
 ```
-
-## 🛠️ Technology Stack
-
-### Backend Services
-- **Framework**: Flask (Python)
-- **Authentication**: JWT, Role-based Access Control
-- **Databases**: PostgreSQL, Redis
-- **Message Queue**: Redis/RabbitMQ
-- **Container**: Docker, Kubernetes
-
-### AI & ML Services
-- **Computer Vision**: OpenCV, MediaPipe
-- **Speech Processing**: OpenAI Whisper, Azure Speech
-- **NLP**: OpenAI GPT, Claude, Hugging Face
-- **Text-to-Speech**: ElevenLabs, Azure TTS
-- **Video Processing**: FFmpeg
-
-### Frontend
-- **Framework**: React 18+
-- **Styling**: Tailwind CSS
-- **State Management**: Redux Toolkit
-- **Testing**: Jest, React Testing Library
-
-### DevOps & Infrastructure
-- **Containerization**: Docker, Docker Compose
-- **Orchestration**: Kubernetes
-- **Monitoring**: Grafana, Prometheus, ELK Stack
-- **CI/CD**: GitHub Actions
-- **Cloud**: AWS/Azure/GCP ready
-
-
-
-## 🔌 API Documentation
-
-Each service will provide comprehensive API documentation with standardized response formats and versioned endpoints following REST conventions.
-
-## 🧪 Testing
-
-The platform will maintain high test coverage across all services with unit tests, integration tests, and end-to-end testing for comprehensive quality assurance.
-
-## 🚀 Deployment
-
-The platform is designed for containerized deployment with support for development, staging, and production environments using Docker and Kubernetes orchestration.
 
 ## 🤝 Contributing
 
-### Development Workflow
 1. Fork the repository
 2. Create a feature branch
-3. Make your changes in the appropriate service folder
-4. Run tests to ensure quality
-5. Commit your changes with descriptive messages
-6. Push to your branch
-7. Open a Pull Request
+3. Make your changes
+4. Add tests
+5. Submit a pull request
 
-### Service Development Guidelines
-- Each service should be independently deployable
-- Follow the established folder structure within services
-- Include comprehensive tests (unit + integration)
-- Update documentation for API changes
-- Use the shared utilities for common functionality
+### Development Workflow
 
-## 📊 Monitoring & Observability
+```bash
+# Create feature branch
+git checkout -b feature/new-feature
 
-- **Metrics**: Prometheus + Grafana dashboards
-- **Logging**: Centralized logging via logger-service  
-- **Tracing**: Distributed tracing across microservices
-- **Health Checks**: Individual service health endpoints
-- **Alerting**: Configurable alerts for system metrics
+# Make changes
+# ...
 
-## 🔒 Security
+# Test changes
+make test
 
-- **Authentication**: JWT-based with refresh tokens
-- **Authorization**: Fine-grained role-based access control
-- **Code Execution**: Sandboxed environments with security isolation
-- **Data Protection**: Encryption at rest and in transit
-- **API Security**: Rate limiting, input validation, CORS protection
-- **Anti-Cheating**: Multi-modal detection systems
+# Commit changes
+git commit -m "Add new feature"
 
-<div align="center">
+# Push branch
+git push origin feature/new-feature
+```
 
-**Built with ❤️ by the IntervuAI Team**
+## 📄 License
 
-[⭐ Star us on GitHub](https://github.com/your-org/ai-interview-platform) | [🐛 Report Bug](https://github.com/your-org/ai-interview-platform/issues) | [💡 Request Feature](https://github.com/your-org/ai-interview-platform/issues)
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-</div>
+## 🆘 Support
+
+- **Documentation**: Check this README and inline code comments
+- **Issues**: Create an issue in the repository
+- **Logs**: Use `make logs` or `docker-compose logs` for debugging
+
+## 🔄 Updates
+
+To update the services:
+
+```bash
+# Pull latest changes
+git pull origin main
+
+# Rebuild and restart
+make restart
+
+# Verify everything works
+make test
+```
+
+---
+
+**Built with ❤️ for professional development**

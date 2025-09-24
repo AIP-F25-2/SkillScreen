@@ -2,20 +2,14 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install FFmpeg and other system dependencies
-RUN apt-get update && apt-get install -y \
-    ffmpeg \
-    libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
-    libgomp1 \
-    && rm -rf /var/lib/apt/lists/*
+# Copy shared utilities
+COPY shared /app/shared
 
-COPY requirements.txt .
+# Copy service files
+COPY backend/media-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY backend/media-service .
 
 EXPOSE 5004
 
