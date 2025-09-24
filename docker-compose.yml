@@ -1,0 +1,209 @@
+# ⚠️ SAMPLE DOCKER COMPOSE - CUSTOMIZE AS NEEDED
+version: '3.8'
+
+services:
+  # Database
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: ai_interview_platform_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  # Redis for caching
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: ./backend/api-gateway
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+    volumes:
+      - ./backend/api-gateway:/app
+    depends_on:
+      - user-service
+      - auth-service
+      - interview-service
+
+  # Backend Services
+  user-service:
+    build:
+      context: ./backend/user-service
+      dockerfile: Dockerfile
+    ports:
+      - "5001:5001"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/ai_interview_platform_dev
+    volumes:
+      - ./backend/user-service:/app
+    depends_on:
+      - postgres
+
+  auth-service:
+    build:
+      context: ./backend/auth-service
+      dockerfile: Dockerfile
+    ports:
+      - "5002:5002"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/ai_interview_platform_dev
+    volumes:
+      - ./backend/auth-service:/app
+    depends_on:
+      - postgres
+
+  # Business Services
+  interview-service:
+    build:
+      context: ./backend/interview-service
+      dockerfile: Dockerfile
+    ports:
+      - "5003:5003"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/ai_interview_platform_dev
+    volumes:
+      - ./backend/interview-service:/app
+    depends_on:
+      - postgres
+
+  media-service:
+    build:
+      context: ./backend/media-service
+      dockerfile: Dockerfile
+    ports:
+      - "5004:5004"
+    volumes:
+      - ./backend/media-service:/app
+      - media_dev_storage:/app/storage
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+
+  video-ai-service:
+    build:
+      context: ./backend/video-ai-service
+      dockerfile: Dockerfile
+    ports:
+      - "5005:5005"
+    volumes:
+      - ./backend/video-ai-service:/app
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+    depends_on:
+      - media-service
+
+  audio-ai-service:
+    build:
+      context: ./backend/audio-ai-service
+      dockerfile: Dockerfile
+    ports:
+      - "5006:5006"
+    volumes:
+      - ./backend/audio-ai-service:/app
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+    depends_on:
+      - media-service
+
+  text-ai-service:
+    build:
+      context: ./backend/text-ai-service
+      dockerfile: Dockerfile
+    ports:
+      - "5007:5007"
+    volumes:
+      - ./backend/text-ai-service:/app
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+
+  assessment-service:
+    build:
+      context: ./backend/assessment-service
+      dockerfile: Dockerfile
+    ports:
+      - "5008:5008"
+    volumes:
+      - ./backend/assessment-service:/app
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+    depends_on:
+      - video-ai-service
+      - audio-ai-service
+      - text-ai-service
+
+  coding-service:
+    build:
+      context: ./backend/coding-service
+      dockerfile: Dockerfile
+    ports:
+      - "5009:5009"
+    volumes:
+      - ./backend/coding-service:/app
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+
+  logger-service:
+    build:
+      context: ./backend/logger-service
+      dockerfile: Dockerfile
+    ports:
+      - "5010:5010"
+    volumes:
+      - ./backend/logger-service:/app
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+
+  notification-service:
+    build:
+      context: ./backend/notification-service
+      dockerfile: Dockerfile
+    ports:
+      - "5011:5011"
+    volumes:
+      - ./backend/notification-service:/app
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - api-gateway
+
+volumes:
+  postgres_dev_data:
+  media_dev_storage:
