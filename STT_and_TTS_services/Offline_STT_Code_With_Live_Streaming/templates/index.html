@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Offline Live STT</title>
+</head>
+<body>
+<h1>Offline Live STT (Vosk)</h1>
+
+<input type="text" id="candidate_id" placeholder="Enter Candidate ID" />
+<button onclick="sendCandidateID()">Submit Candidate ID</button>
+<br><br>
+
+<div id="transcription" style="font-size:1.2em;border:1px solid #ccc;padding:10px;width:600px;height:150px;overflow:auto;"></div><br>
+
+<button onclick="startRecording()">Start</button>
+<button onclick="stopRecording()">Stop</button>
+
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script>
+const socket = io();
+let audioContext, input, processor;
+
+socket.on('connected', data => console.log(data.data));
+socket.on('candidate_received', data => console.log(data.status));
+socket.on('partial_transcription', data => {
+    document.getElementById('transcription').innerText = data.text;
+});
+socket.on('transcription', data => {
+    document.getElementById('transcription').innerText = data.text;
+});
+
+function sendCandidateID() {
+    const candidateId = document.getElementById('candidate_id').value;
+    socket.emit('candidate', { candidate_id: candidateId });
+}
+
+async function startRecording() {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate:16000 });
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    input = audioContext.createMediaStreamSource(stream);
+
+    processor = audioContext.createScriptProcessor(4096, 1, 1);
+    input.connect(processor);
+    processor.connect(audioContext.destination);
+
+    processor.onaudioprocess = function(e) {
+        const float32Array = e.inputBuffer.getChannelData(0);
+        const pcm16 = floatTo16BitPCM(float32Array);
+        const chunk = btoa(String.fromCharCode.apply(null, pcm16));
+        socket.emit('audio_chunk', { chunk: chunk });
+    };
+}
+
+function stopRecording() {
+    if (processor) processor.disconnect();
+    if (input) input.disconnect();
+    if (audioContext) audioContext.close();
+    socket.emit('reset');
+}
+
+function floatTo16BitPCM(float32Array) {
+    const buffer = new Uint8Array(float32Array.length * 2);
+    let offset = 0;
+    for (let i = 0; i < float32Array.length; i++, offset += 2) {
+        let s = Math.max(-1, Math.min(1, float32Array[i]));
+        let int16 = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        buffer[offset] = int16 & 0xFF;
+        buffer[offset+1] = (int16 >> 8) & 0xFF;
+    }
+    return buffer;
+}
+</script>
+</body>
+</html>

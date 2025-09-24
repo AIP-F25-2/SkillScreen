@@ -1,0 +1,42 @@
+Perfect! Here’s a ready-to-run offline Flask TTS project using Mozilla TTS with text input, voice selection, and instant browser playback.
+Project Structure
+Local_TTS_Code/
+│
+├─ app.py
+└─ templates/
+   └─ index.html
+
+
+
+How to Run:
+
+Create a virtual environment:
+
+python -m venv tts_env
+source tts_env/bin/activate  # macOS/Linux
+# tts_env\Scripts\activate   # Windows
+
+
+Install dependencies:
+
+pip install Flask TTS numpy scipy
+
+Run the app:
+python app.py
+
+Open in browser: http://127.0.0.1:8000
+
+Type text
+Select a voice
+Click Speak → audio plays instantly
+✅ Features
+Fully offline (after model download)
+Multiple English voices from VCTK multi-speaker model
+Instant browser playback
+Clean, minimal interface
+If you want, I can make a next version with pitch, speed, and volume sliders so you can fully customize the voice in real-time.
+
+
+Sample text
+
+Hello, This is a test audio. You can type here, I will speak for you.

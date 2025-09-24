@@ -1,0 +1,11 @@
+TTS 
+PyQt5 
+sounddevice 
+numpy 
+scipy
+flask
+flask-socketio
+vosk
+eventlet
+setuptools<81
+moreutils

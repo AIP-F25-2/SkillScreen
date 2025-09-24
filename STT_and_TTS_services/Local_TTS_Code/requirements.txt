@@ -1,0 +1,6 @@
+TTS 
+PyQt5 
+sounddevice 
+numpy 
+scipy
+Flask

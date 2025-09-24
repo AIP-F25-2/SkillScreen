@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Offline TTS App</title>
+</head>
+<body>
+    <h1>Offline TTS with Mozilla TTS</h1>
+
+    <textarea id="text" rows="5" cols="50" placeholder="Type your text here..."></textarea><br><br>
+
+    <label for="speaker">Choose voice:</label>
+    <select id="speaker">
+        {% for sp in speakers %}
+            <option value="{{ sp }}">{{ sp }}</option>
+        {% endfor %}
+    </select><br><br>
+
+    <button onclick="generateSpeech()">Speak</button><br><br>
+
+    <audio id="audioPlayer" controls></audio>
+
+    <script>
+        async function generateSpeech() {
+            const text = document.getElementById("text").value;
+            const speaker = document.getElementById("speaker").value;
+
+            const response = await fetch("/speak", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ text, speaker })
+            });
+
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const audioPlayer = document.getElementById("audioPlayer");
+            audioPlayer.src = url;
+            audioPlayer.play();
+        }
+    </script>
+</body>
+</html>
