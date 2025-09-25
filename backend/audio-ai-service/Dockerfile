@@ -1,19 +1,23 @@
+# Simple Dockerfile for Audio AI Service
 FROM python:3.11-slim
 
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    FLASK_ENV=production
+
+# Set work directory
 WORKDIR /app
 
-# Install system dependencies for audio processing
-RUN apt-get update && apt-get install -y \
-    ffmpeg \
-    portaudio19-dev \
-    python3-pyaudio \
-    && rm -rf /var/lib/apt/lists/*
-
+# Copy requirements and install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy application code
 COPY . .
 
-EXPOSE 5006
+# Expose port (will be set by environment)
+EXPOSE $PORT
 
-CMD ["python", "app.py"]
+# Use gunicorn for production with environment port
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT} --workers 2 --timeout 120 app:app"]
