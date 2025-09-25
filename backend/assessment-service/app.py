@@ -1,5 +1,5 @@
 """
-Simple API Gateway Service
+Simple Assessment Service
 """
 from flask import Flask, jsonify
 import os
@@ -15,14 +15,13 @@ app = Flask(__name__)
 def root():
     """Root endpoint - check if service is deployed and working"""
     return jsonify({
-        'message': 'API Gateway is running',
+        'message': 'Assessment Service is running',
         'status': 'deployed',
-        'service': 'api-gateway',
+        'service': 'assessment-service',
         'port': os.getenv('PORT')
     })
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT'))
-    print(f"Starting API Gateway on port {port}")
+    print(f"Starting Assessment Service on port {port}")
     app.run(host='0.0.0.0', port=port)
-
