@@ -191,7 +191,7 @@ services:
     networks:
       - intervuAI-network
 
-  # AI Services (5008-5009)
+  # AI Services (5008-5010)
   text-ai-service:
     build:
       context: ./backend/text-ai-service
