@@ -1,4 +1,4 @@
- # Simplified Docker Compose for AI Interview Platform - Development Environment
+ # Simplified Docker Compose for IntervuAI Platform - Development Environment
 version: '3.8'
 
 services:
