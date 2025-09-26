@@ -44,6 +44,61 @@ Our platform follows a **microservices architecture** with clear separation betw
 
 
 
+## 🚀 Quick Start
+
+### Prerequisites
+- Docker and Docker Compose installed
+- Git (for cloning the repository)
+
+### Running the Platform
+
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd SkillScreen
+   ```
+
+2. **Start all services**
+   ```bash
+   docker-compose -f docker-compose.dev.yml up -d
+   ```
+
+3. **Check service status**
+   ```bash
+   docker-compose -f docker-compose.dev.yml ps
+   ```
+
+4. **View service logs**
+   ```bash
+   docker-compose -f docker-compose.dev.yml logs -f
+   ```
+
+5. **Stop all services**
+   ```bash
+   docker-compose -f docker-compose.dev.yml down
+   ```
+
+### Access Points
+- **Frontend**: http://localhost:3000
+- **API Gateway**: http://localhost:5000
+- **Individual Services**: http://localhost:5001-5011
+
+### Service Ports
+| Service | Port | Description |
+|---------|------|-------------|
+| API Gateway | 5000 | Main entry point |
+| User Service | 5001 | User management |
+| Auth Service | 5002 | Authentication |
+| Interview Service | 5003 | Interview management |
+| Media Service | 5004 | Media processing |
+| Assessment Service | 5005 | Score orchestration |
+| Notification Service | 5006 | Notifications |
+| Logger Service | 5007 | Centralized logging |
+| Text AI Service | 5008 | Text processing |
+| Audio AI Service | 5009 | Speech analysis |
+| Video AI Service | 5010 | Video analysis |
+| Coding Service | 5011 | Code execution |
+
 ## 📁 Project Structure
 
 ```

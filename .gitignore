@@ -207,7 +207,7 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# AI Interview Platform specific
+# IntervuAI Platform specific
 # Environment files
 .env
 .env.local
