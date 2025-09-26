@@ -1,0 +1,298 @@
+ # Simplified Docker Compose for AI Interview Platform - Development Environment
+version: '3.8'
+
+services:
+  # Database Services
+  postgres:
+    image: postgres:15-alpine
+    container_name: intervuAI-postgres
+    environment:
+      POSTGRES_DB: ai_interview_platform_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - intervuAI-network
+
+  # Core Infrastructure Services (5000-5009)
+  api-gateway:
+    build:
+      context: ./backend/api-gateway
+      dockerfile: Dockerfile
+    container_name: intervuAI-api-gateway
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - PORT=5000
+      - USER_SERVICE_URL=http://user-service:5001
+      - AUTH_SERVICE_URL=http://auth-service:5002
+      - INTERVIEW_SERVICE_URL=http://interview-service:5003
+      - MEDIA_SERVICE_URL=http://media-service:5004
+      - ASSESSMENT_SERVICE_URL=http://assessment-service:5005
+      - NOTIFICATION_SERVICE_URL=http://notification-service:5006
+      - LOGGER_SERVICE_URL=http://logger-service:5007
+      - TEXT_AI_SERVICE_URL=http://text-ai-service:5008
+      - AUDIO_AI_SERVICE_URL=http://audio-ai-service:5009
+      - VIDEO_AI_SERVICE_URL=http://video-ai-service:5010
+      - CODING_SERVICE_URL=http://coding-service:5011
+    volumes:
+      - ./backend/api-gateway:/app
+    depends_on:
+      - user-service
+      - auth-service
+      - interview-service
+    networks:
+      - intervuAI-network
+
+  user-service:
+    build:
+      context: ./backend/user-service
+      dockerfile: Dockerfile
+    container_name: intervuAI-user-service
+    ports:
+      - "5001:5001"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - PORT=5001
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/ai_interview_platform_dev
+      - API_GATEWAY_URL=http://api-gateway:5000
+    volumes:
+      - ./backend/user-service:/app
+    depends_on:
+      - postgres
+    networks:
+      - intervuAI-network
+
+  auth-service:
+    build:
+      context: ./backend/auth-service
+      dockerfile: Dockerfile
+    container_name: intervuAI-auth-service
+    ports:
+      - "5002:5002"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - PORT=5002
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/ai_interview_platform_dev
+      - API_GATEWAY_URL=http://api-gateway:5000
+    volumes:
+      - ./backend/auth-service:/app
+    depends_on:
+      - postgres
+    networks:
+      - intervuAI-network
+
+  interview-service:
+    build:
+      context: ./backend/interview-service
+      dockerfile: Dockerfile
+    container_name: intervuAI-interview-service
+    ports:
+      - "5003:5003"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - PORT=5003
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/ai_interview_platform_dev
+      - API_GATEWAY_URL=http://api-gateway:5000
+      - USER_SERVICE_URL=http://user-service:5001
+      - AUTH_SERVICE_URL=http://auth-service:5002
+    volumes:
+      - ./backend/interview-service:/app
+    depends_on:
+      - postgres
+      - user-service
+      - auth-service
+    networks:
+      - intervuAI-network
+
+  media-service:
+    build:
+      context: ./backend/media-service
+      dockerfile: Dockerfile
+    container_name: intervuAI-media-service
+    ports:
+      - "5004:5004"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - PORT=5004
+      - API_GATEWAY_URL=http://api-gateway:5000
+    volumes:
+      - ./backend/media-service:/app
+      - media_dev_storage:/app/storage
+    networks:
+      - intervuAI-network
+
+  assessment-service:
+    build:
+      context: ./backend/assessment-service
+      dockerfile: Dockerfile
+    container_name: intervuAI-assessment-service
+    ports:
+      - "5005:5005"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - PORT=5005
+      - API_GATEWAY_URL=http://api-gateway:5000
+      - VIDEO_AI_SERVICE_URL=http://video-ai-service:5010
+      - AUDIO_AI_SERVICE_URL=http://audio-ai-service:5009
+      - TEXT_AI_SERVICE_URL=http://text-ai-service:5008
+      - CODING_SERVICE_URL=http://coding-service:5011
+    volumes:
+      - ./backend/assessment-service:/app
+    depends_on:
+      - video-ai-service
+      - audio-ai-service
+      - text-ai-service
+      - coding-service
+    networks:
+      - intervuAI-network
+
+  notification-service:
+    build:
+      context: ./backend/notification-service
+      dockerfile: Dockerfile
+    container_name: intervuAI-notification-service
+    ports:
+      - "5006:5006"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - PORT=5006
+      - API_GATEWAY_URL=http://api-gateway:5000
+    volumes:
+      - ./backend/notification-service:/app
+    networks:
+      - intervuAI-network
+
+  logger-service:
+    build:
+      context: ./backend/logger-service
+      dockerfile: Dockerfile
+    container_name: intervuAI-logger-service
+    ports:
+      - "5007:5007"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - PORT=5007
+      - API_GATEWAY_URL=http://api-gateway:5000
+    volumes:
+      - ./backend/logger-service:/app
+    networks:
+      - intervuAI-network
+
+  # AI Services (5008-5009)
+  text-ai-service:
+    build:
+      context: ./backend/text-ai-service
+      dockerfile: Dockerfile
+    container_name: intervuAI-text-ai-service
+    ports:
+      - "5008:5008"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - PORT=5008
+      - API_GATEWAY_URL=http://api-gateway:5000
+      - ASSESSMENT_SERVICE_URL=http://assessment-service:5005
+    volumes:
+      - ./backend/text-ai-service:/app
+    networks:
+      - intervuAI-network
+
+  audio-ai-service:
+    build:
+      context: ./backend/audio-ai-service
+      dockerfile: Dockerfile
+    container_name: intervuAI-audio-ai-service
+    ports:
+      - "5009:5009"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - PORT=5009
+      - API_GATEWAY_URL=http://api-gateway:5000
+      - MEDIA_SERVICE_URL=http://media-service:5004
+      - ASSESSMENT_SERVICE_URL=http://assessment-service:5005
+    volumes:
+      - ./backend/audio-ai-service:/app
+    depends_on:
+      - media-service
+    networks:
+      - intervuAI-network
+
+  video-ai-service:
+    build:
+      context: ./backend/video-ai-service
+      dockerfile: Dockerfile
+    container_name: intervuAI-video-ai-service
+    ports:
+      - "5010:5010"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - PORT=5010
+      - API_GATEWAY_URL=http://api-gateway:5000
+      - MEDIA_SERVICE_URL=http://media-service:5004
+      - ASSESSMENT_SERVICE_URL=http://assessment-service:5005
+    volumes:
+      - ./backend/video-ai-service:/app
+    depends_on:
+      - media-service
+    networks:
+      - intervuAI-network
+
+  # Specialized Services (5011+)
+  coding-service:
+    build:
+      context: ./backend/coding-service
+      dockerfile: Dockerfile
+    container_name: intervuAI-coding-service
+    ports:
+      - "5011:5011"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - PORT=5011
+      - API_GATEWAY_URL=http://api-gateway:5000
+      - ASSESSMENT_SERVICE_URL=http://assessment-service:5005
+    volumes:
+      - ./backend/coding-service:/app
+    networks:
+      - intervuAI-network
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: intervuAI-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - api-gateway
+    networks:
+      - intervuAI-network
+
+networks:
+  intervuAI-network:
+    driver: bridge
+
+volumes:
+  postgres_dev_data:
+  media_dev_storage:
