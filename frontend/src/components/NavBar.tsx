@@ -2,14 +2,17 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { useEffect, useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function NavBar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { scrollY } = useScroll();
   const [isScrolled, setIsScrolled] = useState(false);
+  const { user, isAuthenticated, logout } = useAuth();
   
   const isActive = (path: string) => pathname === path;
 
@@ -137,36 +140,21 @@ export default function NavBar() {
 
         {/* Navigation Links */}
         <div className="flex space-x-4">
-          <Link
-            href="/features"
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 ${
-              isActive('/features')
-                ? 'bg-white/10 text-white shadow-lg shadow-black/10'
-                : 'text-white/70 hover:bg-white/5 hover:text-white hover:shadow-lg hover:shadow-black/10'
-            }`}
-          >
-            Features
-          </Link>
-          <Link
-            href="/candidate"
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 ${
-              isActive('/candidate')
-                ? 'bg-white/10 text-white shadow-lg shadow-black/10'
-                : 'text-white/70 hover:bg-white/5 hover:text-white hover:shadow-lg hover:shadow-black/10'
-            }`}
-          >
-            Candidate Dashboard
-          </Link>
-          <Link
-            href="/recruiter"
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 ${
-              isActive('/recruiter')
-                ? 'bg-white/10 text-white shadow-lg shadow-black/10'
-                : 'text-white/70 hover:bg-white/5 hover:text-white hover:shadow-lg hover:shadow-black/10'
-            }`}
-          >
-            Recruiter Dashboard
-          </Link>
+          {/* Show dashboard link based on user type */}
+          {isAuthenticated && user && (
+            <Link
+              href={user.userType === 'recruiter' ? '/recruiter' : '/candidate'}
+              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 ${
+                isActive(user.userType === 'recruiter' ? '/recruiter' : '/candidate')
+                  ? 'bg-white/10 text-white shadow-lg shadow-black/10'
+                  : 'text-white/70 hover:bg-white/5 hover:text-white hover:shadow-lg hover:shadow-black/10'
+              }`}
+            >
+              {user.userType === 'recruiter' ? 'Recruiter Dashboard' : 'Candidate Dashboard'}
+            </Link>
+          )}
+          
+          {/* Always show contact */}
           <Link
             href="/contact"
             className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 ${
@@ -180,10 +168,42 @@ export default function NavBar() {
         </div>
 
         {/* User Menu */}
-        <motion.div style={{ transform: signOutTransform }} className="flex items-center">
-          <button className="bg-[#27272A] text-white px-5 py-2 rounded-lg text-sm font-medium transition-all duration-300 hover:bg-[#3F3F46]">
-            Sign Out
-          </button>
+        <motion.div style={{ transform: signOutTransform }} className="flex items-center space-x-4">
+          {isAuthenticated && user ? (
+            <>
+              {/* User Info */}
+              <div className="hidden md:flex flex-col items-end">
+                <span className="text-white text-sm font-medium">{user.name}</span>
+                <span className="text-white/60 text-xs capitalize">{user.userType}</span>
+              </div>
+              
+              {/* User Avatar */}
+              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+                <span className="text-white text-sm font-bold">
+                  {user.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                </span>
+              </div>
+              
+              {/* Sign Out Button */}
+              <button 
+                onClick={() => {
+                  logout();
+                  router.push('/login');
+                }}
+                className="bg-[#27272A] text-white px-5 py-2 rounded-lg text-sm font-medium transition-all duration-300 hover:bg-[#3F3F46]"
+              >
+                Sign Out
+              </button>
+            </>
+          ) : (
+            /* Sign In Button */
+            <button 
+              onClick={() => router.push('/login')}
+              className="bg-white text-black px-5 py-2 rounded-lg text-sm font-medium transition-all duration-300 hover:bg-white/90"
+            >
+              Sign In
+            </button>
+          )}
         </motion.div>
       </div>
     </motion.div>
