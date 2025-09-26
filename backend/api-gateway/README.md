@@ -77,9 +77,13 @@ docker logs -f api-gateway-container
 ## Files Structure
 ```
 api-gateway/
-├── app.py              # Main Flask application (22 lines)
+├── app.py              # Main Flask application
 ├── Dockerfile          # Docker configuration
 ├── requirements.txt    # Python dependencies
 ├── .env.example        # Environment template
+├── controllers/        # HTTP request handling
+├── services/           # Business logic
+├── repositories/       # Data access layer
+├── tests/              # Test files (.gitkeep only)
 └── README.md          # This file
 ```

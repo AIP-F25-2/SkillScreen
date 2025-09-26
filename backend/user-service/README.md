@@ -78,20 +78,15 @@ docker logs -f user-service-container
 ## Files Structure
 ```
 user-service/
-├── app.py              # Main Flask application (22 lines)
+├── app.py              # Main Flask application
 ├── Dockerfile          # Docker configuration
 ├── requirements.txt    # Python dependencies
 ├── .env.example        # Environment template
-├── .env                # Environment file
 ├── migrations/         # Database migration files
 ├── shared/             # Shared utilities
-├── src/                # Source directories (preserved with .gitkeep)
-│   ├── controllers/
-│   ├── routes/
-│   ├── services/
-│   └── utils/
-├── tests/              # Test directories (preserved with .gitkeep)
-│   ├── integration/
-│   └── unit/
+├── controllers/        # HTTP request handling
+├── services/           # Business logic
+├── repositories/       # Data access layer
+├── tests/              # Test files (.gitkeep only)
 └── README.md          # This file
 ```
