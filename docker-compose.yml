@@ -1,0 +1,47 @@
+version: "3.9"
+
+services:
+  sso_service:
+    build:
+      context: .
+      dockerfile: ./sso_service/Dockerfile
+    container_name: sso_service
+    ports:
+      - "8000:8000"
+
+  user_service:
+    build:
+      context: .
+      dockerfile: ./user_service/Dockerfile
+    container_name: user_service
+    expose:
+      - "8001"
+
+  assessment_service:
+    build:
+      context: .
+      dockerfile: ./assessment_service/Dockerfile
+    container_name: assessment_service
+    expose:
+      - "8002"
+
+  coding_service:
+    build:
+      context: .
+      dockerfile: ./coding_service/Dockerfile
+    container_name: coding_service
+    expose:
+      - "8003"
+
+  api_gateway:
+    build:
+      context: .
+      dockerfile: ./api_gateway/Dockerfile
+    container_name: api_gateway
+    ports:
+      - "8080:8080"
+    depends_on:
+      - sso_service
+      - user_service
+      - assessment_service
+      - coding_service
