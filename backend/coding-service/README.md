@@ -1,13 +1,13 @@
 # Coding Service
 
-Simple Coding Service for deployment testing and health monitoring.
+FastAPI-based microservice for coding challenges and solutions.
 
 ## Features
-- ✅ Simple deployment check endpoint
-- ✅ Environment variable configuration
+- ✅ FastAPI framework with automatic API documentation
+- ✅ Standardized API response structure
+- ✅ Health check endpoints
 - ✅ Docker containerization
-- ✅ Port configuration from .env file
-- ✅ Preserved directory structure with .gitkeep files
+- ✅ Environment configuration
 
 ## Quick Start
 
@@ -17,10 +17,10 @@ Simple Coding Service for deployment testing and health monitoring.
 docker build -t coding-service .
 
 # Run with environment file
-docker run -d --name coding-service-container -p 5011:5011 --env-file .env coding-service
+docker run -d --name coding-service-container -p 8080:8080 --env-file .env coding-service
 
 # Test the service
-curl http://localhost:5011
+curl http://localhost:8080
 ```
 
 ### Local Development
@@ -29,72 +29,64 @@ curl http://localhost:5011
 pip install -r requirements.txt
 
 # Run locally
-python app.py
+uvicorn coding:app --host 0.0.0.0 --port 8080
 ```
 
 ## API Endpoints
 
-### Root Endpoint
+### Health Check
 - `GET /` - Service status and deployment check
+- `GET /health` - Detailed health information
 
-**Response:**
-```json
-{
-  "message": "Coding Service is running",
-  "status": "deployed",
-  "service": "coding-service",
-  "port": "5011"
-}
-```
+### Coding Endpoints
+- `GET /problems` - Get coding problems
+- `POST /submit` - Submit coding solutions
 
 ## Environment Configuration
 
-The service reads configuration from `.env` file:
+Copy `.env.example` to `.env` and configure:
 
 ```bash
-# Copy example environment file
-cp .env.example .env
+# Server Configuration
+PORT=8080
+HOST=0.0.0.0
 
-# Edit .env file to customize settings
-PORT=5011
-FLASK_ENV=production
+# Environment
+ENVIRONMENT=development
+DEBUG=true
+
+# Logging
+LOG_LEVEL=INFO
 ```
 
-## Docker Commands
+## API Response Format
 
-```bash
-# Stop and remove container
-docker stop coding-service-container
-docker rm coding-service-container
+All endpoints return standardized responses:
 
-# Rebuild and redeploy
-docker build -t coding-service .
-docker run -d --name coding-service-container -p 5011:5011 --env-file .env coding-service
-
-# View logs
-docker logs -f coding-service-container
+```json
+{
+  "success": true,
+  "data": {
+    // Actual response data
+  },
+  "meta": {
+    "timestamp": "2024-01-15T10:30:00.000Z",
+    "request_id": "req_abc123",
+    "version": "v1"
+  }
+}
 ```
 
 ## Files Structure
 ```
 coding-service/
-├── app.py              # Main Flask application (22 lines)
-├── Dockerfile          # Docker configuration
-├── requirements.txt    # Python dependencies
-├── .env.example        # Environment template
-├── .env                # Environment file
-├── src/                # Source directories (preserved with .gitkeep)
-│   ├── config/
-│   ├── controllers/
-│   ├── prompts/
-│   ├── question_bank/
-│   ├── routes/
-│   ├── sandbox/
-│   ├── services/
-│   └── utils/
-├── tests/              # Test directories (preserved with .gitkeep)
-│   ├── fixtures/
-│   ├── integration/
-│   └── unit/
-└── README.md          # This file
+├── coding.py             # Main FastAPI application
+├── Dockerfile           # Docker configuration
+├── requirements.txt     # Python dependencies
+├── .env.example         # Environment template
+├── controllers/         # API controllers
+├── repositories/        # Data access layer
+├── services/            # Business logic
+├── tests/               # Test files
+└── README.md           # This file
 ```

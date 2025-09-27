@@ -1,12 +1,13 @@
 # Audio AI Service
 
-Simple Audio AI Service for deployment testing and health monitoring.
+FastAPI-based microservice for audio processing and AI analysis.
 
 ## Features
-- ✅ Simple deployment check endpoint
-- ✅ Environment variable configuration
+- ✅ FastAPI framework with automatic API documentation
+- ✅ Standardized API response structure
+- ✅ Health check endpoints
 - ✅ Docker containerization
-- ✅ Port configuration from .env file
+- ✅ Environment configuration
 
 ## Quick Start
 
@@ -16,10 +17,10 @@ Simple Audio AI Service for deployment testing and health monitoring.
 docker build -t audio-ai-service .
 
 # Run with environment file
-docker run -d --name audio-ai-service-container -p 5009:5009 --env-file .env audio-ai-service
+docker run -d --name audio-ai-service-container -p 8080:8080 --env-file .env audio-ai-service
 
 # Test the service
-curl http://localhost:5009
+curl http://localhost:8080
 ```
 
 ### Local Development
@@ -28,58 +29,60 @@ curl http://localhost:5009
 pip install -r requirements.txt
 
 # Run locally
-python app.py
+uvicorn audio_ai:app --host 0.0.0.0 --port 8080
 ```
 
 ## API Endpoints
 
-### Root Endpoint
+### Health Check
 - `GET /` - Service status and deployment check
-
-**Response:**
-```json
-{
-  "message": "Audio AI Service is running",
-  "status": "deployed",
-  "service": "audio-ai-service",
-  "port": "5009"
-}
-```
+- `GET /health` - Detailed health information
 
 ## Environment Configuration
 
-The service reads configuration from `.env` file:
+Copy `.env.example` to `.env` and configure:
 
 ```bash
-# Copy example environment file
-cp .env.example .env
+# Server Configuration
+PORT=8080
+HOST=0.0.0.0
 
-# Edit .env file to customize settings
-PORT=5009
-FLASK_ENV=production
+# Environment
+ENVIRONMENT=development
+DEBUG=true
+
+# Logging
+LOG_LEVEL=INFO
 ```
 
-## Docker Commands
+## API Response Format
 
-```bash
-# Stop and remove container
-docker stop audio-ai-service-container
-docker rm audio-ai-service-container
+All endpoints return standardized responses:
 
-# Rebuild and redeploy
-docker build -t audio-ai-service .
-docker run -d --name audio-ai-service-container -p 5009:5009 --env-file .env audio-ai-service
-
-# View logs
-docker logs -f audio-ai-service-container
+```json
+{
+  "success": true,
+  "data": {
+    // Actual response data
+  },
+  "meta": {
+    "timestamp": "2024-01-15T10:30:00.000Z",
+    "request_id": "req_abc123",
+    "version": "v1"
+  }
+}
 ```
 
 ## Files Structure
 ```
 audio-ai-service/
-├── app.py              # Main Flask application (22 lines)
-├── Dockerfile          # Docker configuration
-├── requirements.txt    # Python dependencies
-├── .env.example        # Environment template
-└── README.md          # This file
+├── audio_ai.py            # Main FastAPI application
+├── Dockerfile            # Docker configuration
+├── requirements.txt      # Python dependencies
+├── .env.example          # Environment template
+├── controllers/          # API controllers
+├── repositories/         # Data access layer
+├── services/             # Business logic
+├── tests/                # Test files
+└── README.md            # This file
 ```

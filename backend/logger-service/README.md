@@ -17,10 +17,10 @@ Simple Logger Service for deployment testing and health monitoring.
 docker build -t logger-service .
 
 # Run with environment file
-docker run -d --name logger-service-container -p 5012:5012 --env-file .env logger-service
+docker run -d --name logger-service-container -p 8080:8080 --env-file .env logger-service
 
 # Test the service
-curl http://localhost:5012
+curl http://localhost:8080
 ```
 
 ### Local Development
@@ -29,7 +29,7 @@ curl http://localhost:5012
 pip install -r requirements.txt
 
 # Run locally
-python app.py
+uvicorn logger_service:app --host 0.0.0.0 --port 8080
 ```
 
 ## API Endpoints
@@ -43,7 +43,7 @@ python app.py
   "message": "Logger Service is running",
   "status": "deployed",
   "service": "logger-service",
-  "port": "5012"
+  "port": "8080"
 }
 ```
 
@@ -56,8 +56,8 @@ The service reads configuration from `.env` file:
 cp .env.example .env
 
 # Edit .env file to customize settings
-PORT=5012
-FLASK_ENV=production
+PORT=8080
+ENVIRONMENT=development
 ```
 
 ## Docker Commands
@@ -69,7 +69,7 @@ docker rm logger-service-container
 
 # Rebuild and redeploy
 docker build -t logger-service .
-docker run -d --name logger-service-container -p 5012:5012 --env-file .env logger-service
+docker run -d --name logger-service-container -p 8080:8080 --env-file .env logger-service
 
 # View logs
 docker logs -f logger-service-container
@@ -78,22 +78,13 @@ docker logs -f logger-service-container
 ## Files Structure
 ```
 logger-service/
-├── app.py              # Main Flask application (22 lines)
+├── logger_service.py   # Main FastAPI application
 ├── Dockerfile          # Docker configuration
 ├── requirements.txt    # Python dependencies
 ├── .env.example        # Environment template
-├── .env                # Environment file
-├── config/             # Configuration directories (preserved with .gitkeep)
-│   ├── elasticsearch/
-│   ├── kibana/
-│   └── logstash/
-├── src/                # Source directories (preserved with .gitkeep)
-│   ├── controllers/
-│   ├── routes/
-│   ├── services/
-│   └── utils/
-├── tests/              # Test directories (preserved with .gitkeep)
-│   ├── integration/
-│   └── unit/
+├── controllers/        # API controllers
+├── repositories/       # Data access layer
+├── services/           # Business logic
+├── tests/              # Test files
 └── README.md          # This file
 ```

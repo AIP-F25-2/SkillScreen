@@ -1,12 +1,15 @@
 # API Gateway Service
 
-Simple API Gateway service for deployment testing and health monitoring.
+FastAPI-based API Gateway service with JWT authentication, RBAC, and microservice proxying.
 
 ## Features
-- ✅ Simple deployment check endpoint
+- ✅ FastAPI-based API Gateway
+- ✅ JWT Authentication & Authorization
+- ✅ Role-Based Access Control (RBAC)
+- ✅ Microservice Proxying
 - ✅ Environment variable configuration
 - ✅ Docker containerization
-- ✅ Port configuration from .env file
+- ✅ Health monitoring endpoints
 
 ## Quick Start
 
@@ -16,10 +19,10 @@ Simple API Gateway service for deployment testing and health monitoring.
 docker build -t api-gateway .
 
 # Run with environment file
-docker run -d --name api-gateway-container -p 5000:5000 --env-file .env api-gateway
+docker run -d --name api-gateway-container -p 8080:8080 --env-file .env api-gateway
 
 # Test the service
-curl http://localhost:5000
+curl http://localhost:8080
 ```
 
 ### Local Development
@@ -28,23 +31,22 @@ curl http://localhost:5000
 pip install -r requirements.txt
 
 # Run locally
-python app.py
+uvicorn gateway:app --host 0.0.0.0 --port 8080 --reload
 ```
 
 ## API Endpoints
 
-### Root Endpoint
+### Health Check
 - `GET /` - Service status and deployment check
 
-**Response:**
-```json
-{
-  "message": "API Gateway is running",
-  "status": "deployed",
-  "service": "api-gateway",
-  "port": "5000"
-}
-```
+### Microservice Proxying
+- `GET|POST|PUT|DELETE /{service}/{path:path}` - Proxy requests to microservices
+  - `/{service}` can be: `user`, `assessment`, `coding`
+  - `/{path:path}` - any path to forward to the target service
+
+### Authentication
+- JWT Bearer token required for all endpoints except `/auth/`
+- Token must be included in `Authorization: Bearer <token>` header
 
 ## Environment Configuration
 
@@ -55,9 +57,20 @@ The service reads configuration from `.env` file:
 cp .env.example .env
 
 # Edit .env file to customize settings
-PORT=5000
-FLASK_ENV=production
+PORT=8080
+SECRET_KEY=your-secret-key
+USER_SERVICE_URL=http://user_service:8001
+ASSESSMENT_SERVICE_URL=http://assessment_service:8002
+CODING_SERVICE_URL=http://coding_service:8003
 ```
+
+## RBAC Rules
+
+The API Gateway enforces role-based access control:
+
+- `/user` - Only `admin` role
+- `/assessment` - Both `admin` and `user` roles  
+- `/coding` - Only `user` role
 
 ## Docker Commands
 
@@ -68,7 +81,7 @@ docker rm api-gateway-container
 
 # Rebuild and redeploy
 docker build -t api-gateway .
-docker run -d --name api-gateway-container -p 5000:5000 --env-file .env api-gateway
+docker run -d --name api-gateway-container -p 8080:8080 --env-file .env api-gateway
 
 # View logs
 docker logs -f api-gateway-container
@@ -77,13 +90,9 @@ docker logs -f api-gateway-container
 ## Files Structure
 ```
 api-gateway/
-├── app.py              # Main Flask application
+├── gateway.py           # Main FastAPI application
 ├── Dockerfile          # Docker configuration
 ├── requirements.txt    # Python dependencies
 ├── .env.example        # Environment template
-├── controllers/        # HTTP request handling
-├── services/           # Business logic
-├── repositories/       # Data access layer
-├── tests/              # Test files (.gitkeep only)
 └── README.md          # This file
 ```

@@ -1,12 +1,14 @@
 # Auth Service
 
-Simple Auth Service for deployment testing and health monitoring.
+FastAPI-based microservice for authentication and authorization.
 
 ## Features
-- ✅ Simple deployment check endpoint
-- ✅ Environment variable configuration
+- ✅ FastAPI framework with automatic API documentation
+- ✅ JWT token authentication
+- ✅ Standardized API response structure
+- ✅ Health check endpoints
 - ✅ Docker containerization
-- ✅ Port configuration from .env file
+- ✅ Environment configuration
 
 ## Quick Start
 
@@ -16,10 +18,10 @@ Simple Auth Service for deployment testing and health monitoring.
 docker build -t auth-service .
 
 # Run with environment file
-docker run -d --name auth-service-container -p 5002:5002 --env-file .env auth-service
+docker run -d --name auth-service-container -p 8080:8080 --env-file .env auth-service
 
 # Test the service
-curl http://localhost:5002
+curl http://localhost:8080
 ```
 
 ### Local Development
@@ -28,58 +30,67 @@ curl http://localhost:5002
 pip install -r requirements.txt
 
 # Run locally
-python app.py
+uvicorn auth:app --host 0.0.0.0 --port 8080
 ```
 
 ## API Endpoints
 
-### Root Endpoint
+### Health Check
 - `GET /` - Service status and deployment check
+- `GET /health` - Detailed health information
 
-**Response:**
-```json
-{
-  "message": "Auth Service is running",
-  "status": "deployed",
-  "service": "auth-service",
-  "port": "5002"
-}
-```
+### Authentication
+- `POST /auth/login` - User login with JWT token
 
 ## Environment Configuration
 
-The service reads configuration from `.env` file:
+Copy `.env.example` to `.env` and configure:
 
 ```bash
-# Copy example environment file
-cp .env.example .env
+# Server Configuration
+PORT=8080
+HOST=0.0.0.0
 
-# Edit .env file to customize settings
-PORT=5002
-FLASK_ENV=production
+# JWT Configuration
+SECRET_KEY=supersecret
+ALGORITHM=HS256
+
+# Environment
+ENVIRONMENT=development
+DEBUG=true
+
+# Logging
+LOG_LEVEL=INFO
 ```
 
-## Docker Commands
+## API Response Format
 
-```bash
-# Stop and remove container
-docker stop auth-service-container
-docker rm auth-service-container
+All endpoints return standardized responses:
 
-# Rebuild and redeploy
-docker build -t auth-service .
-docker run -d --name auth-service-container -p 5002:5002 --env-file .env auth-service
-
-# View logs
-docker logs -f auth-service-container
+```json
+{
+  "success": true,
+  "data": {
+    // Actual response data
+  },
+  "meta": {
+    "timestamp": "2024-01-15T10:30:00.000Z",
+    "request_id": "req_abc123",
+    "version": "v1"
+  }
+}
 ```
 
 ## Files Structure
 ```
 auth-service/
-├── app.py              # Main Flask application (22 lines)
-├── Dockerfile          # Docker configuration
-├── requirements.txt    # Python dependencies
-├── .env.example        # Environment template
-└── README.md          # This file
+├── auth.py               # Main FastAPI application
+├── Dockerfile           # Docker configuration
+├── requirements.txt     # Python dependencies
+├── .env.example         # Environment template
+├── controllers/         # API controllers
+├── repositories/        # Data access layer
+├── services/            # Business logic
+├── tests/               # Test files
+└── README.md           # This file
 ```
