@@ -31,36 +31,16 @@ services:
       - SECRET_KEY=supersecret
       - ALGORITHM=HS256
       - USER_SERVICE_URL=http://user-service:8080
-      - AUTH_SERVICE_URL=http://auth-service:8080
+      - SSO_SERVICE_URL=http://sso-service:8080
       - ASSESSMENT_SERVICE_URL=http://assessment-service:8080
       - CODING_SERVICE_URL=http://coding-service:8080
     volumes:
       - ./backend/api-gateway:/app
     depends_on:
       - user-service
-      - auth-service
+      - sso-service
       - assessment-service
       - coding-service
-    networks:
-      - skill-screen-network
-
-  auth-service:
-    build:
-      context: ./backend/auth-service
-      dockerfile: Dockerfile
-    container_name: auth-service
-    ports:
-      - "5001:8080"
-    environment:
-      - PORT=8080
-      - HOST=0.0.0.0
-      - SECRET_KEY=supersecret
-      - ALGORITHM=HS256
-      - DATABASE_URL=postgresql://postgres:password@postgres:5432/skill_screen_platform_dev
-    volumes:
-      - ./backend/auth-service:/app
-    depends_on:
-      - postgres
     networks:
       - skill-screen-network
 
@@ -70,7 +50,7 @@ services:
       dockerfile: Dockerfile
     container_name: user-service
     ports:
-      - "5002:8080"
+      - "5001:8080"
     environment:
       - PORT=8080
       - HOST=0.0.0.0
@@ -88,7 +68,7 @@ services:
       dockerfile: Dockerfile
     container_name: assessment-service
     ports:
-      - "5003:8080"
+      - "5002:8080"
     environment:
       - PORT=8080
       - HOST=0.0.0.0
@@ -106,7 +86,7 @@ services:
       dockerfile: Dockerfile
     container_name: coding-service
     ports:
-      - "5004:8080"
+      - "5003:8080"
     environment:
       - PORT=8080
       - HOST=0.0.0.0
@@ -118,14 +98,14 @@ services:
     networks:
       - skill-screen-network
 
-  # AI Services (5005-5007)
+  # AI Services (5004-5006)
   audio-ai-service:
     build:
       context: ./backend/audio-ai-service
       dockerfile: Dockerfile
     container_name: audio-ai-service
     ports:
-      - "5005:8080"
+      - "5004:8080"
     environment:
       - PORT=8080
       - HOST=0.0.0.0
@@ -143,7 +123,7 @@ services:
       dockerfile: Dockerfile
     container_name: video-ai-service
     ports:
-      - "5006:8080"
+      - "5005:8080"
     environment:
       - PORT=8080
       - HOST=0.0.0.0
@@ -161,7 +141,7 @@ services:
       dockerfile: Dockerfile
     container_name: text-ai-service
     ports:
-      - "5007:8080"
+      - "5006:8080"
     environment:
       - PORT=8080
       - HOST=0.0.0.0
@@ -173,14 +153,14 @@ services:
     networks:
       - skill-screen-network
 
-  # Specialized Services (5008-5013)
+  # Specialized Services (5007-5012)
   interview-service:
     build:
       context: ./backend/interview-service
       dockerfile: Dockerfile
     container_name: interview-service
     ports:
-      - "5008:8080"
+      - "5007:8080"
     environment:
       - PORT=8080
       - HOST=0.0.0.0
@@ -198,7 +178,7 @@ services:
       dockerfile: Dockerfile
     container_name: media-service
     ports:
-      - "5009:8080"
+      - "5008:8080"
     environment:
       - PORT=8080
       - HOST=0.0.0.0
@@ -216,7 +196,7 @@ services:
       dockerfile: Dockerfile
     container_name: notification-service
     ports:
-      - "5010:8080"
+      - "5009:8080"
     environment:
       - PORT=8080
       - HOST=0.0.0.0
@@ -234,7 +214,7 @@ services:
       dockerfile: Dockerfile
     container_name: logger-service
     ports:
-      - "5011:8080"
+      - "5010:8080"
     environment:
       - PORT=8080
       - HOST=0.0.0.0
@@ -252,7 +232,7 @@ services:
       dockerfile: Dockerfile
     container_name: sso-service
     ports:
-      - "5012:8080"
+      - "5011:8080"
     environment:
       - PORT=8080
       - HOST=0.0.0.0
@@ -272,7 +252,7 @@ services:
       dockerfile: Dockerfile
     container_name: common-service
     ports:
-      - "5013:8080"
+      - "5012:8080"
     environment:
       - PORT=8080
       - HOST=0.0.0.0
