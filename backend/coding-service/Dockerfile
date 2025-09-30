@@ -1,17 +1,10 @@
-FROM python:3.11-slim
+FROM python:3.10-slim
 
 WORKDIR /app
-
-# Install Docker CLI for code execution
-RUN apt-get update && apt-get install -y \
-    docker.io \
-    && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE 5009
-
-CMD ["python", "app.py"]
+CMD ["uvicorn", "coding:app", "--host", "0.0.0.0", "--port", "8080"]

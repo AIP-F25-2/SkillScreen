@@ -1,0 +1,272 @@
+# SkillScreen Platform - Development Environment
+version: '3.8'
+
+services:
+  # Database Services
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_DB: skill_screen_platform_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - skill-screen-network
+
+  # Core Infrastructure Services (5000-5009)
+  api-gateway:
+    build:
+      context: ./backend/api-gateway
+      dockerfile: Dockerfile
+    container_name: api-gateway
+    ports:
+      - "5000:8080"
+    environment:
+      - PORT=8080
+      - HOST=0.0.0.0
+      - SECRET_KEY=supersecret
+      - ALGORITHM=HS256
+      - USER_SERVICE_URL=http://user-service:8080
+      - SSO_SERVICE_URL=http://sso-service:8080
+      - ASSESSMENT_SERVICE_URL=http://assessment-service:8080
+      - CODING_SERVICE_URL=http://coding-service:8080
+    volumes:
+      - ./backend/api-gateway:/app
+    depends_on:
+      - user-service
+      - sso-service
+      - assessment-service
+      - coding-service
+    networks:
+      - skill-screen-network
+
+  user-service:
+    build:
+      context: ./backend/user-service
+      dockerfile: Dockerfile
+    container_name: user-service
+    ports:
+      - "5001:8080"
+    environment:
+      - PORT=8080
+      - HOST=0.0.0.0
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/skill_screen_platform_dev
+    volumes:
+      - ./backend/user-service:/app
+    depends_on:
+      - postgres
+    networks:
+      - skill-screen-network
+
+  assessment-service:
+    build:
+      context: ./backend/assessment-service
+      dockerfile: Dockerfile
+    container_name: assessment-service
+    ports:
+      - "5002:8080"
+    environment:
+      - PORT=8080
+      - HOST=0.0.0.0
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/skill_screen_platform_dev
+    volumes:
+      - ./backend/assessment-service:/app
+    depends_on:
+      - postgres
+    networks:
+      - skill-screen-network
+
+  coding-service:
+    build:
+      context: ./backend/coding-service
+      dockerfile: Dockerfile
+    container_name: coding-service
+    ports:
+      - "5003:8080"
+    environment:
+      - PORT=8080
+      - HOST=0.0.0.0
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/skill_screen_platform_dev
+    volumes:
+      - ./backend/coding-service:/app
+    depends_on:
+      - postgres
+    networks:
+      - skill-screen-network
+
+  # AI Services (5004-5006)
+  audio-ai-service:
+    build:
+      context: ./backend/audio-ai-service
+      dockerfile: Dockerfile
+    container_name: audio-ai-service
+    ports:
+      - "5004:8080"
+    environment:
+      - PORT=8080
+      - HOST=0.0.0.0
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/skill_screen_platform_dev
+    volumes:
+      - ./backend/audio-ai-service:/app
+    depends_on:
+      - postgres
+    networks:
+      - skill-screen-network
+
+  video-ai-service:
+    build:
+      context: ./backend/video-ai-service
+      dockerfile: Dockerfile
+    container_name: video-ai-service
+    ports:
+      - "5005:8080"
+    environment:
+      - PORT=8080
+      - HOST=0.0.0.0
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/skill_screen_platform_dev
+    volumes:
+      - ./backend/video-ai-service:/app
+    depends_on:
+      - postgres
+    networks:
+      - skill-screen-network
+
+  text-ai-service:
+    build:
+      context: ./backend/text-ai-service
+      dockerfile: Dockerfile
+    container_name: text-ai-service
+    ports:
+      - "5006:8080"
+    environment:
+      - PORT=8080
+      - HOST=0.0.0.0
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/skill_screen_platform_dev
+    volumes:
+      - ./backend/text-ai-service:/app
+    depends_on:
+      - postgres
+    networks:
+      - skill-screen-network
+
+  # Specialized Services (5007-5012)
+  interview-service:
+    build:
+      context: ./backend/interview-service
+      dockerfile: Dockerfile
+    container_name: interview-service
+    ports:
+      - "5007:8080"
+    environment:
+      - PORT=8080
+      - HOST=0.0.0.0
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/skill_screen_platform_dev
+    volumes:
+      - ./backend/interview-service:/app
+    depends_on:
+      - postgres
+    networks:
+      - skill-screen-network
+
+  media-service:
+    build:
+      context: ./backend/media-service
+      dockerfile: Dockerfile
+    container_name: media-service
+    ports:
+      - "5008:8080"
+    environment:
+      - PORT=8080
+      - HOST=0.0.0.0
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/skill_screen_platform_dev
+    volumes:
+      - ./backend/media-service:/app
+    depends_on:
+      - postgres
+    networks:
+      - skill-screen-network
+
+  notification-service:
+    build:
+      context: ./backend/notification-service
+      dockerfile: Dockerfile
+    container_name: notification-service
+    ports:
+      - "5009:8080"
+    environment:
+      - PORT=8080
+      - HOST=0.0.0.0
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/skill_screen_platform_dev
+    volumes:
+      - ./backend/notification-service:/app
+    depends_on:
+      - postgres
+    networks:
+      - skill-screen-network
+
+  logger-service:
+    build:
+      context: ./backend/logger-service
+      dockerfile: Dockerfile
+    container_name: logger-service
+    ports:
+      - "5010:8080"
+    environment:
+      - PORT=8080
+      - HOST=0.0.0.0
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/skill_screen_platform_dev
+    volumes:
+      - ./backend/logger-service:/app
+    depends_on:
+      - postgres
+    networks:
+      - skill-screen-network
+
+  sso-service:
+    build:
+      context: ./backend/sso-service
+      dockerfile: Dockerfile
+    container_name: sso-service
+    ports:
+      - "5011:8080"
+    environment:
+      - PORT=8080
+      - HOST=0.0.0.0
+      - SECRET_KEY=supersecret
+      - ALGORITHM=HS256
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/skill_screen_platform_dev
+    volumes:
+      - ./backend/sso-service:/app
+    depends_on:
+      - postgres
+    networks:
+      - skill-screen-network
+
+  common-service:
+    build:
+      context: ./backend/common-service
+      dockerfile: Dockerfile
+    container_name: common-service
+    ports:
+      - "5012:8080"
+    environment:
+      - PORT=8080
+      - HOST=0.0.0.0
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/skill_screen_platform_dev
+    volumes:
+      - ./backend/common-service:/app
+    depends_on:
+      - postgres
+    networks:
+      - skill-screen-network
+
+networks:
+  skill-screen-network:
+    driver: bridge
+
+volumes:
+  postgres_dev_data:

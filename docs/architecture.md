@@ -1,6 +1,6 @@
-# AI Interview Platform - Project Structure
+# IntervuAI Platform - Project Structure
 
-This document outlines the folder structure for our AI Interview Platform microservices architecture. The project is organized into platform services, business services, and frontend components.
+This document outlines the folder structure for our IntervuAI Platform microservices architecture. The project is organized into platform services, business services, and frontend components.
 
 ## **📁 Repository Structure**
 

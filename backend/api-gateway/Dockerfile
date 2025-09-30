@@ -1,5 +1,4 @@
-# ⚠️ SAMPLE DOCKERFILE FOR DEVELOPMENT - CUSTOMIZE AS NEEDED
-FROM python:3.11-slim
+FROM python:3.10-slim
 
 WORKDIR /app
 
@@ -8,6 +7,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE 5000
-
-CMD ["python", "app.py"]
+CMD ["sh", "-c", "uvicorn gateway:app --host 0.0.0.0 --port ${PORT:-8080}"]

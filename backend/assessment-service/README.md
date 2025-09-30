@@ -1,23 +1,92 @@
 # Assessment Service
 
-Assessment orchestration across all AI services, multi-modal score combination, final candidate assessment generation, evidence linking, workflow management, score weighting customization.
+FastAPI-based microservice for handling assessments and evaluations.
 
 ## Features
-- Assessment orchestration across all AI services
-- Multi-modal score combination
-- Final candidate assessment generation
-- Evidence linking
-- Workflow management
-- Score weighting customization
+- ✅ FastAPI framework with automatic API documentation
+- ✅ Standardized API response structure
+- ✅ Health check endpoints
+- ✅ Docker containerization
+- ✅ Environment configuration
 
-## Development
+## Quick Start
+
+### Docker Deployment
+```bash
+# Build the image
+docker build -t assessment-service .
+
+# Run with environment file
+docker run -d --name assessment-service-container -p 8080:8080 --env-file .env assessment-service
+
+# Test the service
+curl http://localhost:8080
+```
+
+### Local Development
 ```bash
 # Install dependencies
 pip install -r requirements.txt
 
-# Run development server
-python app.py
+# Run locally
+uvicorn assessment:app --host 0.0.0.0 --port 8080
 ```
 
-## Environment Variables
-See `.env.example` for required environment variables.
+## API Endpoints
+
+### Health Check
+- `GET /` - Service status and deployment check
+- `GET /health` - Detailed health information
+
+### Assessment Endpoints
+- `GET /questions` - Get assessment questions
+- `POST /submit` - Submit assessment answers
+
+## Environment Configuration
+
+Copy `.env.example` to `.env` and configure:
+
+```bash
+# Server Configuration
+PORT=8080
+HOST=0.0.0.0
+
+# Environment
+ENVIRONMENT=development
+DEBUG=true
+
+# Logging
+LOG_LEVEL=INFO
+```
+
+## API Response Format
+
+All endpoints return standardized responses:
+
+```json
+{
+  "success": true,
+  "data": {
+    // Actual response data
+  },
+  "meta": {
+    "timestamp": "2024-01-15T10:30:00.000Z",
+    "request_id": "req_abc123",
+    "version": "v1"
+  }
+}
+```
+
+## Files Structure
+```
+assessment-service/
+├── assessment.py           # Main FastAPI application
+├── Dockerfile             # Docker configuration
+├── requirements.txt       # Python dependencies
+├── .env.example           # Environment template
+├── controllers/           # API controllers
+├── repositories/          # Data access layer
+├── services/              # Business logic
+├── tests/                 # Test files
+└── README.md             # This file
+```
