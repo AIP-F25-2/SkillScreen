@@ -1,0 +1,11 @@
+Recruiter Account:
+Email: recruiter@intervuai.com
+Password: password123
+
+Candidate Account:  
+Email: candidate@intervuai.com
+Password: password123
+
+Quick Demo:
+Email: demo@intervuai.com
+Password: demo
