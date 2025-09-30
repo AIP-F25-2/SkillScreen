@@ -1,3 +1,11 @@
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-python-dotenv==1.0.0
+fastapi
+uvicorn[standard]
+pydantic # data validation
+requests
+openai-whisper # for speech-to-text
+av # for audio/video processing
+torch
+torchaudio
+# git+https://github.com/m-bain/whisperx.git
+vosk
+PyYAML
