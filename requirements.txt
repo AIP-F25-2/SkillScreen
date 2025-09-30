@@ -1,0 +1,10 @@
+flask
+flask-socketio
+vosk
+numpy
+sounddevice
+eventlet
+TTS 
+PyQt5 
+scipy
+flask-cors
