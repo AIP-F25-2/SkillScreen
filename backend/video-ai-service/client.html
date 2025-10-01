@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AI Proctoring API Test</title>
+  <style>
+    body { font-family: Arial, sans-serif; text-align:center; background:#f5f5f5; margin:0; padding:20px; }
+    h1 { color:#333; }
+    #video-container { margin:20px auto; width:640px; border:2px solid #444; border-radius:10px; overflow:hidden; background:#000; }
+    video { width:100%; height:auto; }
+    .controls { margin:20px; }
+    input, select, button { padding:8px 12px; font-size:16px; margin:5px; border-radius:5px; }
+    button { border:none; cursor:pointer; color:white; }
+    button.start { background:#28a745; }
+    button.stop { background:#dc3545; }
+    button.process { background:#007bff; }
+    #status { margin-top:15px; font-weight:bold; color:#555; }
+    #report { margin-top:20px; width:80%; margin:auto; text-align:left; background:#fff; padding:15px; border-radius:10px; border:1px solid #ccc; max-height:300px; overflow-y:auto; white-space:pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>AI Proctoring Test Client</h1>
+
+  <div class="controls">
+    <input type="text" id="filename" placeholder="Enter filename">
+    <select id="videoSource"></select>
+    <select id="audioSource"></select>
+    <button class="start" onclick="startRecording()">Start</button>
+    <button class="stop" onclick="stopRecording()">Stop</button>
+    <button class="process" onclick="processVideo()">Process Video</button>
+  </div>
+
+  <div id="status">Status: Idle</div>
+
+  <div id="video-container">
+    <video id="preview" autoplay playsinline muted></video>
+  </div>
+
+  <div id="report"></div>
+
+  <script>
+    const API_BASE = "http://localhost:8000/api";
+    let lastRecordingPath = "";
+    let previewStream = null;
+
+    // Populate camera & mic dropdowns
+    async function getMediaDevices() {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoSelect = document.getElementById("videoSource");
+      const audioSelect = document.getElementById("audioSource");
+      videoSelect.innerHTML = "";
+      audioSelect.innerHTML = "";
+
+      devices.forEach(device => {
+        const option = document.createElement("option");
+        option.value = device.deviceId;
+        option.text = device.label || `${device.kind} ${device.deviceId}`;
+        if (device.kind === "videoinput") videoSelect.appendChild(option);
+        if (device.kind === "audioinput") audioSelect.appendChild(option);
+      });
+    }
+
+    // Start local preview
+    async function startPreview() {
+      const videoId = document.getElementById("videoSource").value;
+      const audioId = document.getElementById("audioSource").value;
+      const constraints = {
+        video: videoId ? { deviceId: { exact: videoId } } : true,
+        audio: audioId ? { deviceId: { exact: audioId } } : true
+      };
+      try {
+        previewStream = await navigator.mediaDevices.getUserMedia(constraints);
+        document.getElementById("preview").srcObject = previewStream;
+      } catch (err) {
+        console.error("Error accessing devices:", err);
+        document.getElementById("status").innerText = "Error: Unable to access selected devices";
+      }
+    }
+
+    // Stop local preview
+    function stopPreview() {
+      if (previewStream) {
+        previewStream.getTracks().forEach(track => track.stop());
+        document.getElementById("preview").srcObject = null;
+        previewStream = null;
+      }
+    }
+
+    // Start backend recording
+    async function startRecording() {
+      const filename = document.getElementById("filename").value || "recording";
+      document.getElementById("status").innerText = "Status: Starting recording...";
+      try {
+        await startPreview(); // enable camera + mic locally
+        const response = await fetch(`${API_BASE}/start`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filename })
+        });
+        const data = await response.json();
+        lastRecordingPath = data.file_path;
+        document.getElementById("status").innerText = "Status: Recording started";
+      } catch (err) {
+        document.getElementById("status").innerText = "Error starting recording: " + err;
+      }
+    }
+
+    // Stop backend recording
+    async function stopRecording() {
+      document.getElementById("status").innerText = "Status: Stopping recording...";
+      try {
+        stopPreview(); // release camera + mic locally
+        const response = await fetch(`${API_BASE}/stop`, { method: "POST" });
+        const data = await response.json();
+        lastRecordingPath = data.file_path;
+        document.getElementById("status").innerText =
+          `Status: Recording stopped. File saved at:\n${lastRecordingPath}`;
+      } catch (err) {
+        document.getElementById("status").innerText = "Error stopping recording: " + err;
+      }
+    }
+
+    // Process video
+    async function processVideo() {
+      if (!lastRecordingPath) {
+        document.getElementById("status").innerText = "Status: No recording available to process!";
+        return;
+      }
+      document.getElementById("status").innerText = "Status: Processing video...";
+      try {
+        const response = await fetch(`${API_BASE}/process_video`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ video_url: lastRecordingPath })
+        });
+        const data = await response.json();
+        if (data.error) {
+          document.getElementById("status").innerText = "Error: " + data.error;
+          return;
+        }
+        document.getElementById("status").innerText = "Status: Video processed successfully!";
+        document.getElementById("report").innerText =
+          "Annotated video URL: " + data.annotated_video_url +
+          "\n\nReport:\n" + JSON.stringify(data.report, null, 2);
+      } catch (err) {
+        document.getElementById("status").innerText = "Error processing video: " + err;
+      }
+    }
+
+    // Init device lists
+    getMediaDevices();
+  </script>
+</body>
+</html>
