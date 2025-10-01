@@ -1,98 +1,134 @@
-# Video AI Service
+````markdown
+# Video & Audio Recorder
 
-Simple Video AI Service for deployment testing and health monitoring.
+This project provides a Python-based video and audio recording system using OpenCV and SoundDevice. It captures video from your webcam and audio from your microphone simultaneously, merges them into a single MP4 file, and saves it to a folder defined in a `.env` file.
+
+---
 
 ## Features
-- ✅ Simple deployment check endpoint
-- ✅ Environment variable configuration
-- ✅ Docker containerization
-- ✅ Port configuration from .env file
-- ✅ Preserved directory structure with .gitkeep files
 
-## Quick Start
+- Records video from webcam in real-time.
+- Records audio simultaneously.
+- Merges video and audio into a single MP4 using `ffmpeg`.
+- Temporary raw files are deleted after merging.
+- Configurable via `.env` file.
+- Supports adjustable frame rate, audio sample rate, and audio gain.
+- Returns latest frame for real-time preview if needed.
+- Fully threaded recording to avoid blocking main application.
 
-### Docker Deployment
-```bash
-# Build the image
-docker build -t video-ai-service .
+---
 
-# Run with environment file
-docker run -d --name video-ai-service-container -p 5016:5016 --env-file .env video-ai-service
+## Requirements
 
-# Test the service
-curl http://localhost:5016
-```
+- Python 3.8+
+- OpenCV (`cv2`)
+- NumPy
+- SoundDevice
+- `ffmpeg` installed and accessible via command line
+- Wave (built-in)
+- `python-dotenv`
 
-### Local Development
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Run locally
-python app.py
-```
-
-## API Endpoints
-
-### Root Endpoint
-- `GET /` - Service status and deployment check
-
-**Response:**
-```json
-{
-  "message": "Video AI Service is running",
-  "status": "deployed",
-  "service": "video-ai-service",
-  "port": "5016"
-}
-```
-
-## Environment Configuration
-
-The service reads configuration from `.env` file:
+Install Python dependencies:
 
 ```bash
-# Copy example environment file
-cp .env.example .env
+pip install opencv-python numpy sounddevice python-dotenv
+````
 
-# Edit .env file to customize settings
-PORT=5016
-FLASK_ENV=production
+Install ffmpeg:
+
+* **macOS**: `brew install ffmpeg`
+* **Windows**: Download from [https://ffmpeg.org/download.html](https://ffmpeg.org/download.html)
+* **Linux (Ubuntu/Debian)**: `sudo apt install ffmpeg`
+
+---
+
+## Project Structure
+
+```
+project/
+│
+├── app.py                            # Main recording script
+├── .env                              # Environment variables
+├── README.md
+└── services/video_recorder.py        # Video And Audio Recording Script
+└── services/video_processor.py       # Video And Audio Processing Script
+└── recordings/                       # Folder where recordings are saved
+└── processed_videos/                 # Folder where recordings are saved
+└── requirements.txt                  # Requirements of the project
 ```
 
-## Docker Commands
+---
 
-```bash
-# Stop and remove container
-docker stop video-ai-service-container
-docker rm video-ai-service-container
+## Environment Variables (`.env`)
 
-# Rebuild and redeploy
-docker build -t video-ai-service .
-docker run -d --name video-ai-service-container -p 5016:5016 --env-file .env video-ai-service
+Create a `.env` file in the project root:
 
-# View logs
-docker logs -f video-ai-service-container
+```dotenv
+# Folder to save video recordings (raw + final MP4)
+VIDEO_FOLDER=/absolute/path/to/recordings
+
+# Audio recording sample rate
+AUDIO_SAMPLE_RATE=44100
+
+# Audio gain multiplier
+AUDIO_GAIN=2.0
+
+# Video FPS
+VIDEO_FPS=20
 ```
 
-## Files Structure
+> Make sure to use absolute paths to avoid path issues.
+
+---
+
+## Usage
+
+### Start Recording
+
+```python
+from recorder import start_recording
+
+# Starts recording video + audio
+mp4_file = start_recording(filename_base="my_recording")
+print(f"Recording started. Saving to {mp4_file}")
 ```
-video-ai-service/
-├── app.py              # Main Flask application (22 lines)
-├── Dockerfile          # Docker configuration
-├── requirements.txt    # Python dependencies
-├── .env.example        # Environment template
-├── .env                # Environment file
-├── src/                # Source directories (preserved with .gitkeep)
-│   ├── config/
-│   ├── controllers/
-│   ├── prompts/
-│   ├── routes/
-│   ├── services/
-│   └── utils/
-├── tests/              # Test directories (preserved with .gitkeep)
-│   ├── fixtures/
-│   ├── integration/
-│   └── unit/
-└── README.md          # This file
+
+### Stop Recording
+
+```python
+from recorder import stop_recording
+
+stop_recording()
+print("Recording stopped.")
+```
+
+### Get Latest Frame (for preview)
+
+```python
+from recorder import get_latest_frame
+
+frame = get_latest_frame()
+if frame is not None:
+    import cv2
+    cv2.imshow("Live Preview", frame)
+    cv2.waitKey(1)
+```
+
+---
+
+## Notes
+
+* Raw `.avi` video and `.wav` audio are saved temporarily in `VIDEO_FOLDER` and removed after merging.
+* Final merged MP4 file is saved in `VIDEO_FOLDER` as well.
+* Ensure `ffmpeg` is installed and added to your system PATH.
+* Adjust `VIDEO_FPS`, `AUDIO_SAMPLE_RATE`, and `AUDIO_GAIN` via `.env` for your recording needs.
+
+---
+
+## License
+
+MIT License
+
+---
+
 ```
