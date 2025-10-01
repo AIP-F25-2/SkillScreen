@@ -1,17 +1,25 @@
-from fastapi import APIRouter
-from schemas.audio_schemas import AnalysisRequest
-from services import audio_processing_service
+from fastapi import APIRouter, HTTPException
+from config import logger
+from schemas.audio_schemas import AudioProcessRequest, AudioProcessResponse
 
 router = APIRouter()
 
-@router.get("/")
-def read_root():
-    return {"message": "Audio AI Service is running"}
-
-@router.post("/v1/audio/analyses")
-def start_analysis(request: AnalysisRequest):
-    # Pass the request data to our service logic
-    result = audio_processing_service.process_video_for_analysis(
-        video_urls=request.video_urls
+@router.post("/process", response_model=AudioProcessResponse)
+async def process_audio(request: AudioProcessRequest):
+    """
+    Process audio from video URL
+    This is a stub for Phase 1 - returns mock data
+    """
+    logger.info(f"Received audio processing request for video: {request.video_url}")
+    
+    # TODO: Phase 2 - Implement actual processing
+    # For now, return mock response
+    
+    return AudioProcessResponse(
+        status="success",
+        message="Audio processing completed (mock)",
+        video_url=request.video_url,
+        transcript="This is a mock transcript for Phase 1 testing.",
+        duration_seconds=120.5,
+        word_count=25
     )
-    return result
