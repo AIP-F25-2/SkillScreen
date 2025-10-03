@@ -1,258 +1,243 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Chunked Video Recorder</title>
+    <title>Video Admin Dashboard</title>
     <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(to right, #f0f2f5, #d9e2ec);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 30px;
-            color: #333;
-        }
-
-        h1 {
-            color: #2c3e50;
-            margin-bottom: 25px;
-        }
-
-        #controls {
-            background: #fff;
-            padding: 20px 25px;
-            border-radius: 15px;
-            box-shadow: 0 6px 20px rgba(0,0,0,0.15);
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-            margin-bottom: 25px;
-            width: 720px;
-        }
-
-        label {
-            font-weight: 600;
-            margin-right: 10px;
-        }
-
-        input, select {
-            padding: 10px 12px;
-            font-size: 16px;
-            border-radius: 8px;
-            border: 1px solid #bbb;
-            outline: none;
-            transition: 0.3s;
-        }
-
-        input:focus, select:focus {
-            border-color: #4CAF50;
-            box-shadow: 0 0 5px rgba(76, 175, 80, 0.5);
-        }
-
-        button {
-            padding: 12px 18px;
-            font-size: 16px;
-            border-radius: 8px;
-            border: none;
-            cursor: pointer;
-            background-color: #4CAF50;
-            color: white;
-            font-weight: 600;
-            transition: 0.3s;
-        }
-
-        button:hover {
-            background-color: #45a049;
-        }
-
-        video {
-            border-radius: 15px;
-            border: 3px solid #2c3e50;
-            margin-bottom: 15px;
-            max-width: 100%;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-        }
-
-        #videoLink {
-            font-size: 16px;
-            margin-top: 10px;
-            padding: 10px 15px;
-            background: #ffffff;
-            border-radius: 10px;
-            box-shadow: 0 3px 12px rgba(0,0,0,0.1);
-        }
-
-        #videoLink a {
-            color: #2c3e50;
-            text-decoration: none;
-            font-weight: bold;
-        }
-
-        #videoLink a:hover {
-            text-decoration: underline;
-            color: #4CAF50;
-        }
-
-        @media (max-width: 768px) {
-            #controls {
-                width: 90%;
-            }
-
-            video {
-                width: 100%;
-                height: auto;
-            }
-        }
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; color: #333; margin: 0; padding: 0; }
+        .container { width: 95%; margin: 20px auto; }
+        h1, h2 { text-align: center; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        table, th, td { border: 1px solid #ccc; }
+        th, td { padding: 8px; text-align: left; }
+        th { background: #007bff; color: #fff; }
+        tr:nth-child(even) { background: #f9f9f9; }
+        button { padding: 5px 10px; margin-right: 5px; cursor: pointer; border: none; border-radius: 4px; background: #28a745; color: #fff; }
+        button.delete { background: #dc3545; }
+        button.preview { background: #17a2b8; }
+        .flex-row { display: flex; align-items: center; margin-bottom: 10px; gap: 5px; flex-wrap: wrap; }
+        input[type=text] { padding: 5px; border: 1px solid #ccc; border-radius: 4px; }
+        .section { padding: 20px; background: #fff; border-radius: 6px; margin-bottom: 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+        .recording-section video { max-width: 400px; border: 1px solid #ccc; margin-top: 10px; border-radius: 4px; }
     </style>
 </head>
 <body>
-    <h1>Chunked Video Recorder</h1>
+    <div class="container">
+        <h1>Admin Video Dashboard</h1>
 
-    <div id="controls">
-        <div>
-            <label for="user_id">User ID:</label>
-            <input type="text" id="user_id" placeholder="Enter User ID" />
+        <!-- Recording Section -->
+        <div class="section recording-section">
+            <h2>Recording Control</h2>
+            <div class="flex-row">
+                <input type="text" id="recordUserId" placeholder="Enter User ID for Recording">
+                <button id="startRecBtn">Start Recording</button>
+                <button id="stopRecBtn" disabled>Stop Recording</button>
+            </div>
+            <video id="livePreview" autoplay muted style="display:none;"></video>
         </div>
-        <div>
-            <label for="videoSelect">Select Camera:</label>
-            <select id="videoSelect"></select>
-            <label for="audioSelect">Select Microphone:</label>
-            <select id="audioSelect"></select>
+
+        <!-- Users Section -->
+        <div class="section">
+            <h2>Users Management</h2>
+            <div class="flex-row">
+                <input type="text" id="newUserId" placeholder="New User ID">
+                <button onclick="createUser()">Create User</button>
+                <button onclick="loadUsers()">Load Users</button>
+                <button onclick="deleteAllUsers()" class="delete">Delete All Users</button>
+            </div>
+            <table id="usersTable">
+                <thead>
+                    <tr><th>User ID</th><th>Actions</th><th>Videos</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
         </div>
-        <div>
-            <button id="start">Start Recording</button>
-            <button id="stop">Stop Recording</button>
+
+        <!-- Videos Section -->
+        <div class="section">
+            <h2>Search Videos</h2>
+            <div class="flex-row">
+                <input type="text" id="videoQuery" placeholder="Search videos">
+                <button onclick="searchVideos()">Search</button>
+            </div>
+            <table id="videosTable">
+                <thead>
+                    <tr><th>User</th><th>Video</th><th>Actions</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
         </div>
     </div>
 
-    <video id="preview" autoplay muted playsinline webkit-playsinline width="640" height="480"></video>
+<script>
+async function fetchJSON(url, options) {
+    const res = await fetch(url, options);
+    return await res.json();
+}
 
-    <div id="videoLink"></div>
+// ---------------------- Recording ----------------------
+let mediaRecorder, recordedChunks = [], liveStream;
 
-    <script>
-        const startBtn = document.getElementById("start");
-        const stopBtn = document.getElementById("stop");
-        const preview = document.getElementById("preview");
-        const userInput = document.getElementById("user_id");
-        const videoSelect = document.getElementById("videoSelect");
-        const audioSelect = document.getElementById("audioSelect");
-        const videoLinkDiv = document.getElementById("videoLink");
+document.getElementById('startRecBtn').addEventListener('click', async () => {
+    const userId = document.getElementById('recordUserId').value.trim();
+    if (!userId) return alert('Enter User ID');
 
-        let mediaRecorder;
-        let chunkCounter = 0;
-        let stream;
+    // Reset chunks automatically
+    await fetchJSON('/reset_chunks', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ user_id: userId })
+    });
 
-        async function populateDevices() {
-            const devices = await navigator.mediaDevices.enumerateDevices();
-            const videoDevices = devices.filter(d => d.kind === "videoinput");
-            const audioDevices = devices.filter(d => d.kind === "audioinput");
+    liveStream = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
+    const preview = document.getElementById('livePreview');
+    preview.srcObject = liveStream;
+    preview.style.display = 'block';
 
-            videoSelect.innerHTML = "";
-            audioSelect.innerHTML = "";
+    recordedChunks = [];
+    mediaRecorder = new MediaRecorder(liveStream, { mimeType:'video/webm; codecs=vp8,opus' });
 
-            videoDevices.forEach((device, index) => {
-                const option = document.createElement("option");
-                option.value = device.deviceId;
-                option.text = device.label || `Camera ${index + 1}`;
-                videoSelect.appendChild(option);
-            });
-
-            audioDevices.forEach((device, index) => {
-                const option = document.createElement("option");
-                option.value = device.deviceId;
-                option.text = device.label || `Microphone ${index + 1}`;
-                audioSelect.appendChild(option);
-            });
+    mediaRecorder.ondataavailable = async function(e) {
+        if (e.data.size > 0) {
+            recordedChunks.push(e.data);
+            const formData = new FormData();
+            const chunkFilename = `${Date.now()}.webm`;
+            formData.append('file', new Blob([e.data], {type:'video/webm'}), chunkFilename);
+            formData.append('user_id', userId);
+            await fetch('/upload_chunk', { method:'POST', body:formData });
         }
+    };
 
-        async function initCamera() {
-            const videoDeviceId = videoSelect.value;
-            const audioDeviceId = audioSelect.value;
+    mediaRecorder.start(1000); // chunk every 1 second
+    document.getElementById('startRecBtn').disabled = true;
+    document.getElementById('stopRecBtn').disabled = false;
+});
 
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-            }
+document.getElementById('stopRecBtn').addEventListener('click', async () => {
+    const userId = document.getElementById('recordUserId').value.trim();
+    if (!userId) return alert('Enter User ID');
 
-            try {
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: videoDeviceId ? { deviceId: { exact: videoDeviceId } } : true,
-                    audio: audioDeviceId ? { deviceId: { exact: audioDeviceId } } : true
-                });
-                preview.srcObject = stream;
-            } catch (err) {
-                alert("Permission denied or no camera/mic found");
-                console.error(err);
-            }
-        }
+    mediaRecorder.stop();
+    liveStream.getTracks().forEach(track => track.stop());
+    document.getElementById('livePreview').style.display = 'none';
+    document.getElementById('startRecBtn').disabled = false;
+    document.getElementById('stopRecBtn').disabled = true;
 
-        startBtn.onclick = async () => {
-            const userId = userInput.value.trim();
-            if (!userId) {
-                alert("Please enter a User ID");
-                return;
-            }
+    // Wait a bit to ensure last chunks are uploaded
+    await new Promise(r => setTimeout(r, 1000));
 
-            await initCamera();
+    // Finalize upload
+    const data = await fetchJSON('/finalize_upload', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ user_id: userId })
+    });
 
-            chunkCounter = 0;
-            mediaRecorder = new MediaRecorder(stream, { mimeType: "video/webm; codecs=vp8,opus" });
+    alert(`Recording finalized: ${data.file}`);
+    loadUserVideos(userId);
+});
 
-            mediaRecorder.ondataavailable = async (e) => {
-                if (e.data && e.data.size > 0) {
-                    const timestamp = Date.now();
-                    const chunkFileName = `chunk_${timestamp}.webm`;
+// ---------------------- Users ----------------------
+async function loadUsers() {
+    const data = await fetchJSON('/admin/users');
+    const tbody = document.querySelector('#usersTable tbody');
+    tbody.innerHTML = '';
+    data.users.forEach(user => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${user}</td>
+            <td>
+                <button onclick="renameUser('${user}')">Rename</button>
+                <button onclick="deleteUser('${user}')" class="delete">Delete</button>
+            </td>
+            <td><div id="videos-${user}">Loading...</div></td>`;
+        tbody.appendChild(tr);
+        loadUserVideos(user);
+    });
+}
 
-                    const formData = new FormData();
-                    formData.append("file", e.data, chunkFileName);
-                    formData.append("user_id", userId);
+async function createUser() {
+    const userId = document.getElementById('newUserId').value.trim();
+    if (!userId) return alert('Enter User ID');
+    await fetchJSON('/admin/user', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({user_id: userId})
+    });
+    loadUsers();
+}
 
-                    try {
-                        await fetch("/upload_chunk", { method: "POST", body: formData });
-                        console.log(`Uploaded ${chunkFileName}`);
-                    } catch (err) {
-                        console.error("Upload failed:", err);
-                    }
-                }
-            };
+async function renameUser(oldId) {
+    const newId = prompt('New User ID for ' + oldId);
+    if (!newId) return;
+    await fetchJSON(`/admin/user/${oldId}`, {
+        method:'PUT',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({new_user_id: newId})
+    });
+    loadUsers();
+}
 
-            mediaRecorder.start(2000);  // record in 5-second chunks
-            console.log("Recording started");
-            videoLinkDiv.innerHTML = "";
-        };
+async function deleteUser(userId) {
+    if (!confirm(`Delete user ${userId}?`)) return;
+    await fetchJSON(`/admin/user/${userId}`, { method:'DELETE' });
+    loadUsers();
+}
 
-        stopBtn.onclick = async () => {
-            const userId = userInput.value.trim();
-            if (!userId) return;
+async function deleteAllUsers() {
+    if (!confirm('Delete ALL users?')) return;
+    await fetchJSON('/admin/users', { method:'DELETE' });
+    loadUsers();
+}
 
-            if (mediaRecorder && mediaRecorder.state !== "inactive") {
-                mediaRecorder.stop();
-                console.log("Recording stopped");
+// ---------------------- Videos ----------------------
+async function loadUserVideos(userId) {
+    const div = document.getElementById(`videos-${userId}`);
+    const data = await fetchJSON(`/admin/videos/${userId}`);
+    if (!data.videos || data.videos.length === 0) {
+        div.innerHTML = 'No videos';
+        return;
+    }
+    div.innerHTML = '';
+    data.videos.forEach(video => {
+        const videoDiv = document.createElement('div');
+        videoDiv.innerHTML = `${video} 
+            <button class="preview" onclick="previewVideo('${userId}','${video}')">Preview</button>
+            <button class="delete" onclick="deleteVideo('${userId}','${video}')">Delete</button>`;
+        div.appendChild(videoDiv);
+    });
+}
 
-                if (stream) {
-                    stream.getTracks().forEach(track => track.stop());
-                    stream = null;
-                    preview.srcObject = null;
-                }
+async function deleteVideo(userId, filename) {
+    if (!confirm(`Delete video ${filename}?`)) return;
+    await fetchJSON(`/admin/video/${userId}/${filename}`, { method:'DELETE' });
+    loadUserVideos(userId);
+}
 
-                try {
-                    const res = await fetch("/finalize_upload", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ user_id: userId })
-                    });
-                    const data = await res.json();
-                    console.log("Merged file:", data.file);
-                    alert("Upload complete: " + data.file);
+function previewVideo(userId, filename) {
+    const win = window.open(`/admin/video/${userId}/preview/${filename}`, '_blank');
+    if (!win) alert('Popup blocked, enable popups to preview');
+}
 
-                    videoLinkDiv.innerHTML = `<a href="${data.file}" target="_blank">Preview Uploaded Video</a>`;
-                } catch (err) {
-                    console.error("Finalize failed:", err);
-                }
-            }
-        };
+async function searchVideos() {
+    const query = document.getElementById('videoQuery').value.trim();
+    const data = await fetchJSON(`/admin/search/videos?q=${encodeURIComponent(query)}`);
+    const tbody = document.querySelector('#videosTable tbody');
+    tbody.innerHTML = '';
+    for (let user in data.matched_videos) {
+        data.matched_videos[user].forEach(video => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${user}</td>
+                <td>${video}</td>
+                <td>
+                    <button class="preview" onclick="previewVideo('${user}','${video}')">Preview</button>
+                    <button class="delete" onclick="deleteVideo('${user}','${video}')">Delete</button>
+                </td>`;
+            tbody.appendChild(tr);
+        });
+    }
+}
 
-        populateDevices();
-        navigator.mediaDevices.ondevicechange = populateDevices;
-    </script>
+// Initial load
+loadUsers();
+</script>
 </body>
 </html>
