@@ -1,23 +1,33 @@
-# Start from a lean official Python image
+# Use official Python runtime as base image
 FROM python:3.10-slim
 
-# Set the working directory inside the container
+# Set working directory in container
 WORKDIR /app
 
-# IMPORTANT: Install the FFmpeg system dependency
-# This must be done before installing Python packages that might need it
-RUN apt-get update && apt-get install -y ffmpeg
+# Install system dependencies for audio processing
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy and install Python requirements first to leverage Docker's layer caching
-COPY ./requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
+# Copy requirements first (better caching)
+COPY requirements.txt .
 
-# Copy the rest of your application's code into the container
-COPY . /app
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Expose the port the app runs on
+# Copy application code
+COPY . .
+
+# Create necessary directories
+RUN mkdir -p temp_audio models
+
+# Expose port
 EXPOSE 8000
 
-# The command to run your application
-# We use --host 0.0.0.0 to make the server accessible from outside the container
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD python -c "import requests; requests.get('http://localhost:8000/health/live')"
+
+# Run the application
+CMD ["python", "app.py"]

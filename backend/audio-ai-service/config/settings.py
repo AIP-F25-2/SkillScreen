@@ -27,12 +27,20 @@ class Settings(BaseSettings):
     WHISPER_DEVICE: str = "cpu"  # cpu or cuda
     MODEL_CACHE_DIR: str = "./models"
     
+    # Processing Settings
+    MAX_VIDEO_DURATION_MINUTES: int = 30
+    ENABLE_DIARIZATION: bool = True
+    ENABLE_FILLER_DETECTION: bool = True
+    
     # Database
     DATABASE_URL: str = "mock://localhost"
     
     # API Keys
     API_KEY_HEADER: str = "X-API-Key"
     API_KEY: Optional[str] = None
+    
+    # HuggingFace (for pyannote.audio)
+    HUGGINGFACE_TOKEN: Optional[str] = None  # Token for accessing Hugging Face models
     
     # Next service URL (for passing results)
     NEXT_SERVICE_API_URL: Optional[str] = None
