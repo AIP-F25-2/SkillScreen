@@ -2,6 +2,9 @@ from fastapi import FastAPI
 from datetime import datetime
 import uuid
 
+# Import controllers
+from controllers import interviews_controller, questions_controller, sessions_controller, resumes_controller
+
 app = FastAPI(title="Interview Service")
 
 def create_response(data, success=True):
@@ -33,3 +36,9 @@ def health():
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat()
     })
+
+# Mount Routers
+app.include_router(interviews_controller.router, prefix="/interviews", tags=["Interviews"])
+app.include_router(questions_controller.router, prefix="/interviews", tags=["Questions"])
+app.include_router(sessions_controller.router, prefix="/interviews", tags=["Sessions"])
+app.include_router(resumes_controller.router, prefix="/resumes", tags=["Resumes"])
