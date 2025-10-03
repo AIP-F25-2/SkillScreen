@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chunked Video Recorder</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(to right, #f0f2f5, #d9e2ec);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 30px;
+            color: #333;
+        }
+
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 25px;
+        }
+
+        #controls {
+            background: #fff;
+            padding: 20px 25px;
+            border-radius: 15px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            margin-bottom: 25px;
+            width: 720px;
+        }
+
+        label {
+            font-weight: 600;
+            margin-right: 10px;
+        }
+
+        input, select {
+            padding: 10px 12px;
+            font-size: 16px;
+            border-radius: 8px;
+            border: 1px solid #bbb;
+            outline: none;
+            transition: 0.3s;
+        }
+
+        input:focus, select:focus {
+            border-color: #4CAF50;
+            box-shadow: 0 0 5px rgba(76, 175, 80, 0.5);
+        }
+
+        button {
+            padding: 12px 18px;
+            font-size: 16px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            font-weight: 600;
+            transition: 0.3s;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        video {
+            border-radius: 15px;
+            border: 3px solid #2c3e50;
+            margin-bottom: 15px;
+            max-width: 100%;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+
+        #videoLink {
+            font-size: 16px;
+            margin-top: 10px;
+            padding: 10px 15px;
+            background: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 3px 12px rgba(0,0,0,0.1);
+        }
+
+        #videoLink a {
+            color: #2c3e50;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        #videoLink a:hover {
+            text-decoration: underline;
+            color: #4CAF50;
+        }
+
+        @media (max-width: 768px) {
+            #controls {
+                width: 90%;
+            }
+
+            video {
+                width: 100%;
+                height: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Chunked Video Recorder</h1>
+
+    <div id="controls">
+        <div>
+            <label for="user_id">User ID:</label>
+            <input type="text" id="user_id" placeholder="Enter User ID" />
+        </div>
+        <div>
+            <label for="videoSelect">Select Camera:</label>
+            <select id="videoSelect"></select>
+            <label for="audioSelect">Select Microphone:</label>
+            <select id="audioSelect"></select>
+        </div>
+        <div>
+            <button id="start">Start Recording</button>
+            <button id="stop">Stop Recording</button>
+        </div>
+    </div>
+
+    <video id="preview" autoplay muted playsinline webkit-playsinline width="640" height="480"></video>
+
+    <div id="videoLink"></div>
+
+    <script>
+        const startBtn = document.getElementById("start");
+        const stopBtn = document.getElementById("stop");
+        const preview = document.getElementById("preview");
+        const userInput = document.getElementById("user_id");
+        const videoSelect = document.getElementById("videoSelect");
+        const audioSelect = document.getElementById("audioSelect");
+        const videoLinkDiv = document.getElementById("videoLink");
+
+        let mediaRecorder;
+        let chunkCounter = 0;
+        let stream;
+
+        async function populateDevices() {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoDevices = devices.filter(d => d.kind === "videoinput");
+            const audioDevices = devices.filter(d => d.kind === "audioinput");
+
+            videoSelect.innerHTML = "";
+            audioSelect.innerHTML = "";
+
+            videoDevices.forEach((device, index) => {
+                const option = document.createElement("option");
+                option.value = device.deviceId;
+                option.text = device.label || `Camera ${index + 1}`;
+                videoSelect.appendChild(option);
+            });
+
+            audioDevices.forEach((device, index) => {
+                const option = document.createElement("option");
+                option.value = device.deviceId;
+                option.text = device.label || `Microphone ${index + 1}`;
+                audioSelect.appendChild(option);
+            });
+        }
+
+        async function initCamera() {
+            const videoDeviceId = videoSelect.value;
+            const audioDeviceId = audioSelect.value;
+
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: videoDeviceId ? { deviceId: { exact: videoDeviceId } } : true,
+                    audio: audioDeviceId ? { deviceId: { exact: audioDeviceId } } : true
+                });
+                preview.srcObject = stream;
+            } catch (err) {
+                alert("Permission denied or no camera/mic found");
+                console.error(err);
+            }
+        }
+
+        startBtn.onclick = async () => {
+            const userId = userInput.value.trim();
+            if (!userId) {
+                alert("Please enter a User ID");
+                return;
+            }
+
+            await initCamera();
+
+            chunkCounter = 0;
+            mediaRecorder = new MediaRecorder(stream, { mimeType: "video/webm; codecs=vp8,opus" });
+
+            mediaRecorder.ondataavailable = async (e) => {
+                if (e.data && e.data.size > 0) {
+                    const timestamp = Date.now();
+                    const chunkFileName = `chunk_${timestamp}.webm`;
+
+                    const formData = new FormData();
+                    formData.append("file", e.data, chunkFileName);
+                    formData.append("user_id", userId);
+
+                    try {
+                        await fetch("/upload_chunk", { method: "POST", body: formData });
+                        console.log(`Uploaded ${chunkFileName}`);
+                    } catch (err) {
+                        console.error("Upload failed:", err);
+                    }
+                }
+            };
+
+            mediaRecorder.start(2000);  // record in 5-second chunks
+            console.log("Recording started");
+            videoLinkDiv.innerHTML = "";
+        };
+
+        stopBtn.onclick = async () => {
+            const userId = userInput.value.trim();
+            if (!userId) return;
+
+            if (mediaRecorder && mediaRecorder.state !== "inactive") {
+                mediaRecorder.stop();
+                console.log("Recording stopped");
+
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                    stream = null;
+                    preview.srcObject = null;
+                }
+
+                try {
+                    const res = await fetch("/finalize_upload", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ user_id: userId })
+                    });
+                    const data = await res.json();
+                    console.log("Merged file:", data.file);
+                    alert("Upload complete: " + data.file);
+
+                    videoLinkDiv.innerHTML = `<a href="${data.file}" target="_blank">Preview Uploaded Video</a>`;
+                } catch (err) {
+                    console.error("Finalize failed:", err);
+                }
+            }
+        };
+
+        populateDevices();
+        navigator.mediaDevices.ondevicechange = populateDevices;
+    </script>
+</body>
+</html>
