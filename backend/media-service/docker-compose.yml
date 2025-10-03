@@ -7,4 +7,4 @@ services:
     ports:
       - "${SERVER_PORT}:${SERVER_PORT}"
     volumes:
-      - /Users/mukulgarg/Downloads/AIP backup/video_recordings:/app/uploads
+      - ${HOST_VOLUME_MOUNT_PATH}:/app/uploads
