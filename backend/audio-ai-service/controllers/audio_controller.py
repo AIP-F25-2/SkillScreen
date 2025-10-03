@@ -210,7 +210,7 @@ async def test_full_pipeline(request: AudioProcessRequest):
         # Diarization
         logger.info("Running speaker diarization...")
         diarization_result = diarizer.diarize(audio_path)
-        cheating_assessment = diarizer.assess_cheating_risk(diarization_result,duration)
+        cheating_assessment = diarizer.assess_cheating_risk(diarization_result, duration)
         
         return {
             "status": "success",
