@@ -1,134 +1,259 @@
-````markdown
-# Video & Audio Recorder
+```markdown
+# Video Processing API
 
-This project provides a Python-based video and audio recording system using OpenCV and SoundDevice. It captures video from your webcam and audio from your microphone simultaneously, merges them into a single MP4 file, and saves it to a folder defined in a `.env` file.
+A Flask-based REST API for processing videos, managing user video uploads, and retrieving annotated videos. Supports listing, searching, and deleting videos by user, with detailed reports.
 
 ---
 
 ## Features
 
-- Records video from webcam in real-time.
-- Records audio simultaneously.
-- Merges video and audio into a single MP4 using `ffmpeg`.
-- Temporary raw files are deleted after merging.
-- Configurable via `.env` file.
-- Supports adjustable frame rate, audio sample rate, and audio gain.
-- Returns latest frame for real-time preview if needed.
-- Fully threaded recording to avoid blocking main application.
-
----
-
-## Requirements
-
-- Python 3.8+
-- OpenCV (`cv2`)
-- NumPy
-- SoundDevice
-- `ffmpeg` installed and accessible via command line
-- Wave (built-in)
-- `python-dotenv`
-
-Install Python dependencies:
-
-```bash
-pip install opencv-python numpy sounddevice python-dotenv
-````
-
-Install ffmpeg:
-
-* **macOS**: `brew install ffmpeg`
-* **Windows**: Download from [https://ffmpeg.org/download.html](https://ffmpeg.org/download.html)
-* **Linux (Ubuntu/Debian)**: `sudo apt install ffmpeg`
+- Process videos and generate annotated versions.
+- Organize videos per user.
+- List, search, and delete videos.
+- Serve videos for playback or download.
+- Check video existence.
+- Retrieve all users.
 
 ---
 
 ## Project Structure
 
 ```
-project/
-│
-├── app.py                            # Main recording script
-├── .env                              # Environment variables
-├── README.md
-└── services/video_recorder.py        # Video And Audio Recording Script
-└── services/video_processor.py       # Video And Audio Processing Script
-└── recordings/                       # Folder where recordings are saved
-└── processed_videos/                 # Folder where recordings are saved
-└── requirements.txt                  # Requirements of the project
+
+.
+├── app.py                     # Main Flask application
+├── services/
+│   └── video_processor.py     # Video processing logic
+├── templates/
+│   └── index.html             # Frontend template
+├── processed_videos/          # Output videos (auto-created)
+├── requirements.txt           # Python dependencies
+├── .env                       # Configuration
+└── README.md
+
+````
+
+---
+
+## Setup
+
+### 1. Clone the repository
+```bash
+git clone <repo-url>
+cd <repo-folder>
+````
+
+### 2. Create virtual environment
+
+```bash
+python3 -m venv venv
+source venv/bin/activate   # Linux/Mac
+venv\Scripts\activate      # Windows
+```
+
+### 3. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Configure environment variables
+
+Create a `.env` file:
+
+```env
+SECRET_KEY=your_secret_key
+SERVER_HOST=0.0.0.0
+SERVER_PORT=5010
+FLASK_DEBUG=True
+PROCESSED_FOLDER=processed_videos
 ```
 
 ---
 
-## Environment Variables (`.env`)
+## Running the Server
 
-Create a `.env` file in the project root:
-
-```dotenv
-# Folder to save video recordings (raw + final MP4)
-VIDEO_FOLDER=/absolute/path/to/recordings
-
-# Audio recording sample rate
-AUDIO_SAMPLE_RATE=44100
-
-# Audio gain multiplier
-AUDIO_GAIN=2.0
-
-# Video FPS
-VIDEO_FPS=20
+```bash
+python app.py
 ```
 
-> Make sure to use absolute paths to avoid path issues.
+Access the frontend at:
+`http://localhost:5010/`
 
 ---
 
-## Usage
+## API Endpoints
 
-### Start Recording
+### 1. Process Video
 
-```python
-from recorder import start_recording
+**POST** `/api/process_video`
+Process a video and generate an annotated version.
 
-# Starts recording video + audio
-mp4_file = start_recording(filename_base="my_recording")
-print(f"Recording started. Saving to {mp4_file}")
+**Request Body (JSON)**:
+
+```json
+{
+  "video_url": "uploads/sample.mp4"
+}
 ```
 
-### Stop Recording
+**Response**:
 
-```python
-from recorder import stop_recording
-
-stop_recording()
-print("Recording stopped.")
+```json
+{
+  "annotated_video_url": "/api/videos/user1/sample_annotated.mp4",
+  "report": {
+      "faces_detected": 3,
+      "duration": "00:00:15"
+  }
+}
 ```
 
-### Get Latest Frame (for preview)
+---
 
-```python
-from recorder import get_latest_frame
+### 2. List All Videos Grouped by User
 
-frame = get_latest_frame()
-if frame is not None:
-    import cv2
-    cv2.imshow("Live Preview", frame)
-    cv2.waitKey(1)
+**GET** `/api/all_videos_by_user`
+
+**Response**:
+
+```json
+{
+  "user1": ["/api/videos/user1/sample1.mp4", "/api/videos/user1/sample2.mp4"],
+  "user2": ["/api/videos/user2/video1.mp4"]
+}
 ```
+
+---
+
+### 3. Get Videos for a Specific User
+
+**GET** `/api/users/<user_id>/videos`
+
+**Example**:
+
+```
+GET /api/users/user1/videos
+```
+
+**Response**:
+
+```json
+{
+  "user": "user1",
+  "videos": ["/api/videos/user1/sample1.mp4", "/api/videos/user1/sample2.mp4"]
+}
+```
+
+---
+
+### 4. Delete a Specific Video
+
+**DELETE** `/api/videos/<user_id>/<video_name>`
+
+**Example**:
+
+```
+DELETE /api/videos/user1/sample1.mp4
+```
+
+**Response**:
+
+```json
+{
+  "message": "Deleted video sample1.mp4 for user user1"
+}
+```
+
+---
+
+### 5. Delete All Videos for a User
+
+**DELETE** `/api/users/<user_id>/videos`
+
+**Response**:
+
+```json
+{
+  "message": "Deleted 2 videos for user user1",
+  "deleted_files": ["sample1.mp4", "sample2.mp4"]
+}
+```
+
+---
+
+### 6. Check if Video Exists
+
+**GET** `/api/video_exists?video_url=/api/videos/user1/sample1.mp4`
+
+**Response**:
+
+```json
+{
+  "exists": true
+}
+```
+
+---
+
+### 7. Search Videos by Filename
+
+**GET** `/api/search_videos?q=sample`
+
+**Response**:
+
+```json
+{
+  "user1": ["/api/videos/user1/sample1.mp4", "/api/videos/user1/sample2.mp4"]
+}
+```
+
+---
+
+### 8. List All Users
+
+**GET** `/api/list_users`
+
+**Response**:
+
+```json
+["user1", "user2"]
+```
+
+---
+
+### 9. Serve Video
+
+**GET** `/api/videos/<path:filename>`
+
+**Example**:
+
+```
+GET /api/videos/user1/sample1.mp4
+```
+
+* Directly plays or downloads the video in browser.
 
 ---
 
 ## Notes
 
-* Raw `.avi` video and `.wav` audio are saved temporarily in `VIDEO_FOLDER` and removed after merging.
-* Final merged MP4 file is saved in `VIDEO_FOLDER` as well.
-* Ensure `ffmpeg` is installed and added to your system PATH.
-* Adjust `VIDEO_FPS`, `AUDIO_SAMPLE_RATE`, and `AUDIO_GAIN` via `.env` for your recording needs.
+* Videos are organized in `processed_videos/<user_id>/`.
+* Make sure the `processed_videos` folder exists and is writable.
+* `video_processor.py` handles annotation and reporting logic.
+
+---
+
+## Dependencies
+
+* Flask
+* Flask-CORS
+* python-dotenv
+* OpenCV (cv2)
+* Other dependencies as required by `video_processor.py`
 
 ---
 
 ## License
 
 MIT License
-
----
-
-```
