@@ -30,7 +30,7 @@
 2. **Edit `.env` with your actual API key:**
    ```bash
    # Edit the file and replace with your actual API key
-   GEMINI_API_KEY=AIzaSyAR8QK4VKXWkcWUv399pvQ5BOcIJ0qZxTw
+   GEMINI_API_KEY=AIXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
    ```
 
 3. **Verify `.gitignore` includes `.env`:**
