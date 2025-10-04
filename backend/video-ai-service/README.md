@@ -30,7 +30,7 @@ A Flask-based REST API for processing videos, managing user video uploads, and r
 ├── .env                       # Configuration
 └── README.md
 
-````
+```
 
 ---
 
