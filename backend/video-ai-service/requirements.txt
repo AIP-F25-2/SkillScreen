@@ -1,8 +1,8 @@
+dlib==20.0.0
 Flask==2.3.3
+flask-cors==6.0.1
+Flask-SocketIO==5.5.1
+numpy==1.26.4
 opencv-python==4.9.0.80
-numpy<2
-flask_socketio
-dlib
-sounddevice
-flask-cors
-python-dotenv
+python-dotenv==1.1.1
+sounddevice==0.5.2
