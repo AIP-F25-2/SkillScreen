@@ -1,3 +1,8 @@
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-python-dotenv==1.0.0
+dlib==20.0.0
+Flask==2.3.3
+flask-cors==6.0.1
+Flask-SocketIO==5.5.1
+numpy==1.26.4
+opencv-python==4.9.0.80
+python-dotenv==1.1.1
+sounddevice==0.5.2
