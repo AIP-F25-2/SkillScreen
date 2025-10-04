@@ -34,7 +34,7 @@ Supports storing videos per user, previewing, converting `.webm` chunks to `.mp4
 ```bash
 git clone <repo-url>
 cd <repo-folder>
-````
+```
 
 2. **Create a virtual environment**
 
