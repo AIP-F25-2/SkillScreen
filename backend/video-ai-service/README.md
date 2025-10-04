@@ -40,7 +40,7 @@ A Flask-based REST API for processing videos, managing user video uploads, and r
 ```bash
 git clone <repo-url>
 cd <repo-folder>
-````
+```
 
 ### 2. Create virtual environment
 
