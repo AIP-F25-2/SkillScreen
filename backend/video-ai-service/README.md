@@ -1,4 +1,3 @@
-```markdown
 # Video Processing API
 
 A Flask-based REST API for processing videos, managing user video uploads, and retrieving annotated videos. Supports listing, searching, and deleting videos by user, with detailed reports.
