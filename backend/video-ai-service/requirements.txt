@@ -2,7 +2,7 @@ Flask==2.3.3
 opencv-python==4.9.0.80
 numpy<2
 flask_socketio
-dlib #install CMAKE first using "brew install cmake" in MAC
+dlib
 sounddevice
 flask-cors
 python-dotenv
