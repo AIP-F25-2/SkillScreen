@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     
     # Processing Settings
     MAX_VIDEO_DURATION_MINUTES: int = 30
+    PROCESSING_TIMEOUT_SECONDS: int = 600
     ENABLE_DIARIZATION: bool = True
     ENABLE_FILLER_DETECTION: bool = True
     
@@ -44,6 +45,20 @@ class Settings(BaseSettings):
     
     # Next service URL (for passing results)
     NEXT_SERVICE_API_URL: Optional[str] = None
+
+
+        # TTS Configuration
+    TTS_PROVIDER: str = "gtts"  # Options: gtts, edge, azure, aws
+    TTS_DEFAULT_VOICE: str = "en-US-female"
+    
+    # Azure TTS (if using Azure)
+    AZURE_TTS_KEY: Optional[str] = None
+    AZURE_TTS_REGION: Optional[str] = None
+    
+    # AWS Polly (if using AWS)
+    AWS_ACCESS_KEY: Optional[str] = None
+    AWS_SECRET_KEY: Optional[str] = None
+    AWS_REGION: Optional[str] = "us-east-1"
     
     class Config:
         env_file = ".env"
