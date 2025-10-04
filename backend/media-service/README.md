@@ -1,4 +1,3 @@
-````markdown
 # Flask Chunked Video Upload & Management API
 
 A Flask-based server for **chunked video uploads**, **video merging**, and **user/video management**.  
