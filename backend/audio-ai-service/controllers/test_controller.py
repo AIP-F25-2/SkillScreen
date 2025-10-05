@@ -8,12 +8,12 @@ router = APIRouter()
 @router.post("/extraction")
 async def test_extraction(request: AudioProcessRequest):
     """Test video download and audio extraction only"""
-    from services.video_downloader import VideoDownloader
+    from services.media_downloader import MediaDownloader
     from services.audio_extractor import AudioExtractor
     
     logger.info(f"Testing extraction for: {request.video_url}")
     
-    downloader = VideoDownloader()
+    downloader = MediaDownloader()
     extractor = AudioExtractor()
     
     try:
@@ -44,13 +44,13 @@ async def test_extraction(request: AudioProcessRequest):
 @router.post("/transcription")
 async def test_transcription(request: AudioProcessRequest):
     """Test full pipeline: download → extract → transcribe"""
-    from services.video_downloader import VideoDownloader
+    from services.media_downloader import MediaDownloader
     from services.audio_extractor import AudioExtractor
     from services.transcription_service import TranscriptionService
     
     logger.info(f"Testing transcription for: {request.video_url}")
     
-    downloader = VideoDownloader()
+    downloader = MediaDownloader()
     extractor = AudioExtractor()
     transcriber = TranscriptionService()
     
@@ -94,14 +94,14 @@ async def test_transcription(request: AudioProcessRequest):
 @router.post("/filler-detection")
 async def test_filler_detection(request: AudioProcessRequest):
     """Test pipeline: download → extract → transcribe → filler detection"""
-    from services.video_downloader import VideoDownloader
+    from services.media_downloader import MediaDownloader
     from services.audio_extractor import AudioExtractor
     from services.transcription_service import TranscriptionService
     from services.filler_detection_service import FillerDetectionService
     
     logger.info(f"Testing filler detection for: {request.video_url}")
     
-    downloader = VideoDownloader()
+    downloader = MediaDownloader()
     extractor = AudioExtractor()
     transcriber = TranscriptionService()
     filler_detector = FillerDetectionService()
@@ -152,7 +152,7 @@ async def test_filler_detection(request: AudioProcessRequest):
 @router.post("/full-pipeline")
 async def test_full_pipeline(request: AudioProcessRequest):
     """Test complete pipeline: download → extract → transcribe → fillers → diarization"""
-    from services.video_downloader import VideoDownloader
+    from services.media_downloader import MediaDownloader
     from services.audio_extractor import AudioExtractor
     from services.transcription_service import TranscriptionService
     from services.filler_detection_service import FillerDetectionService
@@ -160,7 +160,7 @@ async def test_full_pipeline(request: AudioProcessRequest):
     
     logger.info(f"Testing full pipeline for: {request.video_url}")
     
-    downloader = VideoDownloader()
+    downloader = MediaDownloader()
     extractor = AudioExtractor()
     transcriber = TranscriptionService()
     filler_detector = FillerDetectionService()

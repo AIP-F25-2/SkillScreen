@@ -46,15 +46,15 @@ class TTSResponse(BaseModel):
 
 
 class AudioProcessRequest(BaseModel):
-    """Request schema for audio processing"""
-    video_url: HttpUrl = Field(..., description="URL of the video to process")
+    """Request schema for audio/video processing"""
+    media_url: HttpUrl = Field(..., description="URL of media to process (audio or video)")
     session_id: Optional[str] = Field(None, description="Interview session ID")
     candidate_id: Optional[str] = Field(None, description="Candidate ID")
     
     class Config:
         json_schema_extra = {
             "example": {
-                "video_url": "https://example.com/interview_video.mp4",
+                "media_url": "https://example.com/recording.mp3",
                 "session_id": "session_12345",
                 "candidate_id": "candidate_67890"
             }
@@ -97,7 +97,8 @@ class AudioProcessResponse(BaseModel):
     """Response schema for audio processing"""
     status: str = Field(..., description="Processing status: success, failed, processing")
     message: str = Field(..., description="Status message")
-    video_url: str = Field(..., description="Original video URL")
+    media_url: str = Field(..., description="Original media URL")  # Changed from video_url
+    media_type: Optional[str] = Field(None, description="Detected media type: audio or video")  # NEW
     
     # Optional fields (present on success)
     session_id: Optional[str] = Field(None, description="Interview session ID")
@@ -120,23 +121,15 @@ class AudioProcessResponse(BaseModel):
         json_schema_extra = {
             "example": {
                 "status": "success",
-                "message": "Audio processed successfully",
-                "video_url": "https://example.com/video.mp4",
+                "message": "Media processed successfully",
+                "media_url": "https://example.com/recording.mp3",
+                "media_type": "audio",
                 "session_id": "session_12345",
                 "candidate_id": "candidate_67890",
                 "transcript": "Hello, my name is John...",
                 "duration_seconds": 120.5,
                 "word_count": 250,
                 "language": "en",
-                "filler_analysis": {
-                    "total_fillers": 8,
-                    "filler_rate_per_minute": 4.0
-                },
-                "speaker_analysis": {
-                    "num_speakers": 1,
-                    "cheating_flag": False,
-                    "risk_level": "low"
-                },
                 "processing_time_seconds": 45.2
             }
         }
