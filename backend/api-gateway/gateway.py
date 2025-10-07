@@ -89,7 +89,6 @@ async def forward_request(service_url: str, path: str, request: Request) -> Resp
             headers=headers,
             params=request.query_params
         )
-        print("B")
         return Response(
             content=resp.content,
             status_code=resp.status_code,
