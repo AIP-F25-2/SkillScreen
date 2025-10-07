@@ -314,3 +314,5 @@ build/
 *.temp
 *.bak
 *.backup
+
+.sonar

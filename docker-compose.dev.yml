@@ -1,22 +1,7 @@
-# SkillScreen Platform - Development Environment
+# SkillScreen Platform - Development Environment (Azure Postgres)
 version: '3.8'
 
 services:
-  # Database Services
-  postgres:
-    image: postgres:15-alpine
-    container_name: postgres
-    environment:
-      POSTGRES_DB: skill_screen_platform_dev
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-    volumes:
-      - postgres_dev_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    networks:
-      - skill-screen-network
-
   # Core Infrastructure Services (5000-5009)
   api-gateway:
     build:
@@ -49,16 +34,14 @@ services:
       context: ./backend/user-service
       dockerfile: Dockerfile
     container_name: user-service
-    ports:
-      - "5001:8080"
     environment:
       - PORT=8080
       - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://postgres:password@postgres:5432/skill_screen_platform_dev
+      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-db.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+      - PYTHONPATH=/app:/common-service
     volumes:
       - ./backend/user-service:/app
-    depends_on:
-      - postgres
+      - ./backend/common-service:/common-service
     networks:
       - skill-screen-network
 
@@ -67,16 +50,11 @@ services:
       context: ./backend/assessment-service
       dockerfile: Dockerfile
     container_name: assessment-service
-    ports:
-      - "5002:8080"
     environment:
       - PORT=8080
       - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://postgres:password@postgres:5432/skill_screen_platform_dev
-    volumes:
+      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-db.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
       - ./backend/assessment-service:/app
-    depends_on:
-      - postgres
     networks:
       - skill-screen-network
 
@@ -85,35 +63,25 @@ services:
       context: ./backend/coding-service
       dockerfile: Dockerfile
     container_name: coding-service
-    ports:
-      - "5003:8080"
     environment:
       - PORT=8080
       - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://postgres:password@postgres:5432/skill_screen_platform_dev
-    volumes:
+      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-db.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
       - ./backend/coding-service:/app
-    depends_on:
-      - postgres
     networks:
       - skill-screen-network
 
-  # AI Services (5004-5006)
+  # AI Services
   audio-ai-service:
     build:
       context: ./backend/audio-ai-service
       dockerfile: Dockerfile
     container_name: audio-ai-service
-    ports:
-      - "5004:8080"
     environment:
       - PORT=8080
       - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://postgres:password@postgres:5432/skill_screen_platform_dev
-    volumes:
+      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-db.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
       - ./backend/audio-ai-service:/app
-    depends_on:
-      - postgres
     networks:
       - skill-screen-network
 
@@ -122,16 +90,11 @@ services:
       context: ./backend/video-ai-service
       dockerfile: Dockerfile
     container_name: video-ai-service
-    ports:
-      - "5005:8080"
     environment:
       - PORT=8080
       - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://postgres:password@postgres:5432/skill_screen_platform_dev
-    volumes:
+      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-db.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
       - ./backend/video-ai-service:/app
-    depends_on:
-      - postgres
     networks:
       - skill-screen-network
 
@@ -140,35 +103,25 @@ services:
       context: ./backend/text-ai-service
       dockerfile: Dockerfile
     container_name: text-ai-service
-    ports:
-      - "5006:8080"
     environment:
       - PORT=8080
       - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://postgres:password@postgres:5432/skill_screen_platform_dev
-    volumes:
+      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-db.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
       - ./backend/text-ai-service:/app
-    depends_on:
-      - postgres
     networks:
       - skill-screen-network
 
-  # Specialized Services (5007-5012)
+  # Specialized Services
   interview-service:
     build:
       context: ./backend/interview-service
       dockerfile: Dockerfile
     container_name: interview-service
-    ports:
-      - "5007:8080"
     environment:
       - PORT=8080
       - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://postgres:password@postgres:5432/skill_screen_platform_dev
-    volumes:
+      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-db.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
       - ./backend/interview-service:/app
-    depends_on:
-      - postgres
     networks:
       - skill-screen-network
 
@@ -177,16 +130,11 @@ services:
       context: ./backend/media-service
       dockerfile: Dockerfile
     container_name: media-service
-    ports:
-      - "5008:8080"
     environment:
       - PORT=8080
       - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://postgres:password@postgres:5432/skill_screen_platform_dev
-    volumes:
+      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-db.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
       - ./backend/media-service:/app
-    depends_on:
-      - postgres
     networks:
       - skill-screen-network
 
@@ -195,16 +143,11 @@ services:
       context: ./backend/notification-service
       dockerfile: Dockerfile
     container_name: notification-service
-    ports:
-      - "5009:8080"
     environment:
       - PORT=8080
       - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://postgres:password@postgres:5432/skill_screen_platform_dev
-    volumes:
+      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-db.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
       - ./backend/notification-service:/app
-    depends_on:
-      - postgres
     networks:
       - skill-screen-network
 
@@ -213,16 +156,11 @@ services:
       context: ./backend/logger-service
       dockerfile: Dockerfile
     container_name: logger-service
-    ports:
-      - "5010:8080"
     environment:
       - PORT=8080
       - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://postgres:password@postgres:5432/skill_screen_platform_dev
-    volumes:
+      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-db.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
       - ./backend/logger-service:/app
-    depends_on:
-      - postgres
     networks:
       - skill-screen-network
 
@@ -231,18 +169,13 @@ services:
       context: ./backend/sso-service
       dockerfile: Dockerfile
     container_name: sso-service
-    ports:
-      - "5011:8080"
     environment:
       - PORT=8080
       - HOST=0.0.0.0
       - SECRET_KEY=supersecret
       - ALGORITHM=HS256
-      - DATABASE_URL=postgresql://postgres:password@postgres:5432/skill_screen_platform_dev
-    volumes:
+      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-db.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
       - ./backend/sso-service:/app
-    depends_on:
-      - postgres
     networks:
       - skill-screen-network
 
@@ -251,22 +184,14 @@ services:
       context: ./backend/common-service
       dockerfile: Dockerfile
     container_name: common-service
-    ports:
-      - "5012:8080"
     environment:
       - PORT=8080
       - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://postgres:password@postgres:5432/skill_screen_platform_dev
-    volumes:
+      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-db.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
       - ./backend/common-service:/app
-    depends_on:
-      - postgres
     networks:
       - skill-screen-network
 
 networks:
   skill-screen-network:
     driver: bridge
-
-volumes:
-  postgres_dev_data:
