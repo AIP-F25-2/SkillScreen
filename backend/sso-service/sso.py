@@ -49,7 +49,7 @@ def health():
         "timestamp": datetime.utcnow().isoformat()
     })
 
-@app.post("/auth/login")
+@app.post("/login")
 def login(req: LoginRequest):
     """User login endpoint"""
     user = users_db.get(req.username)

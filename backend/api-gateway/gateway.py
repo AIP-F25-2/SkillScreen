@@ -33,7 +33,7 @@ RBAC_RULES = {
 
 SERVICE_MAP = {
     "user": os.getenv("USER_SERVICE_URL", "http://user-service:8080"),
-    "auth": os.getenv("AUTH_SERVICE_URL", "http://auth-service:8080"),
+    "auth": os.getenv("AUTH_SERVICE_URL", "http://sso-service:8080"),
     "assessment": os.getenv("ASSESSMENT_SERVICE_URL", "http://assessment-service:8080"),
     "coding": os.getenv("CODING_SERVICE_URL", "http://coding-service:8080"),
     "audio-ai": os.getenv("AUDIO_AI_SERVICE_URL", "http://audio-ai-service:8080"),
@@ -81,6 +81,7 @@ async def forward_request(service_url: str, path: str, request: Request) -> Resp
     async with httpx.AsyncClient() as client:
         body = await request.body()
         headers = dict(request.headers)
+        print("A")
         resp = await client.request(
             request.method,
             f"{service_url}{path}",
@@ -88,6 +89,7 @@ async def forward_request(service_url: str, path: str, request: Request) -> Resp
             headers=headers,
             params=request.query_params
         )
+        print("B")
         return Response(
             content=resp.content,
             status_code=resp.status_code,
