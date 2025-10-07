@@ -72,6 +72,23 @@ jobs_db = {}
 interviews_db = {}
 sessions_db = {}
 
+def calculate_similarity(text1: str, text2: str) -> float:
+    """Calculate similarity between two texts using Jaccard similarity"""
+    if not text1 or not text2:
+        return 0.0
+    
+    # Normalize texts
+    words1 = set(text1.lower().split())
+    words2 = set(text2.lower().split())
+    
+    if not words1 or not words2:
+        return 0.0
+    
+    intersection = words1.intersection(words2)
+    union = words1.union(words2)
+    
+    return len(intersection) / len(union) if union else 0.0
+
 # Counter for IDs
 candidate_counter = 0
 job_counter = 0
@@ -234,8 +251,103 @@ async def submit_response(session_id: str, response: InterviewResponse):
     })
     session["responses_received"] += 1
     
-    # Simple scoring logic (mock)
-    score = min(8.0, max(3.0, len(response.response_text) / 20.0))
+    # Enhanced scoring with anti-cheating detection
+    response_text = response.response_text
+    
+    # Basic scoring logic
+    base_score = min(8.0, max(3.0, len(response_text) / 20.0))
+    
+    # Anti-cheating analysis (simplified version)
+    is_duplicate = False
+    is_ai_generated = False
+    warnings = []
+    
+    # Check for duplicate responses
+    if session["responses_received"] > 0:
+        previous_responses = session.get("response_history", [])
+        for prev_response in previous_responses:
+            similarity = calculate_similarity(response_text, prev_response)
+            if similarity > 0.8:  # 80% similarity threshold
+                is_duplicate = True
+                break
+    
+    # Check for AI-generated content (simplified detection)
+    ai_indicators = [
+        'in conclusion', 'furthermore', 'moreover', 'additionally',
+        'it is important to note', 'it should be noted', 'it is worth mentioning',
+        'as previously mentioned', 'as stated earlier', 'to summarize',
+        'in summary', 'it is crucial to', 'it is essential to',
+        'utilize', 'facilitate', 'implement', 'optimize', 'leverage'
+    ]
+    
+    response_lower = response_text.lower()
+    ai_count = sum(1 for indicator in ai_indicators if indicator in response_lower)
+    
+    if ai_count >= 3:
+        is_ai_generated = True
+    
+    # Apply penalties
+    if is_duplicate:
+        base_score *= 0.3  # 70% penalty for duplicates
+        warnings.append("⚠️ WARNING: Duplicate response detected. Please provide unique answers.")
+    
+    if is_ai_generated:
+        base_score *= 0.2  # 80% penalty for AI-generated content
+        warnings.append("⚠️ WARNING: AI-generated content detected. Please provide original responses.")
+    
+    # Check for termination conditions
+    duplicate_count = session.get("duplicate_count", 0)
+    ai_count = session.get("ai_generated_count", 0)
+    
+    if is_duplicate:
+        duplicate_count += 1
+        session["duplicate_count"] = duplicate_count
+    
+    if is_ai_generated:
+        ai_count += 1
+        session["ai_generated_count"] = ai_count
+    
+    # Termination logic
+    should_terminate = False
+    termination_message = None
+    
+    if duplicate_count >= 2:
+        should_terminate = True
+        termination_message = (
+            "❌ INTERVIEW TERMINATED: Your interview has been terminated due to repeated duplicate responses. "
+            "Your final score is 0/10. Please provide unique, thoughtful responses to each question."
+        )
+    elif ai_count >= 2:
+        should_terminate = True
+        termination_message = (
+            "❌ INTERVIEW TERMINATED: Your interview has been terminated due to repeated use of AI-generated content. "
+            "Your final score is 0/10. Please provide original, personal responses based on your own experience."
+        )
+    
+    if should_terminate:
+        session["status"] = "terminated"
+        session["end_time"] = datetime.now().isoformat()
+        session["total_score"] = 0.0
+        session["termination_reason"] = "anti_cheating"
+        session["termination_message"] = termination_message
+        
+        return {
+            "status": "terminated",
+            "message": termination_message,
+            "final_score": 0.0,
+            "termination_reason": "anti_cheating"
+        }
+    
+    # Store response history
+    if "response_history" not in session:
+        session["response_history"] = []
+    session["response_history"].append(response_text)
+    
+    # Store warnings
+    if warnings:
+        session["warnings"] = session.get("warnings", []) + warnings
+    
+    score = base_score
     session["total_score"] += score
     
     # Check if interview should continue (10-12 minutes = 8-10 questions)
@@ -293,7 +405,10 @@ async def submit_response(session_id: str, response: InterviewResponse):
             "next_question": next_question,
             "question_number": session["questions_asked"],
             "score": round(score, 2),
-            "response_received": response.response_text
+            "response_received": response.response_text,
+            "warnings": warnings if warnings else None,
+            "duplicate_count": session.get("duplicate_count", 0),
+            "ai_generated_count": session.get("ai_generated_count", 0)
         }
 
 @app.get("/interviews/{session_id}/summary")

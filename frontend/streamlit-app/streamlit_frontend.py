@@ -175,6 +175,8 @@ def main():
         st.session_state.interview_messages = []
     if 'interview_completed' not in st.session_state:
         st.session_state.interview_completed = False
+    if 'interview_terminated' not in st.session_state:
+        st.session_state.interview_terminated = False
     
     # Sidebar for setup
     with st.sidebar:
@@ -273,7 +275,10 @@ def main():
     if st.session_state.current_session_id and not st.session_state.interview_completed:
         show_interview_interface()
     elif st.session_state.interview_completed:
-        show_interview_summary()
+        if st.session_state.interview_terminated:
+            show_termination_summary()
+        else:
+            show_interview_summary()
     else:
         st.info("👈 Please set up your resume and job description in the sidebar to start the interview.")
 
@@ -351,6 +356,18 @@ def show_interview_interface():
                     
                     if result:
                         if result["status"] == "continue":
+                            # Show warnings if any
+                            if result.get("warnings"):
+                                for warning in result["warnings"]:
+                                    st.warning(warning)
+                            
+                            # Show anti-cheating counters
+                            if result.get("duplicate_count", 0) > 0:
+                                st.info(f"⚠️ Duplicate responses detected: {result['duplicate_count']}")
+                            
+                            if result.get("ai_generated_count", 0) > 0:
+                                st.info(f"🤖 AI-generated content detected: {result['ai_generated_count']}")
+                            
                             # Add next question
                             st.session_state.interview_messages.append({
                                 "role": "assistant",
@@ -361,11 +378,97 @@ def show_interview_interface():
                             # Interview completed
                             st.session_state.interview_completed = True
                             st.rerun()
+                        elif result["status"] == "terminated":
+                            # Interview terminated due to anti-cheating
+                            st.error(result.get("message", "Interview terminated due to policy violations"))
+                            st.session_state.interview_completed = True
+                            st.session_state.interview_terminated = True
+                            st.rerun()
                     else:
                         st.error("❌ Failed to submit response")
                         
             except Exception as e:
                 st.error(f"❌ Error submitting response: {str(e)}")
+
+def show_termination_summary():
+    """Show termination summary for anti-cheating violations"""
+    session_id = st.session_state.current_session_id
+    
+    st.markdown("## ❌ Interview Terminated")
+    
+    # Get interview data
+    interview_data = make_api_request("GET", f"/interviews/{session_id}")
+    if not interview_data:
+        st.error("❌ Failed to get interview data")
+        return
+    
+    # Display termination message
+    st.error("🚨 **Interview Terminated Due to Policy Violations**")
+    
+    st.markdown("### 📋 Termination Details")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Final Score", "0/10")
+    
+    with col2:
+        st.metric("Questions Answered", interview_data.get("questions_asked", 0))
+    
+    with col3:
+        st.metric("Status", "Terminated")
+    
+    # Show termination reason
+    termination_reason = interview_data.get("termination_reason", "anti_cheating")
+    termination_message = interview_data.get("termination_message", "Interview terminated due to policy violations")
+    
+    st.markdown("### ⚠️ Reason for Termination")
+    st.warning(termination_message)
+    
+    # Show policy violations
+    st.markdown("### 📜 Policy Violations Detected")
+    
+    violations = []
+    if interview_data.get("duplicate_count", 0) > 0:
+        violations.append(f"• Duplicate responses: {interview_data['duplicate_count']} times")
+    
+    if interview_data.get("ai_generated_count", 0) > 0:
+        violations.append(f"• AI-generated content: {interview_data['ai_generated_count']} times")
+    
+    if violations:
+        for violation in violations:
+            st.write(violation)
+    else:
+        st.write("• Multiple suspicious activities detected")
+    
+    # Show warnings history
+    warnings = interview_data.get("warnings", [])
+    if warnings:
+        st.markdown("### ⚠️ Warnings Issued")
+        for i, warning in enumerate(warnings, 1):
+            st.write(f"{i}. {warning}")
+    
+    # Show next steps
+    st.markdown("### 📝 Next Steps")
+    st.info("""
+    **For Future Interviews:**
+    - Provide original, personal responses based on your own experience
+    - Avoid copying from external sources or AI tools
+    - Ensure each response is unique and relevant to the question
+    - Take time to think before responding
+    """)
+    
+    # Restart option
+    st.markdown("---")
+    if st.button("🔄 Start New Interview", type="secondary", use_container_width=True):
+        # Reset session state
+        st.session_state.current_session_id = None
+        st.session_state.candidate_id = None
+        st.session_state.job_id = None
+        st.session_state.interview_messages = []
+        st.session_state.interview_completed = False
+        st.session_state.interview_terminated = False
+        st.rerun()
 
 def show_interview_summary():
     """Show interview summary and results"""
