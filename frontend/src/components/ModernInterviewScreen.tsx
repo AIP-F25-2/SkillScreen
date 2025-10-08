@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mic, MicOff, Video, VideoOff, Monitor, Record, X, Maximize2, MessageSquare } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, Monitor, Circle, X, Maximize2, MessageSquare } from 'lucide-react';
 import CodingChallenge from './CodingChallenge';
 
 interface ModernInterviewScreenProps {
@@ -280,7 +280,7 @@ export default function ModernInterviewScreen({ userType, participantName }: Mod
                   isRecording ? 'bg-red-500/20 hover:bg-red-500/30' : 'hover:bg-white/10'
                 }`}
               >
-                <Record className="w-6 h-6 text-white" />
+                <Circle className={`w-6 h-6 text-white ${isRecording ? 'fill-red-500' : ''}`} />
               </button>
             </>
           )}

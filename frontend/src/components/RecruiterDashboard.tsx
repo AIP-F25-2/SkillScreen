@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { FileUploadDemo } from '@/components/ui/file-upload-demo';
 
 interface Candidate {
   id: string;
@@ -114,12 +115,16 @@ export default function RecruiterDashboard() {
       <div className="breathing-circle"></div>
       
       <div className="relative z-10 max-w-7xl mx-auto">
+        
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-white mb-2">Recruiter Dashboard</h1>
           <p className="text-primary-100">Manage candidates, interviews, and hiring pipeline</p>
         </div>
-
+        {/* Document Upload */}
+        <div className="mb-8">
+          <FileUploadDemo />
+        </div>
         {/* Stats Overview */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <div className="bg-primary-200/20 backdrop-blur-sm rounded-xl p-6 border border-primary-200/30">

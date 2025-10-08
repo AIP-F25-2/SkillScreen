@@ -1,4 +1,5 @@
 'use client';
+import LiquidGlass from 'liquid-glass-react';
 
 export default function Features() {
   const features = [
@@ -75,7 +76,7 @@ export default function Features() {
   ];
 
   return (
-    <section className="py-24 px-6">
+    <section className="py-24 px-6 mt-24 md:mt-32 rounded-xl" style={{ backgroundColor: '#252525' }}>
       <div className="relative z-10 max-w-7xl mx-auto">
         {/* Header */}
         <div className="text-center mb-16">
@@ -105,9 +106,9 @@ export default function Features() {
                   </div>
                 ))}
               </div>
-            </div>
-          ))}
-        </div>
+              </div>
+            ))}
+          </div>
 
         
       </div>
