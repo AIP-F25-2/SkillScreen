@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { ShaderAnimation } from '@/components/ui/shader-lines';
+import Footer from '@/components/Footer';
 import Image from 'next/image';
 import Link from 'next/link';
 
@@ -239,6 +240,8 @@ export default function LoginPage() {
           </div>
         </motion.div>
       </div>
+
+      <Footer />
     </>
   );
 }

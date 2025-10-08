@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Video, Search, Bell, RotateCw, LayoutGrid, Maximize2, ChevronDown } from 'lucide-react';
 
 interface RecentApplication {
@@ -15,6 +16,7 @@ interface ATSScore {
 }
 
 export default function CandidateDashboard() {
+  const router = useRouter();
   const recentApplications: RecentApplication[] = [
     { company: 'Meta', status: 'pending' },
     { company: 'Amazon', status: 'pending' },
@@ -53,6 +55,29 @@ export default function CandidateDashboard() {
               <RotateCw className="w-5 h-5 text-white/70" />
             </button>
           </div>
+        </div>
+
+        {/* Quick Action - Test Interview Setup */}
+        <div className="mb-8">
+          <button
+            onClick={() => router.push('/interview-setup')}
+            className="w-full glass-dark p-6 rounded-xl hover:bg-white/10 transition-all duration-300 group"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                  <Video className="w-6 h-6 text-white" />
+                </div>
+                <div className="text-left">
+                  <h3 className="text-lg font-semibold text-white">Test Your Interview Setup</h3>
+                  <p className="text-white/60 text-sm">Check camera & microphone before your interview</p>
+                </div>
+              </div>
+              <svg className="w-6 h-6 text-white/40 group-hover:text-white group-hover:translate-x-2 transition-all duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+              </svg>
+            </div>
+          </button>
         </div>
 
         {/* Performance Stats */}
