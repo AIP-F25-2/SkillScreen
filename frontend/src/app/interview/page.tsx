@@ -24,9 +24,14 @@ export default function InterviewPage() {
     if (name) {
       setParticipantName(decodeURIComponent(name));
     } else if (user) {
-      setParticipantName(user.fullName);
-    } else {
-      setParticipantName('Guest User');
+      // Try to construct participant name from user object
+      if ('firstName' in user && 'lastName' in user && user.firstName && user.lastName) {
+        setParticipantName(`${user.firstName} ${user.lastName}`);
+      } else if ('name' in user && user.name) {
+        setParticipantName(user.name);
+      } else {
+        setParticipantName('Guest User');
+      }
     }
 
     // Determine user type
