@@ -1,234 +1,137 @@
-from fastapi import APIRouter, HTTPException
-from config import logger
+from fastapi import APIRouter, HTTPException, BackgroundTasks
+from config import logger, settings
 from schemas.audio_schemas import AudioProcessRequest, AudioProcessResponse
+from services.audio_processing_service import AudioProcessingService
 
 router = APIRouter()
+
 
 @router.post("/process", response_model=AudioProcessResponse)
 async def process_audio(request: AudioProcessRequest):
     """
-    Process audio from video URL
-    This is a stub for Phase 1 - returns mock data
+    Process media from URL - Production endpoint
+    
+    Accepts both audio and video URLs. Automatically detects media type.
+    
+    Supported formats:
+    - Audio: MP3, WAV, M4A, AAC, OGG, FLAC
+    - Video: MP4, AVI, MOV, MKV, WEBM
+    
+    This endpoint:
+    1. Downloads media from URL (auto-detects audio vs video)
+    2. Extracts audio if video (skips if already audio)
+    3. Transcribes using Whisper
+    4. Detects filler words with timestamps
+    5. Performs speaker diarization
+    6. Assesses cheating risk
+    
+    Returns comprehensive analysis results
     """
-    logger.info(f"Received audio processing request for video: {request.video_url}")
+    logger.info(f"Received media processing request")
+    logger.info(f"Media URL: {request.media_url}") 
+    logger.info(f"Session ID: {request.session_id}")
+    logger.info(f"Candidate ID: {request.candidate_id}")
     
-    # TODO: Phase 2 - Implement actual processing
-    # For now, return mock response
-    return AudioProcessResponse(
-        status="success",
-        message="Audio processing completed (mock)",
-        video_url=request.video_url,
-        transcript="This is a mock transcript for Phase 1 testing.",
-        duration_seconds=120.5,
-        word_count=25
+    processor = AudioProcessingService()
+    
+    result = processor.process(
+        media_url=str(request.media_url),
+        session_id=request.session_id,
+        candidate_id=request.candidate_id
     )
-
-
-@router.post("/test-extraction")
-async def test_extraction(request: AudioProcessRequest):
-    """Test video download and audio extraction only"""
-    from services.video_downloader import VideoDownloader
-    from services.audio_extractor import AudioExtractor
     
-    logger.info(f"Testing extraction for: {request.video_url}")
+    if result["status"] == "failed":
+        logger.error(f"Processing failed: {result.get('error')}")
     
-    downloader = VideoDownloader()
-    extractor = AudioExtractor()
+    return AudioProcessResponse(**result)
+
+@router.post("/transcribe")
+async def transcribe_media(request: AudioProcessRequest):
+    """
+    Transcribe media without analysis (faster)
     
-    try:
-        # Download video
-        video_path, error = downloader.download(str(request.video_url))
-        if error:
-            return {"status": "failed", "error": error}
-        
-        # Extract audio
-        audio_path, error = extractor.extract(video_path)
-        if error:
-            return {"status": "failed", "error": error}
-        
-        # Get duration
-        duration = extractor.get_audio_duration(audio_path)
-        
-        return {
-            "status": "success",
-            "video_path": video_path,
-            "audio_path": audio_path,
-            "duration_seconds": duration
-        }
-    finally:
-        downloader.cleanup()
-        extractor.cleanup()
-
-
-@router.post("/test-transcription")
-async def test_transcription(request: AudioProcessRequest):
-    """Test full pipeline: download → extract → transcribe"""
-    from services.video_downloader import VideoDownloader
+    Use this endpoint when you only need the transcript, not filler detection or diarization.
+    
+    Processing time: ~30-60 seconds (vs 3-5 minutes for full analysis)
+    
+    Supported formats:
+    - Audio: MP3, WAV, M4A, AAC, OGG, FLAC
+    - Video: MP4, AVI, MOV, MKV, WEBM
+    """
+    from services.media_downloader import MediaDownloader
     from services.audio_extractor import AudioExtractor
     from services.transcription_service import TranscriptionService
     
-    logger.info(f"Testing transcription for: {request.video_url}")
+    logger.info(f"Transcription-only request")
+    logger.info(f"Media URL: {request.media_url}")
+    logger.info(f"Session ID: {request.session_id}")
     
-    downloader = VideoDownloader()
+    downloader = MediaDownloader()
     extractor = AudioExtractor()
     transcriber = TranscriptionService()
     
     try:
-        # Download video
-        video_path, error = downloader.download(str(request.video_url))
+        # Download media
+        media_path, media_type, error = downloader.download(str(request.media_url))
         if error:
-            return {"status": "failed", "step": "download", "error": error}
+            return {
+                "status": "failed",
+                "message": "Media download failed",
+                "media_url": str(request.media_url),
+                "error": error
+            }
         
-        # Extract audio
-        audio_path, error = extractor.extract(video_path)
-        if error:
-            return {"status": "failed", "step": "extraction", "error": error}
+        logger.info(f"Media type: {media_type}")
+        
+        # Get audio
+        if media_type == 'audio':
+            logger.info("Using audio file directly")
+            audio_path = media_path
+        else:
+            logger.info("Extracting audio from video")
+            audio_path, error = extractor.extract(media_path)
+            if error:
+                return {
+                    "status": "failed",
+                    "message": "Audio extraction failed",
+                    "media_url": str(request.media_url),
+                    "error": error
+                }
         
         # Get duration
         duration = extractor.get_audio_duration(audio_path)
+        logger.info(f"Audio duration: {duration:.2f}s")
         
         # Transcribe
         logger.info("Starting transcription...")
         transcription_result = transcriber.transcribe(audio_path)
-        
         word_count = transcriber.get_word_count(transcription_result["text"])
+        
+        logger.info(f"Transcription complete: {word_count} words")
         
         return {
             "status": "success",
-            "duration_seconds": duration,
+            "message": "Transcription completed successfully",
+            "media_url": str(request.media_url),
+            "media_type": media_type,
             "transcript": transcription_result["text"],
+            "duration_seconds": duration,
             "word_count": word_count,
-            "total_words_detected": len(transcription_result["words"]),
             "language": transcription_result["language"],
-            "sample_words": transcription_result["words"][:10]  # First 10 words with timestamps
+            "session_id": request.session_id,
+            "candidate_id": request.candidate_id
         }
+        
     except Exception as e:
-        logger.error(f"Transcription test failed: {str(e)}")
-        return {"status": "failed", "error": str(e)}
-    finally:
-        downloader.cleanup()
-        extractor.cleanup()
-
-@router.post("/test-filler-detection")
-async def test_filler_detection(request: AudioProcessRequest):
-    """Test full pipeline: download → extract → transcribe → filler detection"""
-    from services.video_downloader import VideoDownloader
-    from services.audio_extractor import AudioExtractor
-    from services.transcription_service import TranscriptionService
-    from services.filler_detection_service import FillerDetectionService
-    
-    logger.info(f"Testing filler detection for: {request.video_url}")
-    
-    downloader = VideoDownloader()
-    extractor = AudioExtractor()
-    transcriber = TranscriptionService()
-    filler_detector = FillerDetectionService()
-    
-    try:
-        # Download video
-        video_path, error = downloader.download(str(request.video_url))
-        if error:
-            return {"status": "failed", "step": "download", "error": error}
-        
-        # Extract audio
-        audio_path, error = extractor.extract(video_path)
-        if error:
-            return {"status": "failed", "step": "extraction", "error": error}
-        
-        # Get duration
-        duration = extractor.get_audio_duration(audio_path)
-        
-        # Transcribe
-        logger.info("Starting transcription...")
-        transcription_result = transcriber.transcribe(audio_path)
-        
-        word_count = transcriber.get_word_count(transcription_result["text"])
-        
-        # Detect fillers
-        logger.info("Detecting filler words...")
-        filler_results = filler_detector.detect_from_words(transcription_result["words"])
-        filler_summary = filler_detector.get_filler_summary(filler_results, duration)
-        
+        logger.error(f"Transcription failed: {str(e)}", exc_info=True)
         return {
-            "status": "success",
-            "duration_seconds": duration,
-            "transcript": transcription_result["text"],
-            "word_count": word_count,
-            "filler_analysis": {
-                **filler_results,
-                **filler_summary
-            }
+            "status": "failed",
+            "message": "Transcription failed",
+            "media_url": str(request.media_url),
+            "error": str(e)
         }
-    except Exception as e:
-        logger.error(f"Filler detection test failed: {str(e)}")
-        return {"status": "failed", "error": str(e)}
+    
     finally:
         downloader.cleanup()
-        extractor.cleanup()        
-
-@router.post("/test-full-pipeline")
-async def test_full_pipeline(request: AudioProcessRequest):
-    """Test complete pipeline: download → extract → transcribe → fillers → diarization"""
-    from services.video_downloader import VideoDownloader
-    from services.audio_extractor import AudioExtractor
-    from services.transcription_service import TranscriptionService
-    from services.filler_detection_service import FillerDetectionService
-    from services.diarization_service import DiarizationService
-    
-    logger.info(f"Testing full pipeline for: {request.video_url}")
-    
-    downloader = VideoDownloader()
-    extractor = AudioExtractor()
-    transcriber = TranscriptionService()
-    filler_detector = FillerDetectionService()
-    diarizer = DiarizationService()
-    
-    try:
-        # Download video
-        video_path, error = downloader.download(str(request.video_url))
-        if error:
-            return {"status": "failed", "step": "download", "error": error}
-        
-        # Extract audio
-        audio_path, error = extractor.extract(video_path)
-        if error:
-            return {"status": "failed", "step": "extraction", "error": error}
-        
-        # Get duration
-        duration = extractor.get_audio_duration(audio_path)
-        
-        # Transcribe
-        logger.info("Starting transcription...")
-        transcription_result = transcriber.transcribe(audio_path)
-        word_count = transcriber.get_word_count(transcription_result["text"])
-        
-        # Detect fillers
-        logger.info("Detecting filler words...")
-        filler_results = filler_detector.detect_from_words(transcription_result["words"])
-        filler_summary = filler_detector.get_filler_summary(filler_results, duration)
-        
-        # Diarization
-        logger.info("Running speaker diarization...")
-        diarization_result = diarizer.diarize(audio_path)
-        cheating_assessment = diarizer.assess_cheating_risk(diarization_result, duration)
-        
-        return {
-            "status": "success",
-            "duration_seconds": duration,
-            "transcript": transcription_result["text"],
-            "word_count": word_count,
-            "filler_analysis": {
-                **filler_results,
-                **filler_summary
-            },
-            "speaker_analysis": {
-                **diarization_result,
-                **cheating_assessment
-            }
-        }
-    except Exception as e:
-        logger.error(f"Full pipeline test failed: {str(e)}")
-        return {"status": "failed", "error": str(e)}
-    finally:
-        downloader.cleanup()
-        extractor.cleanup()        
+        if media_type != 'audio':
+            extractor.cleanup()

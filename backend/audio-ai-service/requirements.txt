@@ -22,6 +22,11 @@ soundfile==0.12.1
 # ASR
 openai-whisper==20231117
 
+#Text-to-Speech
+# edge-tts==6.1.9
+# google tts:
+gTTS==2.4.0
+
 # ML Core
 torch==2.1.2
 torchaudio==2.1.2
