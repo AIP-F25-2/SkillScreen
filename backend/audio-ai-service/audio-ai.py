@@ -66,7 +66,7 @@ async def root():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
-        "app:app",
+        "audio-ai:app",
         host=settings.HOST,
         port=settings.PORT,
         reload=settings.DEBUG

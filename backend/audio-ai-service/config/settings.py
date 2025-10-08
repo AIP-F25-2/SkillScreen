@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     
     # Next service URL (for passing results)
     NEXT_SERVICE_API_URL: Optional[str] = None
+    SERVICE_BASE_URL: str = "http://audio-ai-service:8000"
 
 
         # TTS Configuration

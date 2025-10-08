@@ -24,7 +24,8 @@ class TTSResponse(BaseModel):
     """Text-to-speech response"""
     status: str
     message: str
-    audio_file_path: Optional[str] = None  # Internal path
+    filename: str = Field(..., description="Audio filename")  # NEW
+    download_url: str = Field(..., description="Full download URL for other services")  # NEW
     text: str
     voice: Optional[str] = None
     duration_seconds: Optional[float] = None
@@ -36,14 +37,14 @@ class TTSResponse(BaseModel):
             "example": {
                 "status": "success",
                 "message": "Speech generated successfully",
-                "audio_file_path": "temp_audio/abc123.mp3",
+                "filename": "abc123.mp3",
+                "download_url": "http://audio-ai-service:8000/api/v1/tts/download/abc123.mp3",
                 "text": "Hello candidate...",
                 "voice": "en-US-female",
                 "duration_seconds": 3.5,
                 "session_id": "interview_123"
             }
         }
-
 
 class AudioProcessRequest(BaseModel):
     """Request schema for audio/video processing"""

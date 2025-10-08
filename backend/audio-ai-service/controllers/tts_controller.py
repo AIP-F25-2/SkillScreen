@@ -1,13 +1,13 @@
 from fastapi import APIRouter
 from fastapi.responses import FileResponse
-from config import logger
+from config import logger, settings
 from schemas.audio_schemas import TTSRequest, TTSResponse
 from services.text_to_speech_service import TextToSpeechService
 from services.audio_extractor import AudioExtractor
+
 import os
 
 router = APIRouter()
-
 
 @router.post("/generate", response_model=TTSResponse)
 async def generate_speech(request: TTSRequest):
@@ -25,13 +25,14 @@ async def generate_speech(request: TTSRequest):
     extractor = AudioExtractor()
     
     try:
-        # Use async method directly (not sync wrapper)
         audio_path, error = await tts_service.synthesize(request.text, request.voice)
         
         if error:
             return TTSResponse(
                 status="failed",
                 message="Speech generation failed",
+                filename="",
+                download_url="",
                 text=request.text,
                 session_id=request.session_id,
                 error=error
@@ -39,12 +40,20 @@ async def generate_speech(request: TTSRequest):
         
         duration = extractor.get_audio_duration(audio_path)
         
+        # Extract filename
+        filename = os.path.basename(audio_path)
+        
+        # Build download URL for inter-service communication
+        download_url = f"http://audio-ai-service:8000/api/v1/tts/download/{filename}"
+        
         logger.info(f"TTS: Audio generated at {audio_path}, duration: {duration}s")
+        logger.info(f"TTS: Download URL: {download_url}")
         
         return TTSResponse(
             status="success",
             message="Speech generated successfully",
-            audio_file_path=audio_path,
+            filename=filename,
+            download_url=download_url,
             text=request.text,
             voice=request.voice or "en-US-female",
             duration_seconds=duration,
@@ -56,11 +65,13 @@ async def generate_speech(request: TTSRequest):
         return TTSResponse(
             status="failed",
             message="Unexpected error during speech generation",
+            filename="",
+            download_url="",
             text=request.text,
             session_id=request.session_id,
             error=str(e)
         )
-    
+
 @router.get("/info")
 async def get_tts_info():
     """Get current TTS provider configuration"""

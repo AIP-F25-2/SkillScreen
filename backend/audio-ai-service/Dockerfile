@@ -30,4 +30,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD python -c "import requests; requests.get('http://localhost:8000/health/live')"
 
 # Run the application
-CMD ["python", "app.py"]
+CMD ["python", "audio-ai.py"]

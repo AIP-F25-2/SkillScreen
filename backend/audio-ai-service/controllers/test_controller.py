@@ -11,14 +11,14 @@ async def test_extraction(request: AudioProcessRequest):
     from services.media_downloader import MediaDownloader
     from services.audio_extractor import AudioExtractor
     
-    logger.info(f"Testing extraction for: {request.video_url}")
+    logger.info(f"Testing extraction for: {request.media_url}")
     
     downloader = MediaDownloader()
     extractor = AudioExtractor()
     
     try:
         # Download video
-        video_path, error = downloader.download(str(request.video_url))
+        video_path, error = downloader.download(str(request.media_url))
         if error:
             return {"status": "failed", "error": error}
         
@@ -48,7 +48,7 @@ async def test_transcription(request: AudioProcessRequest):
     from services.audio_extractor import AudioExtractor
     from services.transcription_service import TranscriptionService
     
-    logger.info(f"Testing transcription for: {request.video_url}")
+    logger.info(f"Testing transcription for: {request.media_url}")
     
     downloader = MediaDownloader()
     extractor = AudioExtractor()
@@ -56,7 +56,7 @@ async def test_transcription(request: AudioProcessRequest):
     
     try:
         # Download video
-        video_path, error = downloader.download(str(request.video_url))
+        video_path, error = downloader.download(str(request.media_url))
         if error:
             return {"status": "failed", "step": "download", "error": error}
         
@@ -99,7 +99,7 @@ async def test_filler_detection(request: AudioProcessRequest):
     from services.transcription_service import TranscriptionService
     from services.filler_detection_service import FillerDetectionService
     
-    logger.info(f"Testing filler detection for: {request.video_url}")
+    logger.info(f"Testing filler detection for: {request.media_url}")
     
     downloader = MediaDownloader()
     extractor = AudioExtractor()
@@ -108,7 +108,7 @@ async def test_filler_detection(request: AudioProcessRequest):
     
     try:
         # Download video
-        video_path, error = downloader.download(str(request.video_url))
+        video_path, error = downloader.download(str(request.media_url))
         if error:
             return {"status": "failed", "step": "download", "error": error}
         
@@ -158,7 +158,7 @@ async def test_full_pipeline(request: AudioProcessRequest):
     from services.filler_detection_service import FillerDetectionService
     from services.diarization_service import DiarizationService
     
-    logger.info(f"Testing full pipeline for: {request.video_url}")
+    logger.info(f"Testing full pipeline for: {request.media_url}")
     
     downloader = MediaDownloader()
     extractor = AudioExtractor()
@@ -168,7 +168,7 @@ async def test_full_pipeline(request: AudioProcessRequest):
     
     try:
         # Download video
-        video_path, error = downloader.download(str(request.video_url))
+        video_path, error = downloader.download(str(request.media_url))
         if error:
             return {"status": "failed", "step": "download", "error": error}
         
