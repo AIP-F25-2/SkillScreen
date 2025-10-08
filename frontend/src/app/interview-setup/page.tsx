@@ -39,7 +39,13 @@ export default function InterviewSetup() {
   useEffect(() => {
     // Set candidate name from user or allow guest to enter
     if (user) {
-      setCandidateName(user.fullName);
+      // Try to use a valid property for the user's name
+      setCandidateName(
+        user.name ||
+        user.displayName ||
+        (user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : '') ||
+        ''
+      );
     }
   }, [user]);
 
