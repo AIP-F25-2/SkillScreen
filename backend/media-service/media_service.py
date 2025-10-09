@@ -112,7 +112,7 @@ def finalize_upload():
 
     return jsonify({
         "status": "done",
-        "file": f"/video/{user_id}/{os.path.basename(final_mp4)}"
+        "file": f"/{user_id}/{os.path.basename(final_mp4)}"
     }), 200
 
 
@@ -290,6 +290,146 @@ def delete_all_users():
             except Exception as e:
                 print(f"Failed to delete user {user}: {e}")
     return jsonify({"status":"deleted all users", "deleted_users": deleted}), 200
+
+
+# =========================================================
+# 📁 GENERAL FILE UPLOAD + ADMIN CRUD ENDPOINTS
+# =========================================================
+
+@app.route("/upload", methods=["POST"])
+def upload_general_file():
+    """
+    Upload any general file (e.g., PDF, DOCX, ZIP, PNG, etc.) into the same user folder.
+    FormData:
+        user_id: "123"
+        file: (any file)
+    """
+    file = request.files.get("file")
+    user_id = request.form.get("user_id")
+
+    if not file or not user_id:
+        return jsonify({"error": "Missing file or user_id"}), 400
+
+    # Create user folder if it doesn't exist
+    user_folder = os.path.join(UPLOAD_FOLDER, user_id)
+    os.makedirs(user_folder, exist_ok=True)
+
+    # Generate safe filename with timestamp to prevent overwrites
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    original_name, ext = os.path.splitext(file.filename)
+    safe_filename = f"{original_name}_{timestamp}{ext}"
+
+    file_path = os.path.join(user_folder, safe_filename)
+    file.save(file_path)
+
+    return jsonify({
+        "status": "file uploaded",
+        "file_name": safe_filename,
+        "file_path": f"/{user_id}/{safe_filename}"
+    }), 200
+
+
+@app.route("/file/<user_id>/<filename>", methods=["GET"])
+def serve_general_file(user_id, filename):
+    """Serve any uploaded file from the user's folder."""
+    user_folder = os.path.join(UPLOAD_FOLDER, user_id)
+    if not os.path.exists(os.path.join(user_folder, filename)):
+        return jsonify({"error": "file not found"}), 404
+    return send_from_directory(user_folder, filename)
+
+
+# =========================================================
+# 🧑‍💼 ADMIN CRUD ROUTES FOR GENERAL FILES
+# =========================================================
+
+# 1️⃣ Get all files for all users
+@app.route("/admin/files", methods=["GET"])
+def get_all_files():
+    all_files = {}
+    for user in os.listdir(UPLOAD_FOLDER):
+        user_folder = os.path.join(UPLOAD_FOLDER, user)
+        if os.path.isdir(user_folder):
+            files = [f for f in os.listdir(user_folder)
+                     if not f.endswith(".mp4") and not f.endswith(".webm")]
+            if files:
+                all_files[user] = files
+    return jsonify(all_files), 200
+
+
+# 2️⃣ Get all general files for a specific user
+@app.route("/admin/files/<user_id>", methods=["GET"])
+def get_user_files(user_id):
+    user_folder = os.path.join(UPLOAD_FOLDER, user_id)
+    if not os.path.exists(user_folder):
+        return jsonify({"files": []}), 200
+    files = [f for f in os.listdir(user_folder)
+             if not f.endswith(".mp4") and not f.endswith(".webm")]
+    return jsonify({"user": user_id, "files": files}), 200
+
+
+# 3️⃣ Delete a specific general file of a user
+@app.route("/admin/file/<user_id>/<filename>", methods=["DELETE"])
+def delete_user_file(user_id, filename):
+    user_folder = os.path.join(UPLOAD_FOLDER, user_id)
+    file_path = os.path.join(user_folder, filename)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+        return jsonify({"status": "deleted", "file": filename}), 200
+    return jsonify({"error": "file not found"}), 404
+
+
+# 4️⃣ Delete all general files for a specific user
+@app.route("/admin/files/<user_id>", methods=["DELETE"])
+def delete_all_user_files(user_id):
+    user_folder = os.path.join(UPLOAD_FOLDER, user_id)
+    if not os.path.exists(user_folder):
+        return jsonify({"status": "no files found"}), 200
+
+    deleted = []
+    for f in os.listdir(user_folder):
+        if not f.endswith(".mp4") and not f.endswith(".webm"):
+            try:
+                os.remove(os.path.join(user_folder, f))
+                deleted.append(f)
+            except Exception as e:
+                print(f"Failed to delete {f}: {e}")
+
+    return jsonify({"status": "deleted", "deleted_files": deleted}), 200
+
+
+# 5️⃣ Delete all general files of all users
+@app.route("/admin/files", methods=["DELETE"])
+def delete_all_general_files():
+    deleted = {}
+    for user in os.listdir(UPLOAD_FOLDER):
+        user_folder = os.path.join(UPLOAD_FOLDER, user)
+        if os.path.isdir(user_folder):
+            deleted[user] = []
+            for f in os.listdir(user_folder):
+                if not f.endswith(".mp4") and not f.endswith(".webm"):
+                    try:
+                        os.remove(os.path.join(user_folder, f))
+                        deleted[user].append(f)
+                    except Exception as e:
+                        print(f"Failed to delete {f}: {e}")
+    return jsonify({"status": "deleted all general files", "deleted_files": deleted}), 200
+
+
+# 6️⃣ Search general files (by partial name match)
+@app.route("/admin/search/files", methods=["GET"])
+def search_general_files():
+    query = request.args.get("q", "").lower()
+    matched_files = {}
+    for user in os.listdir(UPLOAD_FOLDER):
+        user_folder = os.path.join(UPLOAD_FOLDER, user)
+        if os.path.isdir(user_folder):
+            files = [f for f in os.listdir(user_folder)
+                     if query in f.lower() and not f.endswith(".mp4") and not f.endswith(".webm")]
+            if files:
+                matched_files[user] = files
+    return jsonify({"query": query, "matched_files": matched_files}), 200
+
+
 
 
 if __name__ == "__main__":

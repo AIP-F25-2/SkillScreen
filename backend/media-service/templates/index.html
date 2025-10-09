@@ -15,7 +15,7 @@
         button.delete { background: #dc3545; }
         button.preview { background: #17a2b8; }
         .flex-row { display: flex; align-items: center; margin-bottom: 10px; gap: 5px; flex-wrap: wrap; }
-        input[type=text] { padding: 5px; border: 1px solid #ccc; border-radius: 4px; }
+        input[type=text], input[type=file] { padding: 5px; border: 1px solid #ccc; border-radius: 4px; }
         .section { padding: 20px; background: #fff; border-radius: 6px; margin-bottom: 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
         .recording-section video { max-width: 400px; border: 1px solid #ccc; margin-top: 10px; border-radius: 4px; }
     </style>
@@ -46,7 +46,7 @@
             </div>
             <table id="usersTable">
                 <thead>
-                    <tr><th>User ID</th><th>Actions</th><th>Videos</th></tr>
+                    <tr><th>User ID</th><th>Actions</th><th>Videos</th><th>Files</th></tr>
                 </thead>
                 <tbody></tbody>
             </table>
@@ -66,6 +66,28 @@
                 <tbody></tbody>
             </table>
         </div>
+
+        <!-- Files Section -->
+        <div class="section">
+            <h2>General Files Management</h2>
+            <div class="flex-row">
+                <input type="text" id="fileUserId" placeholder="User ID for Upload">
+                <input type="file" id="generalFile">
+                <button onclick="uploadGeneralFile()">Upload File</button>
+            </div>
+
+            <div class="flex-row">
+                <input type="text" id="fileQuery" placeholder="Search files">
+                <button onclick="searchFiles()">Search</button>
+            </div>
+
+            <table id="filesTable">
+                <thead>
+                    <tr><th>User</th><th>File</th><th>Actions</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
     </div>
 
 <script>
@@ -81,7 +103,6 @@ document.getElementById('startRecBtn').addEventListener('click', async () => {
     const userId = document.getElementById('recordUserId').value.trim();
     if (!userId) return alert('Enter User ID');
 
-    // Reset chunks automatically
     await fetchJSON('/reset_chunks', {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
@@ -107,7 +128,7 @@ document.getElementById('startRecBtn').addEventListener('click', async () => {
         }
     };
 
-    mediaRecorder.start(1000); // chunk every 1 second
+    mediaRecorder.start(1000);
     document.getElementById('startRecBtn').disabled = true;
     document.getElementById('stopRecBtn').disabled = false;
 });
@@ -122,10 +143,8 @@ document.getElementById('stopRecBtn').addEventListener('click', async () => {
     document.getElementById('startRecBtn').disabled = false;
     document.getElementById('stopRecBtn').disabled = true;
 
-    // Wait a bit to ensure last chunks are uploaded
     await new Promise(r => setTimeout(r, 1000));
 
-    // Finalize upload
     const data = await fetchJSON('/finalize_upload', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
@@ -148,9 +167,11 @@ async function loadUsers() {
                 <button onclick="renameUser('${user}')">Rename</button>
                 <button onclick="deleteUser('${user}')" class="delete">Delete</button>
             </td>
-            <td><div id="videos-${user}">Loading...</div></td>`;
+            <td><div id="videos-${user}">Loading...</div></td>
+            <td><div id="files-${user}">Loading...</div></td>`;
         tbody.appendChild(tr);
         loadUserVideos(user);
+        loadUserFiles(user);
     });
 }
 
@@ -230,6 +251,69 @@ async function searchVideos() {
                 <td>
                     <button class="preview" onclick="previewVideo('${user}','${video}')">Preview</button>
                     <button class="delete" onclick="deleteVideo('${user}','${video}')">Delete</button>
+                </td>`;
+            tbody.appendChild(tr);
+        });
+    }
+}
+
+// ---------------------- Files ----------------------
+async function uploadGeneralFile() {
+    const userId = document.getElementById('fileUserId').value.trim();
+    const fileInput = document.getElementById('generalFile');
+    if (!userId || fileInput.files.length === 0) return alert('Select user and file');
+
+    const formData = new FormData();
+    formData.append('user_id', userId);
+    formData.append('file', fileInput.files[0]);
+
+    const res = await fetch('/upload', { method:'POST', body:formData });
+    const data = await res.json();
+
+    alert(`File uploaded successfully!\n\nPath: ${data.file_path}`);
+    loadUserFiles(userId);
+}
+
+async function loadUserFiles(userId) {
+    const div = document.getElementById(`files-${userId}`);
+    const data = await fetchJSON(`/admin/files/${userId}`);
+    if (!data.files || data.files.length === 0) {
+        div.innerHTML = 'No files';
+        return;
+    }
+    div.innerHTML = '';
+    data.files.forEach(file => {
+        const fileDiv = document.createElement('div');
+        fileDiv.innerHTML = `${file}
+            <button class="preview" onclick="previewFile('${userId}','${file}')">Open</button>
+            <button class="delete" onclick="deleteFile('${userId}','${file}')">Delete</button>`;
+        div.appendChild(fileDiv);
+    });
+}
+
+async function deleteFile(userId, filename) {
+    if (!confirm(`Delete file ${filename}?`)) return;
+    await fetchJSON(`/admin/file/${userId}/${filename}`, { method:'DELETE' });
+    loadUserFiles(userId);
+}
+
+function previewFile(userId, filename) {
+    window.open(`/file/${userId}/${filename}`, '_blank');
+}
+
+async function searchFiles() {
+    const query = document.getElementById('fileQuery').value.trim();
+    const data = await fetchJSON(`/admin/search/files?q=${encodeURIComponent(query)}`);
+    const tbody = document.querySelector('#filesTable tbody');
+    tbody.innerHTML = '';
+    for (let user in data.matched_files) {
+        data.matched_files[user].forEach(file => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${user}</td>
+                <td>${file}</td>
+                <td>
+                    <button class="preview" onclick="previewFile('${user}','${file}')">Open</button>
+                    <button class="delete" onclick="deleteFile('${user}','${file}')">Delete</button>
                 </td>`;
             tbody.appendChild(tr);
         });
