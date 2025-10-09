@@ -66,7 +66,7 @@ def list_videos_by_user():
 # ------------------ Additional Endpoints ------------------
 
 # 1. Get videos of a particular user
-@app.route('/api/videos/<user_id>', methods=['GET'])
+@app.route('/api/videos/user/<user_id>', methods=['GET'])
 def get_videos_by_user(user_id):
     user_folder = os.path.join(processor.processed_folder, user_id)
     if not os.path.exists(user_folder):
