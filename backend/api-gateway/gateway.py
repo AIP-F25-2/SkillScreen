@@ -78,7 +78,8 @@ app.add_middleware(BaseHTTPMiddleware, dispatch=verify_jwt)
 
 # Proxy function
 async def forward_request(service_url: str, path: str, request: Request) -> Response:
-    async with httpx.AsyncClient() as client:
+    timeout = httpx.Timeout(300.0, connect=10.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
         body = await request.body()
         headers = dict(request.headers)
         resp = await client.request(
