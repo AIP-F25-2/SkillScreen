@@ -13,6 +13,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Use .env variables inside container
-ENV FLASK_APP=app.py
+ENV FLASK_APP=media_service.py
 
 CMD ["python", "media_service.py"]
