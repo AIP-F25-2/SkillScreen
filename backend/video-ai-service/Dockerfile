@@ -23,4 +23,4 @@ COPY . .
 # Expose port
 EXPOSE ${SERVER_PORT}
 
-CMD ["python", "app.py"]
+CMD ["python", "video_service.py"]
