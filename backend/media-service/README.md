@@ -78,12 +78,7 @@ mkdir -p uploads
 ## Running the Server
 
 ```bash
-python app.py
-```
-
-Server will run on `http://<SERVER_HOST>:<SERVER_PORT>` (default: `0.0.0.0:5004`)
-
-> For HTTPS testing, uncomment the `ssl_context` line in `app.py` and provide `cert.pem` and `key.pem`.
+python media_service.py
 
 ---
 
