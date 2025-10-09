@@ -81,22 +81,6 @@ def get_videos_by_user(user_id):
     return jsonify({"user_id": user_id, "videos": videos})
 
 
-# 2. Get all videos grouped by user
-@app.route('/api/all_videos_by_user', methods=['GET'])
-def all_videos_by_user():
-    users = {}
-    for root, dirs, files in os.walk(processor.processed_folder):
-        for f in files:
-            if f.lower().endswith(".mp4"):
-                rel_path = os.path.relpath(os.path.join(root, f), processor.processed_folder)
-                parts = rel_path.split(os.sep)
-                if len(parts) < 2:
-                    continue
-                user_id = parts[0]
-                users.setdefault(user_id, []).append(f"/api/videos/{rel_path}")
-    return jsonify(users)
-
-
 # 3. Delete a single video
 @app.route('/api/delete_video', methods=['POST'])
 def delete_video():
@@ -158,23 +142,7 @@ def list_users():
     users = [d for d in os.listdir(processor.processed_folder)
              if os.path.isdir(os.path.join(processor.processed_folder, d))]
     return jsonify(users)
-
-
-# Get all videos for a specific user
-@app.route('/api/users/<user_id>/videos', methods=['GET'])
-def get_user_videos(user_id):
-    user_dir = os.path.join(processor.processed_folder, user_id)
-    if not os.path.exists(user_dir):
-        return jsonify({"error": f"User {user_id} not found"}), 404
-
-    videos = []
-    for root, dirs, files in os.walk(user_dir):
-        for f in files:
-            if f.lower().endswith(".mp4"):
-                rel_path = os.path.relpath(os.path.join(root, f), processor.processed_folder)
-                videos.append(f"/api/videos/{rel_path}")
-    return jsonify({"user": user_id, "videos": videos})
-
+    
 
 # Delete a single processed video
 @app.route('/api/videos/<user_id>/<video_name>', methods=['DELETE'])
@@ -187,8 +155,6 @@ def delete_video_by_user_id_and_video_name(user_id, video_name):
         return jsonify({"message": f"Deleted video {video_name} for user {user_id}"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-
 
 
 # ------------------ Search videos by filename ------------------
