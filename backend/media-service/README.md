@@ -170,7 +170,7 @@ openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout key.pem -out cert.pe
 
 ```
 .
-├── app.py
+├── media_service.py
 ├── services/
 │   └── video_processor.py  # Optional processing logic
 ├── uploads/               # Stored per-user video folders
