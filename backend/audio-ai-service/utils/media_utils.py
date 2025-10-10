@@ -32,6 +32,30 @@ def detect_media_type(url: str) -> str:
         return 'unknown'
 
 
+def sanitize_url(url: str) -> str:
+    """
+    Remove surrounding whitespace and common hidden characters that often sneak in
+    from copy/paste (zero-width spaces, BOM, smart quotes).
+    """
+    if not isinstance(url, str):
+        return url
+    cleaned = url.strip()
+    # Remove zero-width and BOM-like characters
+    hidden_chars = [
+        "\u200b",  # zero width space
+        "\u200c",  # zero width non-joiner
+        "\u200d",  # zero width joiner
+        "\ufeff",  # BOM
+        "\u2060",  # word joiner
+    ]
+    for ch in hidden_chars:
+        cleaned = cleaned.replace(ch, "")
+    # Replace smart quotes with normal quotes and strip quotes
+    cleaned = cleaned.replace("“", '"').replace("”", '"').replace("’", "'")
+    if cleaned.startswith(('"', "'")) and cleaned.endswith(('"', "'")):
+        cleaned = cleaned[1:-1]
+    return cleaned
+
 def download_media(url: str, output_path: str, timeout: int = 300) -> bool:
     """
     Download media (audio or video) from URL
@@ -46,8 +70,14 @@ def download_media(url: str, output_path: str, timeout: int = 300) -> bool:
     """
     try:
         logger.info(f"Downloading media from: {url}")
-        
-        response = requests.get(url, stream=True, timeout=timeout)
+
+        # Some servers reject requests without a User-Agent or Range header
+        headers = {
+            "User-Agent": "Mozilla/5.0 (compatible; SkillScreen-AudioAI/1.0)",
+            "Accept": "*/*",
+        }
+
+        response = requests.get(sanitize_url(url), stream=True, timeout=timeout, allow_redirects=True, headers=headers)
         response.raise_for_status()
         
         with open(output_path, 'wb') as f:
@@ -81,7 +111,28 @@ def validate_media_url(url: str) -> bool:
         True if valid, False otherwise
     """
     try:
-        response = requests.head(url, timeout=10, allow_redirects=True)
-        return response.status_code == 200
-    except:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (compatible; SkillScreen-AudioAI/1.0)",
+            "Accept": "*/*",
+        }
+
+        # First try HEAD (fast). Many servers either 200/3xx here.
+        try:
+            response = requests.head(sanitize_url(url), timeout=10, allow_redirects=True, headers=headers)
+            if 200 <= response.status_code < 400:
+                return True
+        except requests.exceptions.RequestException:
+            # Fall back to GET below
+            pass
+
+        # Fallback: try a lightweight GET with stream; read a tiny chunk
+        with requests.get(sanitize_url(url), stream=True, timeout=10, allow_redirects=True, headers=headers) as r:
+            if 200 <= r.status_code < 400:
+                # Attempt to read a very small chunk to ensure accessibility
+                for chunk in r.iter_content(chunk_size=1024):
+                    # If we can read at least one chunk, treat as accessible
+                    return True if chunk else False
+            return False
+    except Exception as e:
+        logger.warning(f"URL validation failed: {str(e)}")
         return False

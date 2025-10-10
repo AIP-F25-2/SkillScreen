@@ -3,6 +3,7 @@ import httpx
 from jose import jwt, JWTError
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 import os
 from dotenv import load_dotenv
 
@@ -14,6 +15,15 @@ ALGORITHM = os.getenv("ALGORITHM", "HS256")
 PORT = int(os.getenv("PORT", "5000"))
 
 app = FastAPI(title="API Gateway")
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for development
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # RBAC rules: endpoint prefix → allowed roles
 RBAC_RULES = {
@@ -49,8 +59,16 @@ SERVICE_MAP = {
 # Middleware for JWT validation and RBAC
 async def verify_jwt(request: Request, call_next):
     try:
+        # Always allow CORS preflight without auth
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         if request.url.path.startswith("/auth/"):
             return await call_next(request)  # allow auth routes
+
+        # TEMP: allow audio-ai routes during development/testing without auth
+        if request.url.path.startswith("/audio-ai/"):
+            return await call_next(request)
 
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):
@@ -78,10 +96,10 @@ app.add_middleware(BaseHTTPMiddleware, dispatch=verify_jwt)
 
 # Proxy function
 async def forward_request(service_url: str, path: str, request: Request) -> Response:
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=600.0) as client:  # 10 minute timeout for audio processing
         body = await request.body()
         headers = dict(request.headers)
-        print("A")
+        
         resp = await client.request(
             request.method,
             f"{service_url}{path}",
@@ -89,13 +107,27 @@ async def forward_request(service_url: str, path: str, request: Request) -> Resp
             headers=headers,
             params=request.query_params
         )
+        
+        # Add CORS headers explicitly to ensure they're present
+        response_headers = dict(resp.headers)
+        response_headers["Access-Control-Allow-Origin"] = "*"
+        response_headers["Access-Control-Allow-Credentials"] = "true"
+        response_headers["Access-Control-Allow-Methods"] = "*"
+        response_headers["Access-Control-Allow-Headers"] = "*"
+        
         return Response(
             content=resp.content,
             status_code=resp.status_code,
-            headers=dict(resp.headers)
+            headers=response_headers
         )
     
-# Routes for microservices
+# Special route for audio-ai to bypass validation for file:// URLs
+@app.api_route("/audio-ai/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def proxy_audio_ai(path: str, request: Request):
+    """Special proxy for audio-ai service that allows file:// URLs"""
+    return await forward_request(SERVICE_MAP["audio-ai"], f"/{path}", request)
+
+# Routes for other microservices
 @app.api_route("/{service}/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy(service: str, path: str, request: Request):
     if service not in SERVICE_MAP:

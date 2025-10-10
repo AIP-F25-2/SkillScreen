@@ -14,7 +14,7 @@ export default function LoginPage() {
   const { login, isAuthenticated, isLoading } = useAuth();
   
   const [formData, setFormData] = useState({
-    email: '',
+    usernameOrEmail: '',
     password: ''
   });
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
@@ -31,10 +31,8 @@ export default function LoginPage() {
   const validateForm = () => {
     const newErrors: { [key: string]: string } = {};
     
-    if (!formData.email.trim()) {
-      newErrors.email = 'Email is required';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = 'Please enter a valid email address';
+    if (!formData.usernameOrEmail.trim()) {
+      newErrors.usernameOrEmail = 'Username or email is required';
     }
     
     if (!formData.password.trim()) {
@@ -53,7 +51,7 @@ export default function LoginPage() {
     if (!validateForm()) return;
     
     setIsSubmitting(true);
-    const result = await login(formData.email, formData.password);
+    const result = await login(formData.usernameOrEmail, formData.password);
     
     if (result.success) {
       router.push('/');
@@ -75,10 +73,10 @@ export default function LoginPage() {
   };
 
   const fillDemoCredentials = (userType: 'recruiter' | 'candidate') => {
-    const email = userType === 'recruiter' ? 'recruiter@intervuai.com' : 'candidate@intervuai.com';
+    const usernameOrEmail = userType === 'recruiter' ? 'admin' : 'ashish';
     setFormData({
-      email,
-      password: 'password123'
+      usernameOrEmail,
+      password: userType === 'recruiter' ? 'password' : '1234'
     });
     setShowDemo(false);
   };
@@ -150,14 +148,19 @@ export default function LoginPage() {
                   onClick={() => fillDemoCredentials('recruiter')}
                   className="w-full text-left p-2 bg-blue-600/30 hover:bg-blue-600/40 rounded text-sm text-blue-200 transition-colors"
                 >
-                  <strong>Recruiter:</strong> recruiter@intervuai.com
+                  <strong>Admin:</strong> admin / password
                 </button>
                 <button
                   onClick={() => fillDemoCredentials('candidate')}
                   className="w-full text-left p-2 bg-blue-600/30 hover:bg-blue-600/40 rounded text-sm text-blue-200 transition-colors"
                 >
-                  <strong>Candidate:</strong> candidate@intervuai.com
+                  <strong>User:</strong> ashish / 1234
                 </button>
+                <div className="text-xs text-blue-200/70 mt-2">
+                  <p>You can also use:</p>
+                  <p>• admin@intervuai.com / password</p>
+                  <p>• ashish@intervuai.com / 1234</p>
+                </div>
               </motion.div>
             )}
           </div>
@@ -165,22 +168,22 @@ export default function LoginPage() {
           {/* Login Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-white mb-2">
-                Email Address
+              <label htmlFor="usernameOrEmail" className="block text-sm font-medium text-white mb-2">
+                Username or Email
               </label>
               <input
-                type="email"
-                id="email"
-                name="email"
-                value={formData.email}
+                type="text"
+                id="usernameOrEmail"
+                name="usernameOrEmail"
+                value={formData.usernameOrEmail}
                 onChange={handleInputChange}
                 className={`w-full px-4 py-3 bg-white/10 border rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 transition-all ${
-                  errors.email ? 'border-red-500 focus:ring-red-500' : 'border-white/20 focus:ring-blue-500'
+                  errors.usernameOrEmail ? 'border-red-500 focus:ring-red-500' : 'border-white/20 focus:ring-blue-500'
                 }`}
-                placeholder="Enter your email"
+                placeholder="Enter your username or email"
               />
-              {errors.email && (
-                <p className="mt-1 text-sm text-red-400">{errors.email}</p>
+              {errors.usernameOrEmail && (
+                <p className="mt-1 text-sm text-red-400">{errors.usernameOrEmail}</p>
               )}
             </div>
 

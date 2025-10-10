@@ -1,6 +1,7 @@
-from pydantic import BaseModel, HttpUrl, Field
+from pydantic import BaseModel, HttpUrl, Field, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+import os
 
 
 
@@ -48,14 +49,24 @@ class TTSResponse(BaseModel):
 
 class AudioProcessRequest(BaseModel):
     """Request schema for audio/video processing"""
-    media_url: HttpUrl = Field(..., description="URL of media to process (audio or video)")
+    media_url: str = Field(..., description="Media location: http(s) URL, file:// URL, or local path")
     session_id: Optional[str] = Field(None, description="Interview session ID")
     candidate_id: Optional[str] = Field(None, description="Candidate ID")
+    
+    @field_validator("media_url")
+    @classmethod
+    def validate_media_location(cls, v: str) -> str:
+        v = (v or "").strip()
+        if v.startswith("http://") or v.startswith("https://") or v.startswith("file://"):
+            return v
+        if os.path.exists(v):
+            return v
+        raise ValueError("URL must be http(s), file://, or an existing local path")
     
     class Config:
         json_schema_extra = {
             "example": {
-                "media_url": "https://example.com/recording.mp3",
+                "media_url": "file:///app/audio-ai-service/temp_audio/sample.mp3",
                 "session_id": "session_12345",
                 "candidate_id": "candidate_67890"
             }

@@ -5,6 +5,14 @@ import Image from 'next/image';
 import NavBar from '@/components/NavBar';
 import Footer from '@/components/Footer';
 
+type BlogPost = {
+  category: string;
+  title: string;
+  excerpt: string;
+  date: string;
+  readTime: string;
+};
+
 export default function BlogPage() {
   const featuredPost = {
     title: 'The Future of Technical Interviews: AI-Driven Assessment',
@@ -16,10 +24,7 @@ export default function BlogPage() {
     image: '/blog/featured.jpg' // Add this image to your public folder
   };
 
-  const posts = [
-
-  
-  ];
+  const posts: BlogPost[] = [];
 
   const categories = [
     'All Posts',
@@ -106,7 +111,7 @@ export default function BlogPage() {
 
           {/* Recent Posts Grid */}
           <div className="grid md:grid-cols-3 gap-8">
-            {posts.map((post, index) => (
+            {posts.map((post: BlogPost, index: number) => (
               <motion.div
                 key={index}
                 initial={{ opacity: 0, y: 20 }}
