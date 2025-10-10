@@ -129,9 +129,11 @@ def validate_media_url(url: str) -> bool:
         with requests.get(sanitize_url(url), stream=True, timeout=10, allow_redirects=True, headers=headers) as r:
             if 200 <= r.status_code < 400:
                 # Attempt to read a very small chunk to ensure accessibility
-                for chunk in r.iter_content(chunk_size=1024):
-                    # If we can read at least one chunk, treat as accessible
-                    return True if chunk else False
+                try:
+                    next(r.iter_content(chunk_size=1024), None)  # Try to read one chunk, ignore content
+                except Exception:
+                    return False
+                return True
             return False
     except Exception as e:
         logger.warning(f"URL validation failed: {str(e)}")
