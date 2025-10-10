@@ -1,8 +1,13 @@
+client.html
+recordings/
+processed_videos/
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
-*.py[cod]
+*.py[codz]
 *$py.class
-*.pemx
+
 # C extensions
 *.so
 
@@ -314,5 +319,3 @@ build/
 *.temp
 *.bak
 *.backup
-
-.sonar

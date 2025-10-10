@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Video Processing Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h2 { margin-top: 30px; }
+    input, button, select { margin: 5px 0; padding: 5px; }
+    video { max-width: 400px; margin: 10px 0; display: block; }
+    .video-card { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Video Processing Dashboard</h1>
+
+  <!-- Process new video -->
+  <h2>Process New Video</h2>
+  <input type="text" id="video_url" placeholder="/123/video.mp4">
+  <button onclick="processVideo()">Process</button>
+  <div id="process_result"></div>
+
+  <!-- List videos by user -->
+  <h2>List All Videos by User</h2>
+  <button onclick="listAllUsers()">List Users</button>
+  <div id="user_list"></div>
+
+  <!-- Get all videos of a user -->
+  <h2>Get Videos of a User</h2>
+  <input type="text" id="get_user_id" placeholder="Enter user ID">
+  <button onclick="getUserVideos()">Get Videos</button>
+  <div id="user_videos"></div>
+
+  <!-- Search videos -->
+  <h2>Search Videos</h2>
+  <input type="text" id="search_query" placeholder="Enter filename keyword">
+  <button onclick="searchVideos()">Search</button>
+  <div id="search_results"></div>
+
+  <script>
+    const apiBase = "/api";
+
+    function processVideo() {
+      const url = document.getElementById("video_url").value;
+      if (!url) return alert("Enter a video URL!");
+
+      fetch(`${apiBase}/process_video`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ video_url: url })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if(data.error) return alert(data.error);
+        const resultDiv = document.getElementById("process_result");
+        resultDiv.innerHTML = `<p>Annotated Video: <a href="${data.annotated_video_url}" target="_blank">${data.annotated_video_url}</a></p>
+                               <video src="${data.annotated_video_url}" controls></video>`;
+      });
+    }
+
+    function listAllUsers() {
+      fetch(`${apiBase}/list_videos_by_user`)
+        .then(res => res.json())
+        .then(users => {
+          const div = document.getElementById("user_list");
+          div.innerHTML = "";
+          for (const user in users) {
+            const videos = users[user].map(v => `<li><a href="${v}" target="_blank">${v}</a></li>`).join("");
+            div.innerHTML += `<div class="video-card"><strong>User: ${user}</strong><ul>${videos}</ul></div>`;
+          }
+        });
+    }
+
+    function getUserVideos() {
+      const userId = document.getElementById("get_user_id").value;
+      if (!userId) return alert("Enter a user ID!");
+
+      fetch(`${apiBase}/users/${userId}/videos`)
+        .then(res => res.json())
+        .then(data => {
+          const div = document.getElementById("user_videos");
+          if(data.error) {
+            div.innerHTML = `<p>${data.error}</p>`;
+            return;
+          }
+          div.innerHTML = "";
+          data.videos.forEach(v => {
+            div.innerHTML += `<div class="video-card">
+                                <video src="${v}" controls></video>
+                                <p>${v}</p>
+                                <button onclick="deleteVideo('${userId}','${v.split('/').pop()}')">Delete Video</button>
+                              </div>`;
+          });
+          div.innerHTML += `<button onclick="deleteUserVideos('${userId}')">Delete All Videos for User</button>`;
+        });
+    }
+
+    function deleteVideo(userId, videoName) {
+      fetch(`${apiBase}/videos/${userId}/${videoName}`, { method: "DELETE" })
+        .then(res => res.json())
+        .then(data => {
+          alert(data.message || data.error);
+          getUserVideos(); // refresh
+        });
+    }
+
+    function deleteUserVideos(userId) {
+      fetch(`${apiBase}/users/${userId}/videos`, { method: "DELETE" })
+        .then(res => res.json())
+        .then(data => {
+          alert(data.message || data.error);
+          getUserVideos(); // refresh
+        });
+    }
+
+    function searchVideos() {
+      const query = document.getElementById("search_query").value;
+      if (!query) return alert("Enter a search keyword!");
+
+      fetch(`${apiBase}/search_videos?q=${encodeURIComponent(query)}`)
+        .then(res => res.json())
+        .then(data => {
+          const div = document.getElementById("search_results");
+          div.innerHTML = "";
+          for(const user in data) {
+            const videos = data[user].map(v => `<li><a href="${v}" target="_blank">${v}</a></li>`).join("");
+            div.innerHTML += `<div class="video-card"><strong>User: ${user}</strong><ul>${videos}</ul></div>`;
+          }
+        });
+    }
+  </script>
+</body>
+</html>

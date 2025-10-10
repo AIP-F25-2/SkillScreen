@@ -1,0 +1,13 @@
+version: "3.8"
+
+services:
+  video_service:
+    build: .
+    container_name: video_service
+    ports:
+      - "${SERVER_PORT}:${SERVER_PORT}"
+    env_file:
+      - .env
+    volumes:
+      - ${UPLOADS_HOST_VOLUME_MOUNT_PATH}:${UPLOAD_FOLDER}
+      - ${PROCESSED_HOST_VOLUME_MOUNT_PATH}:${PROCESSED_FOLDER}
