@@ -503,6 +503,56 @@ def show_interview_summary():
         st.markdown(ai_summary_data['ai_summary'])
         st.markdown("---")
     
+    # Show violations analysis with funny messages
+    if summary_data.get('violations_analysis'):
+        violations_data = summary_data['violations_analysis']
+        funny_analysis = violations_data.get('funny_analysis', {})
+        
+        st.markdown("### 🎭 Interview Integrity Analysis")
+        
+        # Display funny title and message
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown(f"#### {funny_analysis.get('title', '🎭 Analysis Complete')}")
+            st.markdown(f"**{funny_analysis.get('message', 'Analysis completed!')}**")
+        with col2:
+            st.markdown(f"# {funny_analysis.get('emoji', '🎭')}")
+        
+        # Show fun fact
+        if funny_analysis.get('fun_fact'):
+            st.info(f"💡 **Fun Fact:** {funny_analysis['fun_fact']}")
+        
+        # Show violation statistics
+        if violations_data.get('violation_count', 0) > 0:
+            st.markdown("#### 📊 Violation Statistics")
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Violations", violations_data.get('violation_count', 0))
+            with col2:
+                st.metric("Duplicate Responses", violations_data.get('duplicate_count', 0))
+            with col3:
+                st.metric("AI-Generated Content", violations_data.get('ai_generated_count', 0))
+            
+            # Show detailed violations
+            violations = violations_data.get('violations', [])
+            if violations:
+                st.markdown("#### 🔍 Detailed Violations")
+                
+                for i, violation in enumerate(violations, 1):
+                    violation_type = violation.get('type', 'unknown')
+                    question_num = violation.get('question', 0)
+                    response_preview = violation.get('response', '')
+                    
+                    if violation_type == 'duplicate':
+                        st.warning(f"**#{i} Duplicate Response (Question {question_num}):** {response_preview}")
+                    elif violation_type == 'ai_generated':
+                        st.error(f"**#{i} AI-Generated Content (Question {question_num}):** {response_preview}")
+        else:
+            st.success("🎉 **Clean Interview!** No violations detected - you provided original, authentic responses throughout!")
+        
+        st.markdown("---")
+    
     # Show detailed summary
     st.markdown("### 📊 Executive Summary")
     st.write(summary_data['summary'])

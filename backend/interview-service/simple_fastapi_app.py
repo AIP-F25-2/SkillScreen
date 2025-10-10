@@ -47,6 +47,7 @@ class InterviewSummaryResponse(BaseModel):
     strengths: List[str]
     areas_for_improvement: List[str]
     detailed_assessment: Dict[str, Any]
+    violations_analysis: Optional[Dict[str, Any]] = None
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -88,6 +89,95 @@ def calculate_similarity(text1: str, text2: str) -> float:
     union = words1.union(words2)
     
     return len(intersection) / len(union) if union else 0.0
+
+def generate_funny_analysis(violations):
+    """Generate humorous analysis of interview violations"""
+    if not violations:
+        return {
+            "title": "🎉 Clean Interview!",
+            "message": "Congratulations! You provided original, authentic responses throughout the interview.",
+            "emoji": "🌟",
+            "fun_fact": "You're the kind of candidate who brings their own personality to interviews!"
+        }
+    
+    duplicate_count = len([v for v in violations if v["type"] == "duplicate"])
+    ai_count = len([v for v in violations if v["type"] == "ai_generated"])
+    
+    # Funny messages based on violation patterns
+    funny_messages = {
+        "duplicate_heavy": [
+            "🔄 'Once a cheater, always a cheater' - but hey, at least you're consistent!",
+            "📝 Copy-paste master! You could teach a class on efficiency... in the wrong field.",
+            "🔄 'Variety is the spice of life' - someone forgot to tell you that!",
+            "📋 You're like a broken record, but with better sound quality!",
+            "🔄 'Originality is overrated' - your motto, apparently!"
+        ],
+        "ai_heavy": [
+            "🤖 ChatGPT called, it wants its responses back!",
+            "🧠 'I am not a robot' - the CAPTCHA disagrees!",
+            "🤖 You're so AI-like, even robots are taking notes!",
+            "🧠 'Human creativity' - that's a new concept for you!",
+            "🤖 You're the reason why AI detection software exists!"
+        ],
+        "mixed": [
+            "🎭 'Jack of all trades, master of copy-paste' - that's you!",
+            "🔄🤖 The perfect storm: repetitive AND robotic!",
+            "📝🤖 You're like a broken AI that only knows one response!",
+            "🔄🤖 'Consistency in chaos' - your interview philosophy!",
+            "📋🤖 You're the reason why interviewers have trust issues!"
+        ]
+    }
+    
+    # Determine the pattern
+    if duplicate_count > ai_count and duplicate_count >= 3:
+        pattern = "duplicate_heavy"
+    elif ai_count > duplicate_count and ai_count >= 3:
+        pattern = "ai_heavy"
+    else:
+        pattern = "mixed"
+    
+    import random
+    funny_message = random.choice(funny_messages[pattern])
+    
+    # Generate title and emoji
+    if duplicate_count >= 3 and ai_count >= 2:
+        title = "🎭 The Ultimate Copy-Paste Artist"
+        emoji = "🎭"
+    elif duplicate_count >= 3:
+        title = "🔄 The Repetition Champion"
+        emoji = "🔄"
+    elif ai_count >= 3:
+        title = "🤖 The AI Whisperer"
+        emoji = "🤖"
+    else:
+        title = "⚠️ The Slightly Suspicious Candidate"
+        emoji = "⚠️"
+    
+    # Generate fun facts
+    fun_facts = [
+        "💡 Pro tip: Try using your own words next time!",
+        "🎯 Fun fact: Interviewers can tell when you're not being yourself!",
+        "📚 Did you know? Original responses score better than copied ones!",
+        "🎪 You're like a magician - always pulling the same tricks!",
+        "🎨 'Be yourself' - the advice you clearly ignored!",
+        "🎪 You're the reason why 'authenticity' is a buzzword in HR!",
+        "🎯 Fun fact: Robots have more personality than your responses!",
+        "📝 You're proof that copy-paste is an art form... just not a good one!"
+    ]
+    
+    fun_fact = random.choice(fun_facts)
+    
+    return {
+        "title": title,
+        "message": funny_message,
+        "emoji": emoji,
+        "fun_fact": fun_fact,
+        "violation_summary": {
+            "duplicate_responses": duplicate_count,
+            "ai_generated_responses": ai_count,
+            "total_violations": len(violations)
+        }
+    }
 
 # Counter for IDs
 candidate_counter = 0
@@ -244,11 +334,7 @@ async def submit_response(session_id: str, response: InterviewResponse):
         raise HTTPException(status_code=400, detail="Interview session is not active")
     
     # Add response to history
-    session["response_history"].append({
-        "response": response.response_text,
-        "timestamp": datetime.now().isoformat(),
-        "question_number": session["questions_asked"]
-    })
+    session["response_history"].append(response.response_text)
     session["responses_received"] += 1
     
     # Enhanced scoring with anti-cheating detection
@@ -262,28 +348,52 @@ async def submit_response(session_id: str, response: InterviewResponse):
     is_ai_generated = False
     warnings = []
     
-    # Check for duplicate responses
+    # Check for duplicate responses (improved logic)
     if session["responses_received"] > 0:
         previous_responses = session.get("response_history", [])
+        similarity_count = 0
+        
         for prev_response in previous_responses:
-            similarity = calculate_similarity(response_text, prev_response)
+            # Ensure prev_response is a string, not a dict
+            if isinstance(prev_response, dict):
+                prev_text = prev_response.get("response_text", "")
+            else:
+                prev_text = str(prev_response)
+            
+            similarity = calculate_similarity(response_text, prev_text)
             if similarity > 0.8:  # 80% similarity threshold
-                is_duplicate = True
-                break
+                similarity_count += 1
+        
+        # Only flag as duplicate if similar to 2 or more previous responses
+        # This prevents false positives when responses are naturally similar
+        if similarity_count >= 2:
+            is_duplicate = True
     
-    # Check for AI-generated content (simplified detection)
+    # Check for AI-generated content (enhanced detection)
     ai_indicators = [
         'in conclusion', 'furthermore', 'moreover', 'additionally',
         'it is important to note', 'it should be noted', 'it is worth mentioning',
         'as previously mentioned', 'as stated earlier', 'to summarize',
         'in summary', 'it is crucial to', 'it is essential to',
-        'utilize', 'facilitate', 'implement', 'optimize', 'leverage'
+        'utilize', 'facilitate', 'implement', 'optimize', 'leverage',
+        'i\'m currently pursuing', 'my key strengths are', 'i\'m drawn to this role',
+        'one of the most challenging', 'my approach is', 'i\'m most comfortable',
+        'i start by', 'i ensure', 'the biggest trends'
     ]
     
     response_lower = response_text.lower()
     ai_count = sum(1 for indicator in ai_indicators if indicator in response_lower)
     
-    if ai_count >= 3:
+    # Also check for perfect structure (bullet points, numbered lists)
+    has_perfect_structure = (
+        response_text.count('**') >= 4 or  # Multiple bold formatting
+        response_text.count('•') >= 3 or   # Multiple bullet points
+        response_text.count('1.') >= 2 or  # Numbered lists
+        (len(response_text.split('\n')) >= 3 and response_text.count(':') >= 2)  # Structured format
+    )
+    
+    # Flag as AI-generated if multiple indicators OR perfect structure
+    if ai_count >= 2 or has_perfect_structure:
         is_ai_generated = True
     
     # Apply penalties
@@ -307,41 +417,28 @@ async def submit_response(session_id: str, response: InterviewResponse):
         ai_count += 1
         session["ai_generated_count"] = ai_count
     
-    # Termination logic
-    should_terminate = False
-    termination_message = None
+    # Track violations for end-of-interview analysis (no termination)
+    violations = session.get("violations", [])
     
-    if duplicate_count >= 2:
-        should_terminate = True
-        termination_message = (
-            "❌ INTERVIEW TERMINATED: Your interview has been terminated due to repeated duplicate responses. "
-            "Your final score is 0/10. Please provide unique, thoughtful responses to each question."
-        )
-    elif ai_count >= 2:
-        should_terminate = True
-        termination_message = (
-            "❌ INTERVIEW TERMINATED: Your interview has been terminated due to repeated use of AI-generated content. "
-            "Your final score is 0/10. Please provide original, personal responses based on your own experience."
-        )
+    if is_duplicate:
+        violations.append({
+            "type": "duplicate",
+            "question": session.get("questions_asked", 0),
+            "response": response_text[:100] + "..." if len(response_text) > 100 else response_text,
+            "similarity": similarity if 'similarity' in locals() else 0.0
+        })
+        session["violations"] = violations
     
-    if should_terminate:
-        session["status"] = "terminated"
-        session["end_time"] = datetime.now().isoformat()
-        session["total_score"] = 0.0
-        session["termination_reason"] = "anti_cheating"
-        session["termination_message"] = termination_message
-        
-        return {
-            "status": "terminated",
-            "message": termination_message,
-            "final_score": 0.0,
-            "termination_reason": "anti_cheating"
-        }
+    if is_ai_generated:
+        violations.append({
+            "type": "ai_generated",
+            "question": session.get("questions_asked", 0),
+            "response": response_text[:100] + "..." if len(response_text) > 100 else response_text,
+            "confidence": ai_count / len(ai_indicators) if ai_indicators else 0.0
+        })
+        session["violations"] = violations
     
-    # Store response history
-    if "response_history" not in session:
-        session["response_history"] = []
-    session["response_history"].append(response_text)
+    # Response history already stored above
     
     # Store warnings
     if warnings:
@@ -424,6 +521,18 @@ async def get_interview_summary(session_id: str):
     
     avg_score = session["total_score"] / session["responses_received"] if session["responses_received"] > 0 else 0.0
     
+    # Generate funny analysis of violations
+    violations = session.get("violations", [])
+    funny_analysis = generate_funny_analysis(violations)
+    
+    violations_analysis = {
+        "funny_analysis": funny_analysis,
+        "violations": violations,
+        "violation_count": len(violations),
+        "duplicate_count": len([v for v in violations if v["type"] == "duplicate"]),
+        "ai_generated_count": len([v for v in violations if v["type"] == "ai_generated"])
+    }
+    
     return InterviewSummaryResponse(
         session_id=session_id,
         candidate_name=session["candidate_name"],
@@ -439,7 +548,8 @@ async def get_interview_summary(session_id: str):
             "technical_skills": round(avg_score, 2),
             "communication": round(avg_score + 0.5, 2),
             "cultural_fit": round(avg_score - 0.2, 2)
-        }
+        },
+        violations_analysis=violations_analysis
     )
 
 @app.get("/interviews")
