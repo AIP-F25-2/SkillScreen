@@ -77,10 +77,19 @@ services:
       context: ./backend/audio-ai-service
       dockerfile: Dockerfile
     container_name: audio-ai-service
+    ports:
+      - "8000:8080"
     environment:
       - PORT=8080
       - HOST=0.0.0.0
+      - APP_NAME=audio-ai-service
+      - ENVIRONMENT=development
+      - DEBUG=True
+      - LOG_LEVEL=INFO
+      - WHISPER_MODEL_SIZE=base
+      - WHISPER_DEVICE=cpu
       - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-db.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+    volumes:
       - ./backend/audio-ai-service:/app
     networks:
       - skill-screen-network

@@ -38,6 +38,7 @@ interface Errors {
   experience?: string;
   skills?: string;
   preferredRole?: string;
+  submit?: string;
 }
 
 export default function Onboarding() {

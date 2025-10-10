@@ -7,7 +7,7 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  login: (usernameOrEmail: string, password: string) => Promise<{ success: boolean; error?: string }>;
   register: (userData: { fullName: string; email: string; password: string; userType: 'recruiter' | 'candidate' }) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   updateUser: (updates: Partial<User>) => void;
@@ -38,13 +38,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     initAuth();
   }, []);
 
-  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+  const login = async (usernameOrEmail: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
       setIsLoading(true);
-      const authToken = await mockLogin(email, password);
+      const authToken = await mockLogin(usernameOrEmail, password);
       
       if (!authToken) {
-        return { success: false, error: 'Invalid email or password' };
+        return { success: false, error: 'Invalid username/email or password' };
       }
 
       // Save to localStorage

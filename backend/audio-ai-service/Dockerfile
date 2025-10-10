@@ -8,7 +8,14 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     libsndfile1 \
+    gcc \
+    build-essential \
+    python3-dev \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# Ensure CA certificates are available for HTTPS downloads
+RUN update-ca-certificates || true
 
 # Copy requirements first (better caching)
 COPY requirements.txt .

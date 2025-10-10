@@ -37,15 +37,8 @@ export default function InterviewSetup() {
   const interviewId = searchParams?.get('id') || 'interview-123';
 
   useEffect(() => {
-    // Set candidate name from user or allow guest to enter
     if (user) {
-      // Try to use a valid property for the user's name
-      setCandidateName(
-        user.name ||
-        user.displayName ||
-        (user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : '') ||
-        ''
-      );
+      setCandidateName(user.name || '');
     }
   }, [user]);
 

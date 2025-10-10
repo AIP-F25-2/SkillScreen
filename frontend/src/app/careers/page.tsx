@@ -4,10 +4,17 @@ import { motion } from 'framer-motion';
 import NavBar from '@/components/NavBar';
 import Footer from '@/components/Footer';
 
+type Position = {
+  title: string;
+  department: string;
+  location: string;
+  type: string;
+  description: string;
+  requirements: string[];
+};
+
 export default function CareersPage() {
-  const openPositions = [
-   
-  ];
+  const openPositions: Position[] = [];
 
   const values = [
     {
@@ -99,7 +106,7 @@ export default function CareersPage() {
                   <p className="text-white/70 mb-6">{position.description}</p>
                   <h4 className="text-white font-semibold mb-3">Requirements:</h4>
                   <ul className="space-y-2">
-                    {position.requirements.map((req, reqIndex) => (
+                    {position.requirements.map((req: string, reqIndex: number) => (
                       <li key={reqIndex} className="flex items-center text-white/70">
                         <div className="w-1.5 h-1.5 bg-blue-500 rounded-full mr-3" />
                         {req}
