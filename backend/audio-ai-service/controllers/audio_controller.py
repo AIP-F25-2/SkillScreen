@@ -6,6 +6,53 @@ from services.audio_processing_service import AudioProcessingService
 router = APIRouter()
 
 
+@router.post("/process-interview")
+async def process_interview(request: AudioProcessRequest):
+    """
+    Complete interview analysis endpoint
+    
+    This is the main endpoint for production interview processing.
+    Always includes vocal analytics unless cheating is detected.
+    
+    Pipeline:
+    1. Download, detects and extract media type (audio vs video)
+    2. Transcribe with Whisper
+    3. Detect filler words
+    4. Speaker diarization
+    5. Check for cheating
+    6. IF no cheating → Run vocal analytics (speaking rate, pitch, energy, pauses)
+    7. Return complete results
+    
+    Processing time: 5-10 minutes for 5-minute interview
+    
+    Use cases:
+    - Called by interview orchestration service after interview submission
+    - Results sent to next service for assessment
+    """
+    logger.info(f"Interview processing request received")
+    logger.info(f"Media URL: {request.media_url}")
+    logger.info(f"Session ID: {request.session_id}")
+    logger.info(f"Candidate ID: {request.candidate_id}")
+    
+    processor = AudioProcessingService()
+    
+    # Always include analytics for interview processing
+    result = processor.process(
+        media_url=str(request.media_url),
+        session_id=request.session_id,
+        candidate_id=request.candidate_id,
+        include_analytics=True  # Always run analytics (unless cheating detected)
+    )
+    
+    # Log key results
+    if result["status"] == "success":
+        logger.info(f"Interview processing completed")
+        logger.info(f"Cheating detected: {result.get('cheating_detected', False)}")
+        logger.info(f"Analytics run: {result.get('analytics_run', False)}")
+    else:
+        logger.error(f"Interview processing failed: {result.get('error')}")
+    
+    return result
 @router.post("/process", response_model=AudioProcessResponse)
 async def process_audio(request: AudioProcessRequest):
     """
