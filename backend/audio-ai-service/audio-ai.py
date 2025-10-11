@@ -48,9 +48,9 @@ app.add_middleware(
 
 # Register routers
 app.include_router(health_router, prefix="/health", tags=["Health"])
-app.include_router(audio_router, prefix="/api/v1/audio", tags=["Audio Processing"])
-app.include_router(test_router, prefix="/api/v1/test", tags=["Testing & Debug"])
-app.include_router(tts_router, prefix="/api/v1/tts", tags=["Text-to-Speech"])
+app.include_router(audio_router, prefix="/api/audio", tags=["Audio Processing"])
+app.include_router(test_router, prefix="/api/test", tags=["Testing & Debug"])
+app.include_router(tts_router, prefix="/api/tts", tags=["Text-to-Speech"])
 
 # Root endpoint
 @app.get("/")
