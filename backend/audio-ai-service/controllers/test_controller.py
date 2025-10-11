@@ -1,9 +1,49 @@
 from fastapi import APIRouter
 from config import logger
-from schemas.audio_schemas import AudioProcessRequest
+from schemas.audio_schemas import AudioProcessRequest, AudioProcessResponse 
+from services.audio_processing_service import AudioProcessingService
 
 router = APIRouter()
 
+
+@router.post("/process", response_model=AudioProcessResponse)
+async def process_audio(request: AudioProcessRequest):
+    """
+    Process media from URL - without analytics
+    
+    Accepts both audio and video URLs. Automatically detects media type.
+    
+    Supported formats:
+    - Audio: MP3, WAV, M4A, AAC, OGG, FLAC
+    - Video: MP4, AVI, MOV, MKV, WEBM
+    
+    This endpoint:
+    1. Downloads media from URL (auto-detects audio vs video)
+    2. Extracts audio if video (skips if already audio)
+    3. Transcribes using Whisper
+    4. Detects filler words with timestamps
+    5. Performs speaker diarization
+    6. Assesses cheating risk
+    
+    Returns comprehensive analysis results
+    """
+    logger.info(f"Received media processing request")
+    logger.info(f"Media URL: {request.media_url}") 
+    logger.info(f"Session ID: {request.session_id}")
+    logger.info(f"Candidate ID: {request.candidate_id}")
+    
+    processor = AudioProcessingService()
+    
+    result = processor.process(
+        media_url=str(request.media_url),
+        session_id=request.session_id,
+        candidate_id=request.candidate_id
+    )
+    
+    if result["status"] == "failed":
+        logger.error(f"Processing failed: {result.get('error')}")
+    
+    return AudioProcessResponse(**result)
 
 @router.post("/extraction")
 async def test_extraction(request: AudioProcessRequest):
@@ -149,69 +189,3 @@ async def test_filler_detection(request: AudioProcessRequest):
         extractor.cleanup()
 
 
-@router.post("/full-pipeline")
-async def test_full_pipeline(request: AudioProcessRequest):
-    """Test complete pipeline: download → extract → transcribe → fillers → diarization"""
-    from services.media_downloader import MediaDownloader
-    from services.audio_extractor import AudioExtractor
-    from services.transcription_service import TranscriptionService
-    from services.filler_detection_service import FillerDetectionService
-    from services.diarization_service import DiarizationService
-    
-    logger.info(f"Testing full pipeline for: {request.media_url}")
-    
-    downloader = MediaDownloader()
-    extractor = AudioExtractor()
-    transcriber = TranscriptionService()
-    filler_detector = FillerDetectionService()
-    diarizer = DiarizationService()
-    
-    try:
-        # Download video
-        video_path, error = downloader.download(str(request.media_url))
-        if error:
-            return {"status": "failed", "step": "download", "error": error}
-        
-        # Extract audio
-        audio_path, error = extractor.extract(video_path)
-        if error:
-            return {"status": "failed", "step": "extraction", "error": error}
-        
-        # Get duration
-        duration = extractor.get_audio_duration(audio_path)
-        
-        # Transcribe
-        logger.info("Starting transcription...")
-        transcription_result = transcriber.transcribe(audio_path)
-        word_count = transcriber.get_word_count(transcription_result["text"])
-        
-        # Detect fillers
-        logger.info("Detecting filler words...")
-        filler_results = filler_detector.detect_from_words(transcription_result["words"])
-        filler_summary = filler_detector.get_filler_summary(filler_results, duration)
-        
-        # Diarization
-        logger.info("Running speaker diarization...")
-        diarization_result = diarizer.diarize(audio_path)
-        cheating_assessment = diarizer.assess_cheating_risk(diarization_result, duration)
-        
-        return {
-            "status": "success",
-            "duration_seconds": duration,
-            "transcript": transcription_result["text"],
-            "word_count": word_count,
-            "filler_analysis": {
-                **filler_results,
-                **filler_summary
-            },
-            "speaker_analysis": {
-                **diarization_result,
-                **cheating_assessment
-            }
-        }
-    except Exception as e:
-        logger.error(f"Full pipeline test failed: {str(e)}")
-        return {"status": "failed", "error": str(e)}
-    finally:
-        downloader.cleanup()
-        extractor.cleanup()

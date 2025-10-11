@@ -53,44 +53,7 @@ async def process_interview(request: AudioProcessRequest):
         logger.error(f"Interview processing failed: {result.get('error')}")
     
     return result
-@router.post("/process", response_model=AudioProcessResponse)
-async def process_audio(request: AudioProcessRequest):
-    """
-    Process media from URL - Production endpoint
-    
-    Accepts both audio and video URLs. Automatically detects media type.
-    
-    Supported formats:
-    - Audio: MP3, WAV, M4A, AAC, OGG, FLAC
-    - Video: MP4, AVI, MOV, MKV, WEBM
-    
-    This endpoint:
-    1. Downloads media from URL (auto-detects audio vs video)
-    2. Extracts audio if video (skips if already audio)
-    3. Transcribes using Whisper
-    4. Detects filler words with timestamps
-    5. Performs speaker diarization
-    6. Assesses cheating risk
-    
-    Returns comprehensive analysis results
-    """
-    logger.info(f"Received media processing request")
-    logger.info(f"Media URL: {request.media_url}") 
-    logger.info(f"Session ID: {request.session_id}")
-    logger.info(f"Candidate ID: {request.candidate_id}")
-    
-    processor = AudioProcessingService()
-    
-    result = processor.process(
-        media_url=str(request.media_url),
-        session_id=request.session_id,
-        candidate_id=request.candidate_id
-    )
-    
-    if result["status"] == "failed":
-        logger.error(f"Processing failed: {result.get('error')}")
-    
-    return AudioProcessResponse(**result)
+
 
 @router.post("/transcribe")
 async def transcribe_media(request: AudioProcessRequest):
