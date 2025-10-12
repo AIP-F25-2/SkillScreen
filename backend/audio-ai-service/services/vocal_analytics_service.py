@@ -96,12 +96,17 @@ class VocalAnalyticsService:
             pitches, magnitudes = librosa.piptrack(y=audio, sr=sr)
             
             # Get pitch values where magnitude is highest
+            # Get pitch values where magnitude is highest
             pitch_values = []
             for t in range(pitches.shape[1]):
                 index = magnitudes[:, t].argmax()
                 pitch = pitches[index, t]
-                if pitch > 0:  # Valid pitch
+    
+    # Filter valid pitch range (human voice: 80-400 Hz)
+    # This excludes harmonics and noise
+                if 80 <= pitch <= 400:
                     pitch_values.append(pitch)
+           
             
             if len(pitch_values) == 0:
                 return {

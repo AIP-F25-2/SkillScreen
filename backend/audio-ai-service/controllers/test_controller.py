@@ -2,6 +2,11 @@ from fastapi import APIRouter
 from config import logger
 from schemas.audio_schemas import AudioProcessRequest, AudioProcessResponse 
 from services.audio_processing_service import AudioProcessingService
+from services.media_downloader import MediaDownloader
+from services.audio_extractor import AudioExtractor
+from services.transcription_service import TranscriptionService
+from services.filler_detection_service import FillerDetectionService
+
 
 router = APIRouter()
 
@@ -130,16 +135,15 @@ async def test_transcription(request: AudioProcessRequest):
         downloader.cleanup()
         extractor.cleanup()
 
-
 @router.post("/filler-detection")
 async def test_filler_detection(request: AudioProcessRequest):
-    """Test pipeline: download → extract → transcribe → filler detection"""
-    from services.media_downloader import MediaDownloader
-    from services.audio_extractor import AudioExtractor
-    from services.transcription_service import TranscriptionService
-    from services.filler_detection_service import FillerDetectionService
+    """
+    Test combined filler detection (linguistic + acoustic)
     
-    logger.info(f"Testing filler detection for: {request.media_url}")
+    Tests both transcript-based and audio-based filler detection
+    """
+    logger.info(f"Test: Combined filler detection")
+    logger.info(f"Media URL: {request.media_url}")
     
     downloader = MediaDownloader()
     extractor = AudioExtractor()
@@ -147,45 +151,55 @@ async def test_filler_detection(request: AudioProcessRequest):
     filler_detector = FillerDetectionService()
     
     try:
-        # Download video
-        video_path, error = downloader.download(str(request.media_url))
+        # Download
+        media_path, media_type, error = downloader.download(str(request.media_url))
         if error:
-            return {"status": "failed", "step": "download", "error": error}
+            return {"status": "failed", "error": error}
         
-        # Extract audio
-        audio_path, error = extractor.extract(video_path)
-        if error:
-            return {"status": "failed", "step": "extraction", "error": error}
+        # Extract audio if video
+        if media_type == 'audio':
+            audio_path = media_path
+        else:
+            audio_path, error = extractor.extract(media_path)
+            if error:
+                return {"status": "failed", "error": error}
         
         # Get duration
         duration = extractor.get_audio_duration(audio_path)
         
         # Transcribe
-        logger.info("Starting transcription...")
+        logger.info("Transcribing audio...")
         transcription_result = transcriber.transcribe(audio_path)
         
-        word_count = transcriber.get_word_count(transcription_result["text"])
+        # Combined filler detection
+        logger.info("Running combined filler detection...")
+        filler_results = filler_detector.detect_combined(
+            audio_path=audio_path,
+            word_timestamps=transcription_result["words"],
+            duration=duration
+        )
         
-        # Detect fillers
-        logger.info("Detecting filler words...")
-        filler_results = filler_detector.detect_from_words(transcription_result["words"])
-        filler_summary = filler_detector.get_filler_summary(filler_results, duration)
+        logger.info(f"Detection complete:")
+        logger.info(f"  Linguistic: {filler_results['linguistic_count']}")
+        logger.info(f"  Acoustic: {filler_results['acoustic_count']}")
+        logger.info(f"  Total: {filler_results['total_fillers']}")
         
         return {
             "status": "success",
+            "message": "Filler detection test completed",
+            "media_url": str(request.media_url),
             "duration_seconds": duration,
-            "transcript": transcription_result["text"],
-            "word_count": word_count,
-            "filler_analysis": {
-                **filler_results,
-                **filler_summary
-            }
+            "transcript_preview": transcription_result["text"][:200] + "...",
+            "filler_detection": filler_results
         }
+        
     except Exception as e:
-        logger.error(f"Filler detection test failed: {str(e)}")
+        logger.error(f"Test failed: {str(e)}", exc_info=True)
         return {"status": "failed", "error": str(e)}
+    
     finally:
         downloader.cleanup()
-        extractor.cleanup()
+        if media_type != 'audio':
+            extractor.cleanup()
 
 

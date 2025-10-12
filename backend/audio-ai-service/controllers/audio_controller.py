@@ -145,3 +145,5 @@ async def transcribe_media(request: AudioProcessRequest):
         downloader.cleanup()
         if media_type != 'audio':
             extractor.cleanup()
+
+          

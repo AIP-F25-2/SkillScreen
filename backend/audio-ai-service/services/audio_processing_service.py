@@ -8,6 +8,7 @@ from services.transcription_service import TranscriptionService
 from services.filler_detection_service import FillerDetectionService
 from services.diarization_service import DiarizationService
 from services.vocal_analytics_service import VocalAnalyticsService
+from services.confidence_analyzer import ConfidenceAnalyzer
 
 
 class TimeoutError(Exception):
@@ -29,6 +30,7 @@ class AudioProcessingService:
         self.filler_detector = FillerDetectionService()
         self.diarizer = DiarizationService()
         self.analytics_service = VocalAnalyticsService()
+        self.confidence_analyzer = ConfidenceAnalyzer()
     
     def process(self, media_url: str, session_id: Optional[str] = None, 
                 candidate_id: Optional[str] = None, 
@@ -47,6 +49,7 @@ class AudioProcessingService:
         """
         start_time = time.time()
         audio_path = None  # Track for analytics
+        media_type = None  # Initialize
         
         # Set timeout
         try:
@@ -98,18 +101,18 @@ class AudioProcessingService:
             word_count = self.transcriber.get_word_count(transcription_result["text"])
             logger.info(f"Transcription complete: {word_count} words")
             
-            # Step 4: Detect fillers (always run - it's fast)
-            logger.info("Step 4/6: Detecting filler words...")
+            # Step 4: Detect fillers (linguistic + acoustic)
+            logger.info("Step 4/6: Detecting filler words (linguistic + acoustic)...")
             filler_results = {}
-            filler_summary = {}
             if settings.ENABLE_FILLER_DETECTION:
-                filler_results = self.filler_detector.detect_from_words(
-                    transcription_result["words"]
+                filler_results = self.filler_detector.detect_combined(
+                    audio_path=audio_path,
+                    word_timestamps=transcription_result["words"],
+                    duration=duration
                 )
-                filler_summary = self.filler_detector.get_filler_summary(
-                    filler_results, duration
-                )
-                logger.info(f"Fillers detected: {filler_results['total_fillers']}")
+                logger.info(f"Fillers detected: {filler_results['total_fillers']} total")
+                logger.info(f"  - Linguistic: {filler_results['linguistic_count']}")
+                logger.info(f"  - Acoustic: {filler_results['acoustic_count']}")
             else:
                 logger.info("Filler detection disabled")
             
@@ -130,8 +133,9 @@ class AudioProcessingService:
             else:
                 logger.info("Diarization disabled")
             
-            # Step 6: Vocal Analytics (conditional - only if no cheating and requested)
+            # Step 6: Vocal Analytics & Confidence (conditional - only if no cheating and requested)
             vocal_analytics = {}
+            confidence_analysis = {}
             analytics_run = False
             
             if include_analytics:
@@ -140,16 +144,26 @@ class AudioProcessingService:
                 else:
                     logger.info("Step 6/6: Running vocal analytics...")
                     try:
+                        # Run vocal analytics
                         vocal_analytics = self.analytics_service.analyze(
                             audio_path=audio_path,
                             transcript=transcription_result["text"],
                             word_timestamps=transcription_result["words"],
                             duration=duration
                         )
+                        
+                        # Run confidence analysis
+                        logger.info("Analyzing confidence...")
+                        confidence_analysis = self.confidence_analyzer.analyze(
+                            vocal_analytics=vocal_analytics,
+                            filler_analysis=filler_results
+                        )
+                        
                         analytics_run = True
-                        logger.info("Vocal analytics completed")
+                        logger.info("Vocal analytics and confidence analysis completed")
+                        
                     except Exception as e:
-                        logger.error(f"Vocal analytics failed: {str(e)}")
+                        logger.error(f"Analytics failed: {str(e)}")
                         vocal_analytics = {"error": str(e)}
             else:
                 logger.info("Step 6/6: Analytics not requested - skipping")
@@ -158,44 +172,47 @@ class AudioProcessingService:
             logger.info(f"Processing complete in {processing_time:.2f} seconds")
             
             # Build response
-
             response = {
-    "status": "success",
-    "message": "Media processing completed successfully",
-    "media_url": media_url,
-    "media_type": media_type,
-    "session_id": session_id,
-    "candidate_id": candidate_id,
-    "transcript": transcription_result["text"],
-    "duration_seconds": duration,
-    "word_count": word_count,
-    "language": transcription_result.get("language", "en"),
-    "processing_time_seconds": round(processing_time, 2),
-    "analytics_run": analytics_run
-}
+                "status": "success",
+                "message": "Media processing completed successfully",
+                "media_url": media_url,
+                "media_type": media_type,
+                "session_id": session_id,
+                "candidate_id": candidate_id,
+                "transcript": transcription_result["text"],
+                "duration_seconds": duration,
+                "word_count": word_count,
+                "language": transcription_result.get("language", "en"),
+                "processing_time_seconds": round(processing_time, 2),
+                "analytics_run": analytics_run
+            }
             
             # Add cheating detection (top-level for visibility)
             response["cheating_detection"] = {
-    "cheating_detected": cheating_detected,
-    "risk_level": cheating_assessment.get("risk_level", "low") if cheating_assessment else "low",
-    "reason": cheating_assessment.get("reason", "Single speaker - normal") if cheating_assessment else "Single speaker - normal",
-    "num_speakers": diarization_result.get("num_speakers", 1) if diarization_result else 1,
-    "speaker_changes": cheating_assessment.get("speaker_changes", []) if cheating_assessment else []
-}
+                "cheating_detected": cheating_detected,
+                "risk_level": cheating_assessment.get("risk_level", "low") if cheating_assessment else "low",
+                "reason": cheating_assessment.get("reason", "Single speaker - normal") if cheating_assessment else "Single speaker - normal",
+                "num_speakers": diarization_result.get("num_speakers", 1) if diarization_result else 1,
+                "speaker_changes": cheating_assessment.get("speaker_changes", []) if cheating_assessment else []
+            }
             
+            # Add filler analysis
             if filler_results:
-                response["filler_analysis"] = {**filler_results, **filler_summary}
-
-# Add detailed speaker analysis (for reference)
+                response["filler_analysis"] = filler_results
+            
+            # Add detailed speaker analysis (for reference)
             if diarization_result:
                 response["speaker_analysis"] = {**diarization_result, **cheating_assessment}
-
-# Add vocal analytics (only if run)
+            
+            # Add vocal analytics (only if run)
             if vocal_analytics and analytics_run:
                 response["vocal_analytics"] = vocal_analytics
-
-            return response
             
+            # Add confidence analysis (only if run)
+            if confidence_analysis and analytics_run:
+                response["confidence_analysis"] = confidence_analysis
+            
+            return response
             
         except TimeoutError:
             logger.error(f"Processing timeout after {settings.PROCESSING_TIMEOUT_SECONDS}s")
@@ -216,7 +233,7 @@ class AudioProcessingService:
                 pass
             
             self.downloader.cleanup()
-            if media_type != 'audio':
+            if media_type and media_type != 'audio':
                 self.extractor.cleanup()
     
     def _error_response(self, media_url: str, step: str, error: str, 
