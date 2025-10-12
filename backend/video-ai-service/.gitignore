@@ -1,15 +1,15 @@
-client.html
-recordings/
-processed_videos/
-
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
 *$py.class
-
+*.pemx
 # C extensions
 *.so
+*copy.py
+Users/
+ultra_cfg/
+data/
+backup/
 
 # Distribution / packaging
 .Python
