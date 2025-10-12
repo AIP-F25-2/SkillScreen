@@ -9,6 +9,8 @@ from services.filler_detection_service import FillerDetectionService
 from services.diarization_service import DiarizationService
 from services.vocal_analytics_service import VocalAnalyticsService
 from services.confidence_analyzer import ConfidenceAnalyzer
+from services.communication_scorer import CommunicationScorer
+from services.reading_detector import ReadingDetector
 
 
 class TimeoutError(Exception):
@@ -31,6 +33,8 @@ class AudioProcessingService:
         self.diarizer = DiarizationService()
         self.analytics_service = VocalAnalyticsService()
         self.confidence_analyzer = ConfidenceAnalyzer()
+        self.communication_scorer = CommunicationScorer()
+        self.reading_detector = ReadingDetector()
     
     def process(self, media_url: str, session_id: Optional[str] = None, 
                 candidate_id: Optional[str] = None, 
@@ -159,8 +163,25 @@ class AudioProcessingService:
                             filler_analysis=filler_results
                         )
                         
+                        # Run reading detection
+                        logger.info("Detecting reading behavior...")
+                        reading_detection = self.reading_detector.detect(
+                        vocal_analytics=vocal_analytics,
+                        filler_analysis=filler_results
+                        )
+
+                        # Run communication scoring
+                        logger.info("Calculating communication score...")
+                        communication_score = self.communication_scorer.calculate(
+                        vocal_analytics=vocal_analytics,
+                        filler_analysis=filler_results,
+                        confidence_analysis=confidence_analysis,
+                        reading_detection=reading_detection
+                        )
+
                         analytics_run = True
-                        logger.info("Vocal analytics and confidence analysis completed")
+                        logger.info("Complete soft skills analysis finished")
+                        
                         
                     except Exception as e:
                         logger.error(f"Analytics failed: {str(e)}")
@@ -211,6 +232,18 @@ class AudioProcessingService:
             # Add confidence analysis (only if run)
             if confidence_analysis and analytics_run:
                 response["confidence_analysis"] = confidence_analysis
+
+            # Add confidence analysis (only if run)
+            if confidence_analysis and analytics_run:
+                response["confidence_analysis"] = confidence_analysis
+
+            # Add reading detection (only if run)
+            if reading_detection and analytics_run:
+                response["reading_detection"] = reading_detection
+
+            # Add communication score (only if run)
+            if communication_score and analytics_run:
+                response["communication_score"] = communication_score    
             
             return response
             
