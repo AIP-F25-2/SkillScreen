@@ -276,7 +276,7 @@ class VideoAnalyzer:
         if not ts:
             ts = uuid.uuid4().hex[:8]
         out_video_name = (f"{user_id}_{ts}_annotated{in_ext}") if user_id else f"{ts}_annotated{in_ext}"
-        out_json_name = (f"{user_id}_report.json") if user_id else "report.json"
+        out_json_name = (f"{user_id}_{ts}_report.json") if user_id else f"{ts}_report.json"
 
         out_video = os.path.join(user_proc_dir, out_video_name)
         writer = cv2.VideoWriter(out_video, self._fourcc(), in_fps, (in_w, in_h)) if settings.DRAW_ANNOTATIONS else None
