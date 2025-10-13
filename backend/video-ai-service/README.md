@@ -40,7 +40,7 @@ uvicorn app.main:app --reload
 
 ### API
 - `POST /analyze` -> `{ "input_path": "path/to/video.mp4" }` returns JSON with segments and summary.
-- `POSTMAN Link` ->  [POSTMAN LINK](https://.postman.co/workspace/My-Workspace~d654d325-098b-43d3-8bdc-459980921bae/collection/6664275-6add62e5-a00b-4ca0-9011-476c055919fc?action=share&creator=6664275&active-environment=6664275-e6f7adea-8fee-4210-a355-a4ed73b3705f) to test all the endpoints.
+- `POSTMAN Link` ->  [POSTMAN LINK](https://web.postman.co/workspace/My-Workspace~d654d325-098b-43d3-8bdc-459980921bae/collection/6664275-6add62e5-a00b-4ca0-9011-476c055919fc?action=share&source=copy-link&creator=6664275) to test all the endpoints.
 
 ### Notes
 - Uses **Ultralytics YOLO** for faces/persons/objects; swap model paths in `.env`.
