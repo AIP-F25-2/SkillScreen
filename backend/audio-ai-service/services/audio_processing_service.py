@@ -140,8 +140,10 @@ class AudioProcessingService:
             # Step 6: Vocal Analytics & Confidence (conditional - only if no cheating and requested)
             vocal_analytics = {}
             confidence_analysis = {}
+            reading_detection = {}
+            communication_score = {}
             analytics_run = False
-            
+
             if include_analytics:
                 if cheating_detected:
                     logger.warning("Cheating detected - skipping vocal analytics")
@@ -229,10 +231,6 @@ class AudioProcessingService:
             if vocal_analytics and analytics_run:
                 response["vocal_analytics"] = vocal_analytics
             
-            # Add confidence analysis (only if run)
-            if confidence_analysis and analytics_run:
-                response["confidence_analysis"] = confidence_analysis
-
             # Add confidence analysis (only if run)
             if confidence_analysis and analytics_run:
                 response["confidence_analysis"] = confidence_analysis

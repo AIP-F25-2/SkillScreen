@@ -102,8 +102,8 @@ class VocalAnalyticsService:
                 index = magnitudes[:, t].argmax()
                 pitch = pitches[index, t]
     
-    # Filter valid pitch range (human voice: 80-400 Hz)
-    # This excludes harmonics and noise
+                # Filter valid pitch range (human voice: 80-400 Hz)
+                # This excludes harmonics and noise
                 if 80 <= pitch <= 400:
                     pitch_values.append(pitch)
            

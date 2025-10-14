@@ -41,47 +41,60 @@ class ReadingDetector:
             reading_score = 0  # 0 = natural, 10 = definitely reading
             indicators = []
             confidence_level = "low"
-            
-            # 1. Filler Rate Analysis (30% weight)
+
+            # Track individual category scores
+            filler_score = 0
+            pitch_score = 0
+            pause_score = 0
+            pace_score = 0
+
+            # 1. Filler Rate Analysis (40% weight - 4 points max)
             if filler_rate < 1.0:
-                reading_score += 3
-                indicators.append(f"Very low filler rate ({filler_rate:.2f}/min) - scripted speech typically has minimal fillers")
-            
-            if acoustic_filler_count == 0:
+                filler_score += 2
                 reading_score += 2
+                indicators.append(f"Very low filler rate ({filler_rate:.2f}/min) - scripted speech typically has minimal fillers")
+
+            if acoustic_filler_count == 0:
+                filler_score += 1
+                reading_score += 1
                 indicators.append("No acoustic fillers (um/uh) detected - natural speech contains these disfluencies")
-            
+
             if linguistic_filler_count == 0:
+                filler_score += 1
                 reading_score += 1
                 indicators.append("No linguistic fillers - unnaturally clean speech")
-            
-            # 2. Pitch Monotony Analysis (25% weight)
+
+            # 2. Pitch Monotony Analysis (30% weight - 3 points max)
             if pitch_std < 30:
+                pitch_score += 2
                 reading_score += 2
                 indicators.append(f"Monotone delivery (pitch std: {pitch_std:.1f}Hz) - reading lacks natural pitch variation")
-            
+
             if pitch_range < 100:
+                pitch_score += 1
                 reading_score += 1
                 indicators.append(f"Very narrow pitch range ({pitch_range:.1f}Hz) - indicates flat, scripted delivery")
-            
-            # 3. Pause Pattern Analysis (25% weight)
+
+            # 3. Pause Pattern Analysis (20% weight - 2 points max)
             if avg_pause < 0.5:
-                reading_score += 2
+                pause_score += 1
+                reading_score += 1
                 indicators.append(f"Very short pauses ({avg_pause:.2f}s avg) - no thinking time, continuous reading flow")
-            
+
             if pause_rate < 3:
+                pause_score += 1
                 reading_score += 1
                 indicators.append(f"Very few pauses ({pause_rate:.1f}/min) - unusually continuous speech")
-            
-            # 4. Speaking Rate Consistency (20% weight)
-            # Reading often results in consistent moderate pace
+
+            # 4. Speaking Rate Consistency (10% weight - 1 point max)
+            # Reading often results in consistent moderate pace or very slow deliberate pace
             if pace == "moderate" and 130 <= wpm <= 145:
+                pace_score += 1
                 reading_score += 1
                 indicators.append(f"Consistent reading pace detected ({wpm:.1f} WPM)")
-            
-            # Very slow pace might also indicate reading with difficulty
-            if pace == "slow" and wpm < 100:
-                reading_score += 0.5
+            elif pace == "slow" and wpm < 100:
+                pace_score += 1
+                reading_score += 1
                 indicators.append(f"Slow, deliberate pace ({wpm:.1f} WPM) - may indicate reading unfamiliar text")
             
             # Calculate reading probability (0-100%)
@@ -132,10 +145,12 @@ class ReadingDetector:
                     "words_per_minute": round(wpm, 1)
                 },
                 "score_breakdown": {
-                    "filler_score": min(6, reading_score if filler_rate < 1 else 0),
-                    "pitch_score": min(3, reading_score if pitch_std < 30 else 0),
-                    "pause_score": min(3, reading_score if avg_pause < 0.5 else 0),
-                    "total_score": round(reading_score, 1)
+                    "filler_score": filler_score,
+                    "pitch_score": pitch_score,
+                    "pause_score": pause_score,
+                    "pace_score": pace_score,
+                    "total_score": reading_score,
+                    "max_possible_score": 10
                 }
             }
             
