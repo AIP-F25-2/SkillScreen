@@ -6,44 +6,54 @@ from services.audio_processing_service import AudioProcessingService
 router = APIRouter()
 
 
-@router.post("/process", response_model=AudioProcessResponse)
-async def process_audio(request: AudioProcessRequest):
+@router.post("/process-interview")
+async def process_interview(request: AudioProcessRequest):
     """
-    Process media from URL - Production endpoint
+    Complete interview analysis endpoint
     
-    Accepts both audio and video URLs. Automatically detects media type.
+    This is the main endpoint for production interview processing.
+    Always includes vocal analytics unless cheating is detected.
     
-    Supported formats:
-    - Audio: MP3, WAV, M4A, AAC, OGG, FLAC
-    - Video: MP4, AVI, MOV, MKV, WEBM
+    Pipeline:
+    1. Download, detects and extract media type (audio vs video)
+    2. Transcribe with Whisper
+    3. Detect filler words
+    4. Speaker diarization
+    5. Check for cheating
+    6. IF no cheating → Run vocal analytics (speaking rate, pitch, energy, pauses)
+    7. Return complete results
     
-    This endpoint:
-    1. Downloads media from URL (auto-detects audio vs video)
-    2. Extracts audio if video (skips if already audio)
-    3. Transcribes using Whisper
-    4. Detects filler words with timestamps
-    5. Performs speaker diarization
-    6. Assesses cheating risk
+    Processing time: 5-10 minutes for 5-minute interview
     
-    Returns comprehensive analysis results
+    Use cases:
+    - Called by interview orchestration service after interview submission
+    - Results sent to next service for assessment
     """
-    logger.info(f"Received media processing request")
-    logger.info(f"Media URL: {request.media_url}") 
+    logger.info(f"Interview processing request received")
+    logger.info(f"Media URL: {request.media_url}")
     logger.info(f"Session ID: {request.session_id}")
     logger.info(f"Candidate ID: {request.candidate_id}")
     
     processor = AudioProcessingService()
     
+    # Always include analytics for interview processing
     result = processor.process(
         media_url=str(request.media_url),
         session_id=request.session_id,
-        candidate_id=request.candidate_id
+        candidate_id=request.candidate_id,
+        include_analytics=True  # Always run analytics (unless cheating detected)
     )
     
-    if result["status"] == "failed":
-        logger.error(f"Processing failed: {result.get('error')}")
+    # Log key results
+    if result["status"] == "success":
+        logger.info(f"Interview processing completed")
+        logger.info(f"Cheating detected: {result.get('cheating_detected', False)}")
+        logger.info(f"Analytics run: {result.get('analytics_run', False)}")
+    else:
+        logger.error(f"Interview processing failed: {result.get('error')}")
     
-    return AudioProcessResponse(**result)
+    return result
+
 
 @router.post("/transcribe")
 async def transcribe_media(request: AudioProcessRequest):
@@ -135,3 +145,5 @@ async def transcribe_media(request: AudioProcessRequest):
         downloader.cleanup()
         if media_type != 'audio':
             extractor.cleanup()
+
+          

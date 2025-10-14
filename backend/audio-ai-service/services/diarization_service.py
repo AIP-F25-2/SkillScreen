@@ -121,26 +121,50 @@ class DiarizationService:
         
         # Calculate speaking time per speaker
         speaker_times = {}
+        speaker_segment_counts = {}  # Track number of segments per speaker
+        
         for segment in segments:
             speaker = segment["speaker"]
             duration = segment["duration"]
             speaker_times[speaker] = speaker_times.get(speaker, 0) + duration
+            speaker_segment_counts[speaker] = speaker_segment_counts.get(speaker, 0) + 1
+        
+        # Filter out likely noise (very short speaking time)
+        NOISE_THRESHOLD = 0.03  # Speakers with <3% total time likely noise
+        filtered_speakers = {}
+        noise_speakers = []
+        
+        for speaker, time in speaker_times.items():
+            percentage = (time / duration_seconds) * 100
+            
+            if percentage < (NOISE_THRESHOLD * 100):
+                # Likely noise/background
+                noise_speakers.append(speaker)
+                logger.info(f"{speaker} filtered as noise ({percentage:.1f}% speaking time)")
+            else:
+                filtered_speakers[speaker] = time
+        
+        # Recalculate with filtered speakers
+        actual_num_speakers = len(filtered_speakers)
         
         # Sort speakers by speaking time (descending)
-        sorted_speakers = sorted(speaker_times.items(), key=lambda x: x[1], reverse=True)
+        sorted_speakers = sorted(filtered_speakers.items(), key=lambda x: x[1], reverse=True)
         
         # Analysis
         is_suspicious = False
         risk_level = "low"
         reason = "Single speaker detected - normal interview"
         
-        if num_speakers == 1:
-            # Only one speaker - normal
+        if actual_num_speakers == 1:
+            # Only one real speaker (others were noise)
             risk_level = "low"
-            reason = "Single speaker detected throughout interview"
+            if len(noise_speakers) > 0:
+                reason = f"Single speaker detected (filtered {len(noise_speakers)} background noise)"
+            else:
+                reason = "Single speaker detected throughout interview"
         
-        elif num_speakers == 2:
-            # Two speakers - check if it's interviewer + candidate pattern
+        elif actual_num_speakers == 2:
+            # Two real speakers - check if it's interviewer + candidate pattern
             primary_speaker_time = sorted_speakers[0][1]
             secondary_speaker_time = sorted_speakers[1][1]
             
@@ -166,24 +190,33 @@ class DiarizationService:
                 risk_level = "medium"
                 reason = f"Two speakers: Primary {primary_percentage:.1f}%, Secondary {secondary_percentage:.1f}% - unusual distribution, possible coaching"
         
-        elif num_speakers > 2:
+        elif actual_num_speakers > 2:
             # More than 2 speakers - definitely suspicious
             is_suspicious = True
             risk_level = "high"
-            reason = f"{num_speakers} speakers detected - likely external assistance"
+            reason = f"{actual_num_speakers} speakers detected - likely external assistance"
         
         speaker_changes = self.detect_speaker_changes(segments)
+        
+        # Filter speaker changes to only include non-noise speakers
+        filtered_speaker_changes = [
+            change for change in speaker_changes 
+            if change["from_speaker"] not in noise_speakers 
+            and change["to_speaker"] not in noise_speakers
+        ]
         
         return {
             "cheating_flag": is_suspicious,
             "risk_level": risk_level,
             "reason": reason,
-            "num_speakers": num_speakers,
-            "speaker_times": speaker_times,
+            "num_speakers": actual_num_speakers,  # Filtered count
+            "num_speakers_raw": num_speakers,  # Original count before filtering
+            "noise_filtered": len(noise_speakers),
+            "speaker_times": filtered_speakers,
             "speaker_time_percentages": {
                 speaker: round((time / duration_seconds) * 100, 2) 
-                for speaker, time in speaker_times.items()
+                for speaker, time in filtered_speakers.items()
             },
-            "speaker_changes": speaker_changes,
-            "total_speaker_changes": len(speaker_changes)
+            "speaker_changes": filtered_speaker_changes,
+            "total_speaker_changes": len(filtered_speaker_changes)
         }
