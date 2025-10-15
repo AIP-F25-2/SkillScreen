@@ -11,6 +11,12 @@ from typing import Dict, Any, Optional
 import time
 import base64
 from io import BytesIO
+import sys
+import os
+
+# Add the backend utils to the path
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'backend', 'interview-service', 'utils'))
+from resume_parser import resume_parser
 
 # Try to import reportlab for PDF generation
 try:
@@ -164,6 +170,39 @@ def main():
     
     st.markdown("---")
     
+    # Display parsed data in main frame
+    if 'parsed_resume' in st.session_state or 'parsed_job' in st.session_state:
+        st.subheader("🔍 Parsed Data Review")
+        st.info("📋 Review the extracted information before starting the interview")
+        
+        # Parsing methodology note removed for cleaner UI
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if 'parsed_resume' in st.session_state:
+                st.markdown("### 📄 Parsed Resume")
+                resume = st.session_state.parsed_resume
+                st.write(f"**Name:** {resume['name']}")
+                st.write(f"**Email:** {resume['email']}")
+                st.write(f"**Phone:** {resume['phone']}")
+                st.write(f"**Experience:** {resume['experience_years']} years")
+                st.write(f"**Skills Found:** {', '.join(resume['skills'])}")
+                with st.expander("View Full Resume Data"):
+                    st.json(resume)
+        
+        with col2:
+            if 'parsed_job' in st.session_state:
+                st.markdown("### 💼 Parsed Job")
+                job = st.session_state.parsed_job
+                st.write(f"**Position:** {job['title']}")
+                st.write(f"**Required Skills:** {', '.join(job['required_skills'])}")
+                st.write(f"**Experience Level:** {job['experience_level']}")
+                with st.expander("View Full Job Data"):
+                    st.json(job)
+        
+        st.markdown("---")
+    
     # Initialize session state
     if 'current_session_id' not in st.session_state:
         st.session_state.current_session_id = None
@@ -199,18 +238,59 @@ def main():
         with col1:
             if st.button("📄 Parse Resume", use_container_width=True):
                 if resume_file or resume_text:
-                    # Simple parsing for demo
+                    import re
+                    from datetime import datetime
+                    
+                    # Extract text from PDF if file is uploaded
+                    if resume_file is not None:
+                        try:
+                            import io
+                            # Use OpenResume-based PDF parser
+                            parsed_data = resume_parser.parse_resume_from_pdf(resume_file)
+                            resume_text = parsed_data['raw_text']
+                            pdf_parsed = True
+                            st.success("✅ PDF parsed using OpenResume-based parser")
+                        except Exception as e:
+                            st.warning(f"⚠️ OpenResume parser failed: {str(e)}")
+                            # Fallback to basic extraction
+                            try:
+                                import PyPDF2
+                                pdf_reader = PyPDF2.PdfReader(resume_file)
+                                resume_text = ""
+                                for page in pdf_reader.pages:
+                                    resume_text += page.extract_text() + "\n"
+                                pdf_parsed = True
+                                st.success("✅ PDF parsed using basic text extraction")
+                            except Exception as e:
+                                st.warning(f"⚠️ Basic extraction failed: {str(e)}")
+                                
+                        except Exception as e:
+                            st.error(f"❌ Error reading PDF file: {str(e)}")
+                            st.info("💡 **Tip**: Try copying and pasting the text content instead of uploading the PDF file.")
+                            return
+                    else:
+                        # Use pasted text
+                        resume_text = resume_text or ""
+                    
+                    # Use OpenResume-based parser
+                    parsed_data = resume_parser.parse_resume(resume_text)
+                    
                     parsed_resume = {
-                        "name": "Candidate",  # In real app, you'd parse this
-                        "email": "candidate@example.com",
+                        "name": parsed_data['name'] or "Candidate",
+                        "email": parsed_data['email'] or "candidate@example.com",
+                        "phone": parsed_data['phone'] or "Not provided",
                         "resume_text": resume_text or "Resume uploaded",
-                        "experience_years": 3,  # In real app, you'd extract this
-                        "skills": ["Python", "FastAPI", "Streamlit"]  # In real app, you'd extract this
+                        "experience_years": parsed_data['experience_years'],
+                        "skills": parsed_data['skills'] if parsed_data['skills'] else ["General"],
+                        "education": parsed_data['education'],
+                        "work_experience": parsed_data['work_experience'],
+                        "parsing_method": "OpenResume-based parser (Tang, 2024)"
                     }
                     
                     candidate_id = create_candidate(parsed_resume)
                     if candidate_id:
                         st.session_state.candidate_id = candidate_id
+                        st.session_state.parsed_resume = parsed_resume
                         st.success("✅ Resume parsed and candidate created!")
                     else:
                         st.error("❌ Failed to create candidate")
@@ -220,22 +300,53 @@ def main():
         with col2:
             if st.button("💼 Parse Job", use_container_width=True):
                 if job_title and company_name and job_description:
+                    import re
+                    
+                    # Extract skills from job description
+                    job_lower = job_description.lower()
+                    
+                    # Common tech skills to look for (using regex for word boundaries)
+                    tech_skills = ['python', 'java', 'javascript', 'c\\+\\+', 'sql', 'fastapi', 'django', 
+                                   'flask', 'react', 'vue', 'angular', 'node', 'mongodb', 'postgresql',
+                                   'machine learning', 'deep learning', 'nlp', 'computer vision',
+                                   'data science', 'data analysis', 'tableau', 'power bi', 'excel',
+                                   'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'git', 'streamlit',
+                                   'tensorflow', 'pytorch', 'pandas', 'numpy', 'scikit-learn', 'ml']
+                    
+                    required_skills = []
+                    for skill in tech_skills:
+                        if re.search(rf'\b{skill}\b', job_lower):
+                            # Clean up display name
+                            display_skill = skill.replace('\\+\\+', '++').title()
+                            if display_skill not in required_skills:
+                                required_skills.append(display_skill)
+                    
+                    # Determine experience level
+                    if 'senior' in job_lower or 'lead' in job_lower:
+                        exp_level = "senior"
+                    elif 'junior' in job_lower or 'entry' in job_lower or 'intern' in job_lower:
+                        exp_level = "junior"
+                    else:
+                        exp_level = "mid"
+                    
                     job_data = {
                         "title": job_title,
                         "company": company_name,
                         "description": job_description,
-                        "required_skills": ["Python", "FastAPI"],  # In real app, you'd extract this
-                        "experience_level": "mid"
+                        "required_skills": required_skills if required_skills else ["General"],
+                        "experience_level": exp_level
                     }
                     
                     job_id = create_job(job_data)
                     if job_id:
                         st.session_state.job_id = job_id
+                        st.session_state.parsed_job = job_data
                         st.success("✅ Job created successfully!")
                     else:
                         st.error("❌ Failed to create job")
                 else:
                     st.error("❌ Please fill in job title, company, and description")
+        
         
         # Start interview button
         if st.session_state.candidate_id and st.session_state.job_id:
@@ -254,6 +365,8 @@ def main():
                                 "role": "assistant",
                                 "content": result["first_question"]
                             })
+                            # Mark that we've added the first question
+                            st.session_state.first_question_added = True
                             
                             st.success("✅ Interview started successfully!")
                             st.rerun()
@@ -368,11 +481,13 @@ def show_interview_interface():
                             if result.get("ai_generated_count", 0) > 0:
                                 st.info(f"🤖 AI-generated content detected: {result['ai_generated_count']}")
                             
-                            # Add next question
-                            st.session_state.interview_messages.append({
-                                "role": "assistant",
-                                "content": result["next_question"]
-                            })
+                            # Add next question only if it's different from current question
+                            current_question = st.session_state.interview_messages[-1]["content"] if st.session_state.interview_messages else ""
+                            if result["next_question"] != current_question:
+                                st.session_state.interview_messages.append({
+                                    "role": "assistant",
+                                    "content": result["next_question"]
+                                })
                             st.rerun()
                         elif result["status"] == "completed":
                             # Interview completed

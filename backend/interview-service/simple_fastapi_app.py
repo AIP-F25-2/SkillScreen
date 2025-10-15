@@ -12,6 +12,9 @@ import json
 import uuid
 from datetime import datetime
 import os
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), 'utils'))
+from resume_parser import resume_parser
 
 # Simple models for testing
 class CandidateCreate(BaseModel):
@@ -305,7 +308,8 @@ async def start_interview(request: InterviewStart):
         "current_question": "Tell me about yourself and your experience with this role.",
         "question_history": [],
         "response_history": [],
-        "total_score": 0.0
+        "total_score": 0.0,
+        "candidate_name_from_intro": None  # Will be extracted from first response
     }
     
     return {
@@ -336,6 +340,27 @@ async def submit_response(session_id: str, response: InterviewResponse):
     # Add response to history
     session["response_history"].append(response.response_text)
     session["responses_received"] += 1
+    
+    # Extract candidate name from first response (introduction)
+    if session["responses_received"] == 1 and not session.get("candidate_name_from_intro"):
+        intro_text = response.response_text.lower()
+        # Look for common introduction patterns
+        name_patterns = [
+            r"i am ([a-zA-Z\s]+)",
+            r"my name is ([a-zA-Z\s]+)",
+            r"i'm ([a-zA-Z\s]+)",
+            r"this is ([a-zA-Z\s]+)"
+        ]
+        
+        for pattern in name_patterns:
+            import re
+            match = re.search(pattern, intro_text)
+            if match:
+                extracted_name = match.group(1).strip().title()
+                # Clean up the name (remove extra words)
+                if len(extracted_name.split()) <= 3 and not any(word in extracted_name.lower() for word in ['an', 'a', 'the', 'and', 'with']):
+                    session["candidate_name_from_intro"] = extracted_name
+                    break
     
     # Enhanced scoring with anti-cheating detection
     response_text = response.response_text
@@ -378,7 +403,12 @@ async def submit_response(session_id: str, response: InterviewResponse):
         'utilize', 'facilitate', 'implement', 'optimize', 'leverage',
         'i\'m currently pursuing', 'my key strengths are', 'i\'m drawn to this role',
         'one of the most challenging', 'my approach is', 'i\'m most comfortable',
-        'i start by', 'i ensure', 'the biggest trends'
+        'i start by', 'i ensure', 'the biggest trends', 'i stay adaptable',
+        'which helps me perform well', 'i\'m also good at', 'i\'m passionate about',
+        'this aligns perfectly', 'i believe that', 'i\'m excited about',
+        'i would approach this', 'i have experience with', 'i\'m proficient in',
+        'i can contribute to', 'i\'m looking forward to', 'i\'m committed to',
+        'i have a strong foundation', 'i\'m confident that', 'i bring to the table'
     ]
     
     response_lower = response_text.lower()
@@ -392,8 +422,8 @@ async def submit_response(session_id: str, response: InterviewResponse):
         (len(response_text.split('\n')) >= 3 and response_text.count(':') >= 2)  # Structured format
     )
     
-    # Flag as AI-generated if multiple indicators OR perfect structure
-    if ai_count >= 2 or has_perfect_structure:
+    # Flag as AI-generated if any indicators OR perfect structure (more sensitive)
+    if ai_count >= 1 or has_perfect_structure:
         is_ai_generated = True
     
     # Apply penalties
@@ -460,39 +490,29 @@ async def submit_response(session_id: str, response: InterviewResponse):
                 "total_questions": session["questions_asked"],
                 "total_responses": session["responses_received"],
                 "average_score": round(avg_score, 2),
-                "recommendation": "Strong Consider" if avg_score >= 7.0 else "Consider" if avg_score >= 5.0 else "Do Not Hire"
+                "recommendation": "Strong Consider" if avg_score >= 7.0 else "Do Not Hire"
             }
         }
     else:
-        # Generate next question based on interview round
-        # Round 1: General Questions (1-3)
-        # Round 2: Technical Questions (4-6) 
-        # Round 3: Theoretical Questions (7-9)
+        # Generate next question based on resume and job description
+        candidate = candidates_db.get(session["candidate_id"], {})
+        job = jobs_db.get(session["job_id"], {})
         
-        question_round = min(3, (session["responses_received"] // 3) + 1)
+        # Get resume data
+        resume_text = candidate.get("resume_text", "")
+        job_description = job.get("description", "")
+        required_skills = job.get("required_skills", [])
         
-        if question_round == 1:  # General Questions
-            questions = [
-                "Tell me about yourself and your experience with this role.",
-                "What are your key strengths for this position?",
-                "Why are you interested in this role and our company?"
-            ]
-        elif question_round == 2:  # Technical Questions
-            questions = [
-                "Describe a challenging technical project you worked on.",
-                "How do you approach debugging and problem-solving?",
-                "What technologies and tools are you most comfortable with?"
-            ]
-        else:  # Theoretical Questions
-            questions = [
-                "Explain your approach to system design and architecture.",
-                "How do you ensure code quality and maintainability?",
-                "What industry trends do you think will shape this field?"
-            ]
+        # Generate contextual questions based on data
+        next_question = generate_contextual_question(
+            session["responses_received"], 
+            candidate, 
+            job, 
+            resume_text, 
+            job_description, 
+            required_skills
+        )
         
-        # Get question based on position within the round
-        round_position = session["responses_received"] % 3
-        next_question = questions[round_position] if round_position < len(questions) else "Thank you for your time. The interview is complete."
         session["current_question"] = next_question
         session["questions_asked"] += 1
         session["question_history"].append(next_question)
@@ -505,7 +525,8 @@ async def submit_response(session_id: str, response: InterviewResponse):
             "response_received": response.response_text,
             "warnings": warnings if warnings else None,
             "duplicate_count": session.get("duplicate_count", 0),
-            "ai_generated_count": session.get("ai_generated_count", 0)
+            "ai_generated_count": session.get("ai_generated_count", 0),
+            "candidate_name_from_intro": session.get("candidate_name_from_intro")
         }
 
 @app.get("/interviews/{session_id}/summary")
@@ -535,12 +556,12 @@ async def get_interview_summary(session_id: str):
     
     return InterviewSummaryResponse(
         session_id=session_id,
-        candidate_name=session["candidate_name"],
+        candidate_name=session.get("candidate_name_from_intro") or session["candidate_name"],
         job_title=session["job_title"],
         total_questions=session["questions_asked"],
         total_responses=session["responses_received"],
         overall_score=round(avg_score, 2),
-        recommendation="Strong Consider" if avg_score >= 7.0 else "Consider" if avg_score >= 5.0 else "Do Not Hire",
+        recommendation="Strong Consider" if avg_score >= 7.0 else "Do Not Hire",
         summary=f"Interview completed for {session['candidate_name']} for {session['job_title']} position. Average score: {avg_score:.2f}/10.",
         strengths=["Good communication", "Relevant experience"] if avg_score >= 6.0 else ["Participated in interview"],
         areas_for_improvement=["Could provide more specific examples"] if avg_score < 7.0 else ["Continue professional development"],
@@ -588,12 +609,97 @@ async def get_ai_generated_summary(session_id: str):
     
     return {
         "session_id": session_id,
-        "candidate_name": session["candidate_name"],
+        "candidate_name": session.get("candidate_name_from_intro") or session["candidate_name"],
         "job_title": session["job_title"],
         "ai_summary": ai_summary,
         "overall_score": round(avg_score, 2),
-        "recommendation": "Strong Consider" if avg_score >= 7.0 else "Consider" if avg_score >= 5.0 else "Do Not Hire"
+        "recommendation": "Strong Consider" if avg_score >= 7.0 else "Do Not Hire"
     }
+
+def generate_contextual_question(question_number, candidate, job, resume_text, job_description, required_skills):
+    """Generate contextual questions based on resume and job description"""
+    
+    # Question 1: Always introduction
+    if question_number == 0:
+        return "Tell me about yourself and your experience with this role."
+    
+    # Question 2: Based on resume experience
+    if question_number == 1:
+        if resume_text and any(word in resume_text.lower() for word in ['project', 'developed', 'built', 'created']):
+            return "I see you've worked on several projects. Can you tell me about a specific project you're most proud of and what challenges you faced?"
+        else:
+            return "What are your key strengths for this position?"
+    
+    # Question 3: Based on job requirements (avoid mentioning skills not in job description)
+    if question_number == 2:
+        if required_skills:
+            # Only mention skills that are actually in the job description
+            job_skills = []
+            for skill in required_skills:
+                if skill.lower() in job_description.lower():
+                    job_skills.append(skill)
+            
+            if job_skills:
+                skills_str = ", ".join(job_skills[:3])
+                return f"This role requires expertise in {skills_str}. How do your current skills align with these requirements?"
+            else:
+                return "Why are you interested in this role and our company?"
+        else:
+            return "Why are you interested in this role and our company?"
+    
+    # Question 4: Technical depth based on resume
+    if question_number == 3:
+        if resume_text and any(word in resume_text.lower() for word in ['python', 'java', 'javascript', 'sql', 'machine learning', 'data']):
+            return "Describe a challenging technical problem you solved recently. What approach did you take and what was the outcome?"
+        else:
+            return "How do you approach debugging and problem-solving in your work?"
+    
+    # Question 5: Industry/domain specific
+    if question_number == 4:
+        if job_description:
+            if 'data' in job_description.lower():
+                return "How do you ensure data quality and accuracy in your work?"
+            elif 'software' in job_description.lower():
+                return "What development methodologies do you follow, and how do you ensure code quality?"
+            elif 'analysis' in job_description.lower():
+                return "Can you walk me through your analytical process when approaching a new problem?"
+            else:
+                return "What technologies and tools are you most comfortable with?"
+        else:
+            return "What technologies and tools are you most comfortable with?"
+    
+    # Question 6: Experience-based
+    if question_number == 5:
+        if resume_text and any(word in resume_text.lower() for word in ['team', 'collaborate', 'lead', 'manage']):
+            return "Tell me about a time when you had to work with a difficult team member or stakeholder. How did you handle the situation?"
+        else:
+            return "How do you stay updated with the latest trends and technologies in your field?"
+    
+    # Question 7: Problem-solving approach
+    if question_number == 6:
+        if required_skills and len(required_skills) > 0:
+            # Only mention skills that are in the job description
+            job_skills = [skill for skill in required_skills if skill.lower() in job_description.lower()]
+            if job_skills:
+                return f"Given that this role involves working with {job_skills[0]}, how would you approach learning a new technology or skill that you haven't used before?"
+            else:
+                return "How would you approach learning a new technology or skill that you haven't used before?"
+        else:
+            return "Explain your approach to system design and architecture."
+    
+    # Question 8: Future and growth
+    if question_number == 7:
+        return "Where do you see yourself in 3-5 years, and how does this role align with your career goals?"
+    
+    # Question 9: Final behavioral question instead of asking if they have questions
+    if question_number == 8:
+        if resume_text and any(word in resume_text.lower() for word in ['project', 'team', 'developed']):
+            return "Tell me about a time when you had to overcome a significant challenge or setback in your work. What did you learn from that experience?"
+        else:
+            return "What motivates you most in your professional life, and how does this role align with those motivations?"
+    
+    # Fallback
+    return "Thank you for your time and for sharing your experiences with us today."
 
 def generate_human_like_summary(session, candidate, job, avg_score):
     """Generate a human-like interview summary"""
@@ -667,37 +773,39 @@ def generate_human_like_summary(session, candidate, job, avg_score):
             "Consider entry-level positions to build experience"
         ]
     
-    # Generate the human-like summary
-    summary = f"""
-Dear {session['candidate_name']},
+    # Use extracted name if available, otherwise fallback to stored name
+    display_name = session.get("candidate_name_from_intro") or session['candidate_name']
+    
+    # Generate the human-like summary with better formatting
+    summary = f"""Dear {display_name},
 
 Thank you for taking the time to interview for the {session['job_title']} position. I wanted to share some feedback from our conversation to help you in your professional development.
 
-**Overall Assessment:**
+OVERALL ASSESSMENT
 Your interview performance was {tone}, with an average score of {avg_score:.1f}/10 across {session['responses_received']} questions. Based on your responses, I would {recommendation} for this position.
 
-**What Went Well:**
+WHAT WENT WELL
 """
     
     for strength in strengths:
         summary += f"• You {strength}\n"
     
     summary += f"""
-**Areas for Improvement:**
+AREAS FOR IMPROVEMENT
 """
     
     for weakness in weaknesses:
         summary += f"• You {weakness}\n"
     
     summary += f"""
-**Recommendations for Growth:**
+RECOMMENDATIONS FOR GROWTH
 """
     
     for suggestion in suggestions:
         summary += f"• {suggestion}\n"
     
     summary += f"""
-**Next Steps:**
+NEXT STEPS
 Based on your performance, I would suggest focusing on the areas mentioned above. If you're interested in this role, I'd recommend reaching out to discuss how we can support your development in these areas.
 
 Thank you again for your interest in joining our team. I wish you the best in your career journey.
