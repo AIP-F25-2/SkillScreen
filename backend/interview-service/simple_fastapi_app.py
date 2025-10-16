@@ -14,12 +14,12 @@ from datetime import datetime
 import os
 import asyncio
 
-# Import LLM service for advanced question generation
+# Import code execution service
 try:
-    from services.llm_service import llm_service
-    LLM_SERVICE_AVAILABLE = True
+    from services.code_execution_service import code_execution_service
+    CODE_EXECUTION_AVAILABLE = True
 except ImportError:
-    LLM_SERVICE_AVAILABLE = False
+    CODE_EXECUTION_AVAILABLE = False
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), 'utils'))
 from resume_parser import resume_parser
@@ -218,8 +218,81 @@ async def health_check():
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "database": "in-memory",
-        "services": ["interview", "nlp", "anti-cheating"]
+        "services": ["interview", "nlp", "anti-cheating", "code-execution"]
     }
+
+# Code execution endpoints
+@app.post("/api/code/execute")
+async def execute_code(request: Dict[str, Any]):
+    """Execute code in sandboxed environment"""
+    if not CODE_EXECUTION_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Code execution service not available")
+    
+    try:
+        code = request.get("code", "")
+        language = request.get("language", "python")
+        test_cases = request.get("test_cases", [])
+        timeout = request.get("timeout", 10)
+        
+        if not code.strip():
+            raise HTTPException(status_code=400, detail="Code cannot be empty")
+        
+        result = await code_execution_service.execute_code(
+            code=code,
+            language=language,
+            test_cases=test_cases,
+            timeout=timeout
+        )
+        
+        return result
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Code execution failed: {str(e)}")
+
+@app.get("/api/code/languages")
+async def get_supported_languages():
+    """Get list of supported programming languages"""
+    if not CODE_EXECUTION_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Code execution service not available")
+    
+    return {
+        "languages": code_execution_service.get_supported_languages(),
+        "available": CODE_EXECUTION_AVAILABLE
+    }
+
+@app.post("/api/code/question")
+async def create_technical_question(request: Dict[str, Any]):
+    """Create a technical coding question"""
+    if not CODE_EXECUTION_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Code execution service not available")
+    
+    try:
+        language = request.get("language", "python")
+        difficulty = request.get("difficulty", "medium")
+        topic = request.get("topic", "general")
+        
+        question = code_execution_service.create_technical_question(
+            language=language,
+            difficulty=difficulty,
+            topic=topic
+        )
+        
+        return question
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create question: {str(e)}")
+
+@app.get("/api/code/result/{execution_id}")
+async def get_execution_result(execution_id: str):
+    """Get execution result by ID"""
+    if not CODE_EXECUTION_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Code execution service not available")
+    
+    result = code_execution_service.get_execution_result(execution_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Execution result not found")
+    
+    return result
 
 # Candidate endpoints
 @app.post("/candidates", response_model=Dict[str, str])
