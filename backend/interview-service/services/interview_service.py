@@ -16,6 +16,7 @@ from database.models import (
 from services.nlp_service import NLPService
 from services.anti_cheating_service import AntiCheatingService
 from services.rag_service import RAGExplainabilityService
+from services.llm_service import llm_service
 from utils.logger import log_info, log_error, log_warning
 
 class InterviewService:
@@ -338,54 +339,67 @@ class InterviewService:
         context: Dict,
         interview_type: str
     ) -> str:
-        """Generate personalized question based on context"""
+        """Generate personalized question using LLM service"""
         try:
-            # Use NLP service to generate personalized question
-            if hasattr(self.nlp_service, 'models') and self.nlp_service.models:
-                prompt = f"""
-                Generate a personalized {question_type} interview question for:
-                
-                Candidate: {context['candidate_name']}
-                Skills: {', '.join(context['candidate_skills'][:5])}
-                Experience: {context['candidate_experience']} years
-                
-                Job: {context['job_title']} at {context['job_company']}
-                Required Skills: {', '.join(context['job_skills'][:5])}
-                Level: {context['job_level']}
-                
-                Previous questions: {', '.join(context.get('previous_questions', [])[-3:])}
-                
-                Generate a unique, engaging question that hasn't been asked before.
-                """
-                
-                # This would use the NLP service to generate the question
-                # For now, use template-based approach
-                pass
+            # Prepare candidate context
+            candidate_context = {
+                'name': context.get('candidate_name', 'Candidate'),
+                'skills': context.get('candidate_skills', []),
+                'experience_years': context.get('candidate_experience', 0),
+                'resume_text': context.get('candidate_resume', '')
+            }
             
-            # Fallback to template-based question generation
-            templates = self.question_templates.get(question_type, self.question_templates['general'])
-            question_index = context.get('current_round', 1) - 1
+            # Prepare job context
+            job_context = {
+                'title': context.get('job_title', 'Position'),
+                'company': context.get('job_company', 'Company'),
+                'description': context.get('job_description', ''),
+                'required_skills': context.get('job_skills', []),
+                'experience_level': context.get('job_level', 'mid')
+            }
             
-            if question_index < len(templates):
-                base_question = templates[question_index]
-            else:
-                base_question = templates[0]
+            # Get previous questions
+            previous_questions = context.get('previous_questions', [])
+            question_number = context.get('current_round', 1)
             
-            # Personalize the question
-            personalized_question = base_question
+            # Generate question using LLM service
+            question = await llm_service.generate_interview_question(
+                question_type=question_type,
+                candidate_context=candidate_context,
+                job_context=job_context,
+                previous_questions=previous_questions,
+                question_number=question_number
+            )
             
-            # Add job-specific elements
-            if context['job_skills']:
-                skills_mention = f" particularly with {', '.join(context['job_skills'][:2])}"
-                personalized_question = personalized_question.replace(
-                    "in this field", f"in {context['job_title']}{skills_mention}"
-                )
-            
-            return personalized_question
+            log_info(f"✅ Generated personalized {question_type} question")
+            return question
             
         except Exception as e:
-            log_warning(f"Error generating personalized question: {e}")
-            return self.question_templates[question_type][0]
+            log_error(f"Error generating personalized question: {e}")
+            # Fallback to template-based approach
+            return self._get_template_question(question_type, context)
+    
+    def _get_template_question(self, question_type: str, context: Dict) -> str:
+        """Fallback template-based question generation"""
+        templates = self.question_templates.get(question_type, self.question_templates['general'])
+        question_index = context.get('current_round', 1) - 1
+        
+        if question_index < len(templates):
+            base_question = templates[question_index]
+        else:
+            base_question = templates[0]
+        
+        # Personalize the question
+        personalized_question = base_question
+        
+        # Add job-specific elements
+        if context.get('job_skills'):
+            skills_mention = f" particularly with {', '.join(context['job_skills'][:2])}"
+            personalized_question = personalized_question.replace(
+                "in this field", f"in {context.get('job_title', 'this role')}{skills_mention}"
+            )
+        
+        return personalized_question
     
     async def _generate_technical_assessment(
         self,

@@ -12,6 +12,14 @@ import json
 import uuid
 from datetime import datetime
 import os
+import asyncio
+
+# Import LLM service for advanced question generation
+try:
+    from services.llm_service import llm_service
+    LLM_SERVICE_AVAILABLE = True
+except ImportError:
+    LLM_SERVICE_AVAILABLE = False
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), 'utils'))
 from resume_parser import resume_parser
@@ -504,7 +512,7 @@ async def submit_response(session_id: str, response: InterviewResponse):
         required_skills = job.get("required_skills", [])
         
         # Generate contextual questions based on data
-        next_question = generate_contextual_question(
+        next_question = await generate_contextual_question(
             session["responses_received"], 
             candidate, 
             job, 
@@ -616,8 +624,57 @@ async def get_ai_generated_summary(session_id: str):
         "recommendation": "Strong Consider" if avg_score >= 7.0 else "Do Not Hire"
     }
 
-def generate_contextual_question(question_number, candidate, job, resume_text, job_description, required_skills):
-    """Generate contextual questions based on resume and job description"""
+async def generate_contextual_question(question_number, candidate, job, resume_text, job_description, required_skills):
+    """Generate contextual questions using LLM service with fallback to template-based approach"""
+    
+    # Try to use LLM service for advanced question generation
+    if LLM_SERVICE_AVAILABLE and llm_service.is_initialized:
+        try:
+            # Prepare candidate context
+            candidate_context = {
+                'name': candidate.get('name', 'Candidate'),
+                'skills': candidate.get('skills', []),
+                'experience_years': candidate.get('experience_years', 0),
+                'resume_text': resume_text or ''
+            }
+            
+            # Prepare job context
+            job_context = {
+                'title': job.get('title', 'Position'),
+                'company': job.get('company', 'Company'),
+                'description': job_description or '',
+                'required_skills': required_skills or [],
+                'experience_level': job.get('experience_level', 'mid')
+            }
+            
+            # Determine question type based on question number
+            if question_number < 3:
+                question_type = 'general'
+            elif question_number < 6:
+                question_type = 'technical'
+            else:
+                question_type = 'behavioral'
+            
+            # Generate question using LLM service
+            question = await llm_service.generate_interview_question(
+                question_type=question_type,
+                candidate_context=candidate_context,
+                job_context=job_context,
+                previous_questions=[],  # Could be enhanced to track previous questions
+                question_number=question_number + 1
+            )
+            
+            if question and len(question.strip()) > 10:
+                return question.strip()
+                
+        except Exception as e:
+            print(f"LLM question generation failed: {e}")
+    
+    # Fallback to template-based approach
+    return generate_template_question(question_number, candidate, job, resume_text, job_description, required_skills)
+
+def generate_template_question(question_number, candidate, job, resume_text, job_description, required_skills):
+    """Fallback template-based question generation"""
     
     # Question 1: Always introduction
     if question_number == 0:
