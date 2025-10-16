@@ -42,6 +42,9 @@ RBAC_RULES = {
     "/sso": ["admin", "user"]  # both admin and user can access SSO
 }
 
+# Internal Docker service URLs - HTTP is acceptable for internal container communication
+# In production, these can be configured to use HTTPS if needed
+# Security Note: These URLs are internal to Docker network and not exposed externally
 SERVICE_MAP = {
     "user": os.getenv("USER_SERVICE_URL", "http://user-service:8080"),
     "auth": os.getenv("AUTH_SERVICE_URL", "http://sso-service:8080"),
