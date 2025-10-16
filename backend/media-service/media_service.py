@@ -8,7 +8,18 @@ from dotenv import load_dotenv
 load_dotenv()  # load environment variables from .env
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+
+# Configure CORS with specific origins for security
+# In production, replace with actual frontend domain
+CORS(app, origins=[
+    "http://localhost:3000",  # Next.js dev server
+    "http://localhost:5000",  # API Gateway
+    "https://localhost:3000",  # HTTPS dev
+    "https://localhost:5000",  # HTTPS API Gateway
+], 
+methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+supports_credentials=True)
 
 UPLOAD_FOLDER = os.getenv("UPLOAD_FOLDER", "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)

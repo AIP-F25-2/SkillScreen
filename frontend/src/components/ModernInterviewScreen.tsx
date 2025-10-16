@@ -158,7 +158,7 @@ export default function ModernInterviewScreen({ participantName }: ModernIntervi
 
       // Reset chunks on server and wait for confirmation
       if (user) {
-        const resetResponse = await fetch('http://localhost:5000/media/reset_chunks', {
+        const resetResponse = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000'}/media/reset_chunks`, {
           method: 'POST',
           headers: getAuthHeaders(),
           body: JSON.stringify({ user_id: user.id })
@@ -307,7 +307,7 @@ export default function ModernInterviewScreen({ participantName }: ModernIntervi
         formData.append('user_id', user.id);
         
         try {
-          const response = await fetch('http://localhost:5000/media/upload_chunk', {
+          const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000'}/media/upload_chunk`, {
             method: 'POST',
             headers: headers,
             body: formData
@@ -327,7 +327,7 @@ export default function ModernInterviewScreen({ participantName }: ModernIntervi
       console.log('All chunks uploaded, finalizing...');
 
       // Finalize upload on media service
-      const finalizeResponse = await fetch('http://localhost:5000/media/finalize_upload', {
+      const finalizeResponse = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000'}/media/finalize_upload`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({

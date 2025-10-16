@@ -128,9 +128,9 @@ export default function InterviewSummaryPage() {
   }
 
   // Video path from backend is like: /ashish/filename.mp4
-  // Need to convert to: http://localhost:5000/media/video/ashish/filename.mp4
-  const videoUrl = interview.video_path 
-    ? `http://localhost:5000/media/video${interview.video_path}`
+  // Use configurable API base URL for video serving
+  const videoUrl = interview.video_path
+    ? `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000'}/media/video${interview.video_path}`
     : '';
   
   console.log('Interview data:', interview);
