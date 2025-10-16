@@ -19,6 +19,7 @@ services:
       - SSO_SERVICE_URL=http://sso-service:8080
       - ASSESSMENT_SERVICE_URL=http://assessment-service:8080
       - CODING_SERVICE_URL=http://coding-service:8080
+      - INTERVIEW_SERVICE_URL=http://interview-service:8080
     volumes:
       - ./backend/api-gateway:/app
     depends_on:
@@ -26,6 +27,7 @@ services:
       - sso-service
       - assessment-service
       - coding-service
+      - interview-service
     networks:
       - skill-screen-network
 
@@ -126,11 +128,16 @@ services:
       context: ./backend/interview-service
       dockerfile: Dockerfile
     container_name: interview-service
+    ports:
+      - "5003:8080"
     environment:
       - PORT=8080
       - HOST=0.0.0.0
       - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-db.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+      - PYTHONPATH=/app:/common-service
+    volumes:
       - ./backend/interview-service:/app
+      - ./backend/common-service:/common-service
     networks:
       - skill-screen-network
 
