@@ -455,6 +455,7 @@ async def submit_response(session_id: str, response: InterviewResponse):
     warnings = []
     
     # Check for duplicate responses (improved logic)
+    similarity = 0.0  # Initialize similarity variable
     if session["responses_received"] > 0:
         previous_responses = session.get("response_history", [])
         similarity_count = 0
@@ -603,7 +604,7 @@ async def submit_response(session_id: str, response: InterviewResponse):
             "next_question": next_question,
             "question_number": session["questions_asked"],
             "score": round(score, 2),
-            "response_received": response.response_text,
+            "response_received": response_text,
             "warnings": warnings if warnings else None,
             "duplicate_count": session.get("duplicate_count", 0),
             "ai_generated_count": session.get("ai_generated_count", 0),
