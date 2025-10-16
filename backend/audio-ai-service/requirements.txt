@@ -18,8 +18,7 @@ ffmpeg-python==0.2.0
 # Audio Processing
 librosa==0.10.1
 soundfile==0.12.1
-praat-parselmouth==0.4.3
-
+praat-parselmouth==0.4.6
 # ASR
 openai-whisper==20231117
 

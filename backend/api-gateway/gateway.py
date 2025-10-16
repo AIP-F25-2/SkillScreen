@@ -31,6 +31,7 @@ RBAC_RULES = {
     "/auth": ["admin", "user"],  # both admin and user can access auth service
     "/assessment": ["admin", "user"],  # both admin and user can access assessment
     "/coding": ["user"],  # only normal users can access coding
+    "/ai-logic": ["admin", "user"],  # both admin and user can access AI logic
     "/audio-ai": ["admin", "user"],  # both admin and user can access audio AI
     "/video-ai": ["admin", "user"],  # both admin and user can access video AI
     "/text-ai": ["admin", "user"],  # both admin and user can access text AI
@@ -46,6 +47,7 @@ SERVICE_MAP = {
     "auth": os.getenv("AUTH_SERVICE_URL", "http://sso-service:8080"),
     "assessment": os.getenv("ASSESSMENT_SERVICE_URL", "http://assessment-service:8080"),
     "coding": os.getenv("CODING_SERVICE_URL", "http://coding-service:8080"),
+    "ai-logic": os.getenv("AI_LOGIC_SERVICE_URL", "http://ai-logic-service:8080"),
     "audio-ai": os.getenv("AUDIO_AI_SERVICE_URL", "http://audio-ai-service:8080"),
     "video-ai": os.getenv("VIDEO_AI_SERVICE_URL", "http://video-ai-service:8080"),
     "text-ai": os.getenv("TEXT_AI_SERVICE_URL", "http://text-ai-service:8080"),
@@ -66,8 +68,20 @@ async def verify_jwt(request: Request, call_next):
         if request.url.path.startswith("/auth/"):
             return await call_next(request)  # allow auth routes
 
+        # TEMP: allow AI logic routes during development/testing without auth
+        if request.url.path.startswith("/ai-logic/"):
+            return await call_next(request)
+        
         # TEMP: allow audio-ai routes during development/testing without auth
         if request.url.path.startswith("/audio-ai/"):
+            return await call_next(request)
+        
+        # TEMP: allow media routes during development/testing without auth
+        if request.url.path.startswith("/media/"):
+            return await call_next(request)
+        
+        # TEMP: allow interview routes during development/testing without auth
+        if request.url.path.startswith("/interview/"):
             return await call_next(request)
 
         auth_header = request.headers.get("Authorization")
@@ -100,6 +114,10 @@ async def forward_request(service_url: str, path: str, request: Request) -> Resp
         body = await request.body()
         headers = dict(request.headers)
         
+        # Remove content-length header to let httpx recalculate it
+        headers.pop("content-length", None)
+        headers.pop("host", None)
+        
         resp = await client.request(
             request.method,
             f"{service_url}{path}",
@@ -122,13 +140,13 @@ async def forward_request(service_url: str, path: str, request: Request) -> Resp
         )
     
 # Special route for audio-ai to bypass validation for file:// URLs
-@app.api_route("/audio-ai/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+@app.api_route("/audio-ai/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
 async def proxy_audio_ai(path: str, request: Request):
     """Special proxy for audio-ai service that allows file:// URLs"""
     return await forward_request(SERVICE_MAP["audio-ai"], f"/{path}", request)
 
 # Routes for other microservices
-@app.api_route("/{service}/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+@app.api_route("/{service}/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
 async def proxy(service: str, path: str, request: Request):
     if service not in SERVICE_MAP:
         raise HTTPException(status_code=404, detail="Unknown service")

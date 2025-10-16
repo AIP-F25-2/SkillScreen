@@ -4,7 +4,7 @@ FROM python:3.10-slim
 # Set working directory in container
 WORKDIR /app
 
-# Install system dependencies for audio processing
+# Install system dependencies for audio processing and building native wheels
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     libsndfile1 \
@@ -12,6 +12,8 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     python3-dev \
     ca-certificates \
+    cmake \
+    ninja-build \
     && rm -rf /var/lib/apt/lists/*
 
 # Ensure CA certificates are available for HTTPS downloads
