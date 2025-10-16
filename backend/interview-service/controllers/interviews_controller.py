@@ -22,16 +22,15 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from datetime import datetime
 from services.scheduling_service import schedule_interview_service
-from interview import create_response
+from utils.response import create_response
 
 router = APIRouter()
 
-# === Request model ===
 class InterviewScheduleRequest(BaseModel):
     organization_id: str
     job_position_id: str
-    candidate_id: str
-    interviewer_id: str
+    candidate_id: str        # ← now points to candidates.id
+    interviewer_id: str      # ← users.id
     template_id: str
     mode: str = Field(..., description="chat | audio | video | hybrid")
     scheduled_at: datetime
@@ -39,10 +38,8 @@ class InterviewScheduleRequest(BaseModel):
     settings: dict | None = None
     create_calendar_event: bool = False
 
-
 @router.post("/schedule")
 def schedule_interview(request: InterviewScheduleRequest):
-    """Schedule a new interview"""
     try:
         result = schedule_interview_service(request)
         return create_response(result)
@@ -50,4 +47,3 @@ def schedule_interview(request: InterviewScheduleRequest):
         raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
