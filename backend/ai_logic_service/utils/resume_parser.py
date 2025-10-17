@@ -182,31 +182,54 @@ class ResumeParser:
             if any(edu_word in section_lower for edu_word in ['education', 'academic', 'degree', 'university', 'college', 'bachelor', 'master', 'phd']):
                 continue
             
-            # Only process work experience sections
-            if any(work_word in section_lower for work_word in ['experience', 'employment', 'work', 'career', 'professional']):
-                # Look for experience patterns in this section
-                for pattern in self.experience_patterns:
-                    matches = re.findall(pattern, section, re.IGNORECASE)
-                    for match in matches:
-                        start_date, end_date = match
-                        
-                        # Parse start date
-                        start_year = self._extract_year(start_date)
-                        if not start_year:
+            # Look for experience patterns in this section (more flexible approach)
+            for pattern in self.experience_patterns:
+                matches = re.findall(pattern, section, re.IGNORECASE)
+                for match in matches:
+                    start_date, end_date = match
+                    
+                    # Parse start date
+                    start_year = self._extract_year(start_date)
+                    if not start_year:
+                        continue
+                    
+                    # Parse end date
+                    if end_date.lower() in ['present', 'current']:
+                        end_year = datetime.now().year
+                    else:
+                        end_year = self._extract_year(end_date)
+                        if not end_year:
                             continue
-                        
-                        # Parse end date
-                        if end_date.lower() in ['present', 'current']:
-                            end_year = datetime.now().year
-                        else:
-                            end_year = self._extract_year(end_date)
-                            if not end_year:
-                                continue
-                        
-                        # Calculate duration
-                        if end_year >= start_year:
-                            duration = end_year - start_year
-                            experience_years += duration
+                    
+                    # Calculate duration
+                    if end_year >= start_year:
+                        duration = end_year - start_year
+                        experience_years += duration
+        
+        # If no experience found in sections, try the whole text as fallback
+        if experience_years == 0:
+            for pattern in self.experience_patterns:
+                matches = re.findall(pattern, text, re.IGNORECASE)
+                for match in matches:
+                    start_date, end_date = match
+                    
+                    # Parse start date
+                    start_year = self._extract_year(start_date)
+                    if not start_year:
+                        continue
+                    
+                    # Parse end date
+                    if end_date.lower() in ['present', 'current']:
+                        end_year = datetime.now().year
+                    else:
+                        end_year = self._extract_year(end_date)
+                        if not end_year:
+                            continue
+                    
+                    # Calculate duration
+                    if end_year >= start_year:
+                        duration = end_year - start_year
+                        experience_years += duration
         
         return max(0, experience_years)
 

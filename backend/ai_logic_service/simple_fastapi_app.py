@@ -20,6 +20,14 @@ try:
     CODE_EXECUTION_AVAILABLE = True
 except ImportError:
     CODE_EXECUTION_AVAILABLE = False
+
+# Import LLM service
+try:
+    from services.llm_service import llm_service
+    LLM_SERVICE_AVAILABLE = True
+except ImportError:
+    LLM_SERVICE_AVAILABLE = False
+
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), 'utils'))
 from resume_parser import resume_parser

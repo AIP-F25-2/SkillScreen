@@ -27,7 +27,10 @@ class LLMService:
             # Get API key from environment
             api_key = os.getenv('GEMINI_API_KEY')
             if not api_key:
-                log_warning("GEMINI_API_KEY not found in environment variables")
+                log_warning("GEMINI_API_KEY not found in environment variables - using mock LLM service")
+                # Initialize as mock service for development
+                self.is_initialized = True
+                self.model = "mock"
                 return
             
             # Configure Gemini
@@ -41,7 +44,9 @@ class LLMService:
             
         except Exception as e:
             log_error(f"❌ Failed to initialize Gemini: {e}")
-            self.is_initialized = False
+            # Fallback to mock service
+            self.is_initialized = True
+            self.model = "mock"
     
     async def generate_interview_question(
         self,
@@ -141,8 +146,12 @@ Return only the question text, no additional formatting or explanations.
         return prompt.strip()
     
     async def _generate_with_gemini(self, prompt: str) -> str:
-        """Generate response using Gemini Pro"""
+        """Generate response using Gemini Pro or mock service"""
         try:
+            # If using mock service, generate intelligent mock questions
+            if self.model == "mock":
+                return self._generate_mock_question(prompt)
+            
             # Run in thread pool to avoid blocking
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
@@ -158,6 +167,48 @@ Return only the question text, no additional formatting or explanations.
         except Exception as e:
             log_error(f"❌ Gemini generation error: {e}")
             return ""
+    
+    def _generate_mock_question(self, prompt: str) -> str:
+        """Generate intelligent mock questions based on context"""
+        try:
+            # Extract context from prompt
+            candidate_name = "Candidate"
+            job_title = "Position"
+            skills = []
+            
+            # Simple parsing of the prompt to extract context
+            if "Candidate Name:" in prompt:
+                name_line = [line for line in prompt.split('\n') if 'Candidate Name:' in line][0]
+                candidate_name = name_line.split('Candidate Name:')[1].strip()
+            
+            if "Job Title:" in prompt:
+                job_line = [line for line in prompt.split('\n') if 'Job Title:' in line][0]
+                job_title = job_line.split('Job Title:')[1].strip()
+            
+            if "Required Skills:" in prompt:
+                skills_line = [line for line in prompt.split('\n') if 'Required Skills:' in line][0]
+                skills_text = skills_line.split('Required Skills:')[1].strip()
+                skills = [s.strip() for s in skills_text.split(',') if s.strip()]
+            
+            # Generate contextual questions based on extracted information
+            mock_questions = [
+                f"Hi {candidate_name}! Can you tell me about your background and what interests you about this {job_title} role?",
+                f"Based on your experience, how would you approach solving a complex problem in {job_title}?",
+                f"I see you have experience with {', '.join(skills[:2]) if skills else 'various technologies'}. Can you walk me through a challenging project you've worked on?",
+                f"What do you think are the most important skills for success in a {job_title} position?",
+                f"How do you stay updated with the latest trends and technologies in your field?",
+                f"Can you describe a time when you had to learn something new quickly for a project?",
+                f"What motivates you most in your work, and how does that align with this {job_title} role?",
+                f"If you were to start this {job_title} position tomorrow, what would be your first priorities?"
+            ]
+            
+            # Return a question based on the prompt content
+            import random
+            return random.choice(mock_questions)
+            
+        except Exception as e:
+            log_error(f"❌ Mock question generation error: {e}")
+            return "Can you tell me about your experience and what interests you about this role?"
     
     def _get_fallback_question(self, question_type: str, question_number: int) -> str:
         """Fallback question when LLM is unavailable"""
