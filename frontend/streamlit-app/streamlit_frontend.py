@@ -15,7 +15,7 @@ import sys
 import os
 
 # Add the backend utils to the path
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'backend', 'ai_logic_service', 'utils'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'backend', 'text-service', 'utils'))
 from resume_parser import resume_parser
 
 # Try to import reportlab for PDF generation
