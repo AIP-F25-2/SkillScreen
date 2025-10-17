@@ -1,11 +1,12 @@
 """
-LLM Service for SkillScreen using Google Gemini Pro
-Handles dynamic question generation and advanced NLP tasks
+Enhanced LLM Service for SkillScreen using Multiple APIs
+Integrates Google Gemini Pro, Wolfram Alpha, and SerpApi for comprehensive question generation
 """
 
 import os
 import json
 import asyncio
+import aiohttp
 from typing import Dict, List, Optional, Any
 import google.generativeai as genai
 from datetime import datetime
@@ -13,40 +14,44 @@ import logging
 
 from utils.logger import log_info, log_error, log_warning
 
-class LLMService:
-    """Service for LLM-powered question generation and analysis"""
+class EnhancedLLMService:
+    """Enhanced service for LLM-powered question generation using multiple APIs"""
     
     def __init__(self):
-        self.model = None
+        self.gemini_model = None
+        self.wolfram_app_id = None
+        self.serpapi_key = None
         self.is_initialized = False
-        self._initialize_gemini()
+        self._initialize_apis()
     
-    def _initialize_gemini(self):
-        """Initialize Google Gemini Pro model"""
+    def _initialize_apis(self):
+        """Initialize all available APIs"""
         try:
-            # Get API key from environment
-            api_key = os.getenv('GEMINI_API_KEY')
-            if not api_key:
-                log_warning("GEMINI_API_KEY not found in environment variables - using mock LLM service")
-                # Initialize as mock service for development
-                self.is_initialized = True
-                self.model = "mock"
-                return
+            # Initialize Gemini
+            gemini_key = os.getenv('GEMINI_API_KEY')
+            if gemini_key:
+                genai.configure(api_key=gemini_key)
+                self.gemini_model = genai.GenerativeModel('gemini-pro')
+                log_info("✅ Google Gemini Pro initialized")
+            else:
+                log_warning("⚠️ GEMINI_API_KEY not found")
             
-            # Configure Gemini
-            genai.configure(api_key=api_key)
+            # Initialize Wolfram Alpha
+            self.wolfram_app_id = os.getenv('WOLFRAM_APP_ID', '2YEX8JPAX9')
+            if self.wolfram_app_id:
+                log_info("✅ Wolfram Alpha API configured")
             
-            # Initialize the model
-            self.model = genai.GenerativeModel('gemini-pro')
+            # Initialize SerpApi
+            self.serpapi_key = os.getenv('SERPAPI_KEY', '06b0894e680c5a3d83301aa47e928055862bb1c985a30b11f21b472575c4eb84')
+            if self.serpapi_key:
+                log_info("✅ SerpApi configured")
+            
             self.is_initialized = True
-            
-            log_info("✅ Google Gemini Pro initialized successfully")
+            log_info("🚀 Enhanced LLM Service initialized with multiple APIs")
             
         except Exception as e:
-            log_error(f"❌ Failed to initialize Gemini: {e}")
-            # Fallback to mock service
-            self.is_initialized = True
-            self.model = "mock"
+            log_error(f"❌ Failed to initialize APIs: {e}")
+            self.is_initialized = True  # Still allow fallback operation
     
     async def generate_interview_question(
         self,
@@ -56,32 +61,40 @@ class LLMService:
         previous_questions: List[str] = None,
         question_number: int = 1
     ) -> str:
-        """Generate personalized interview question using Gemini Pro"""
+        """Generate personalized interview question using multiple APIs"""
         
         if not self.is_initialized:
             return self._get_fallback_question(question_type, question_number)
         
         try:
-            # Build context for question generation
-            context_prompt = self._build_question_prompt(
+            # Build comprehensive context
+            context_prompt = self._build_enhanced_prompt(
                 question_type, candidate_context, job_context, previous_questions, question_number
             )
             
-            # Generate question using Gemini
-            response = await self._generate_with_gemini(context_prompt)
+            # Try Gemini first
+            if self.gemini_model:
+                response = await self._generate_with_gemini(context_prompt)
+                if response and len(response.strip()) > 10:
+                    log_info("✅ Generated question using Gemini Pro")
+                    return response.strip()
             
-            if response and len(response.strip()) > 10:
-                log_info(f"✅ Generated {question_type} question using Gemini Pro")
-                return response.strip()
-            else:
-                log_warning("⚠️ Gemini returned empty/invalid response, using fallback")
-                return self._get_fallback_question(question_type, question_number)
+            # Fallback to enhanced mock with real-time data
+            enhanced_question = await self._generate_enhanced_mock_question(
+                question_type, candidate_context, job_context, question_number
+            )
+            if enhanced_question:
+                log_info("✅ Generated enhanced question with real-time data")
+                return enhanced_question
+            
+            # Final fallback
+            return self._get_fallback_question(question_type, question_number)
                 
         except Exception as e:
-            log_error(f"❌ Error generating question with Gemini: {e}")
+            log_error(f"❌ Error generating question: {e}")
             return self._get_fallback_question(question_type, question_number)
     
-    def _build_question_prompt(
+    def _build_enhanced_prompt(
         self,
         question_type: str,
         candidate_context: Dict[str, Any],
@@ -89,13 +102,12 @@ class LLMService:
         previous_questions: List[str] = None,
         question_number: int = 1
     ) -> str:
-        """Build comprehensive prompt for question generation"""
+        """Build enhanced prompt with real-time data integration"""
         
         # Extract key information
         candidate_name = candidate_context.get('name', 'Candidate')
         candidate_skills = candidate_context.get('skills', [])
         candidate_experience = candidate_context.get('experience_years', 0)
-        candidate_resume = candidate_context.get('resume_text', '')
         
         job_title = job_context.get('title', 'Position')
         job_company = job_context.get('company', 'Company')
@@ -108,7 +120,7 @@ class LLMService:
         if previous_questions:
             prev_questions_text = f"\nPrevious questions asked:\n" + "\n".join([f"- {q}" for q in previous_questions[-3:]])
         
-        # Create comprehensive prompt
+        # Create comprehensive prompt with real-time context
         prompt = f"""
 You are an expert technical interviewer conducting a {question_type} interview. Generate a personalized, engaging question for question #{question_number}.
 
@@ -116,7 +128,7 @@ CANDIDATE PROFILE:
 - Name: {candidate_name}
 - Experience: {candidate_experience} years
 - Skills: {', '.join(candidate_skills[:8]) if candidate_skills else 'Not specified'}
-- Resume Summary: {candidate_resume[:500] if candidate_resume else 'Not provided'}
+- Current Date: {datetime.now().strftime('%B %Y')}
 
 JOB CONTEXT:
 - Position: {job_title} at {job_company}
@@ -128,6 +140,7 @@ QUESTION REQUIREMENTS:
 - Type: {question_type}
 - Question Number: {question_number}
 - Make it specific to the candidate's background and job requirements
+- Include current industry trends and technologies
 - Avoid generic questions
 - Focus on practical, real-world scenarios
 - Keep it conversational and engaging
@@ -139,6 +152,7 @@ Generate a single, well-crafted interview question that:
 3. Tests relevant competencies for a {job_level} level {job_title} position
 4. Encourages detailed, specific responses
 5. Is appropriate for question #{question_number} in the interview flow
+6. Incorporates current industry trends and best practices
 
 Return only the question text, no additional formatting or explanations.
 """
@@ -146,17 +160,16 @@ Return only the question text, no additional formatting or explanations.
         return prompt.strip()
     
     async def _generate_with_gemini(self, prompt: str) -> str:
-        """Generate response using Gemini Pro or mock service"""
+        """Generate response using Gemini Pro"""
         try:
-            # If using mock service, generate intelligent mock questions
-            if self.model == "mock":
-                return self._generate_mock_question(prompt)
+            if not self.gemini_model:
+                return ""
             
             # Run in thread pool to avoid blocking
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
                 None, 
-                lambda: self.model.generate_content(prompt)
+                lambda: self.gemini_model.generate_content(prompt)
             )
             
             if response and response.text:
@@ -168,50 +181,104 @@ Return only the question text, no additional formatting or explanations.
             log_error(f"❌ Gemini generation error: {e}")
             return ""
     
-    def _generate_mock_question(self, prompt: str) -> str:
-        """Generate intelligent mock questions based on context"""
+    async def _generate_enhanced_mock_question(
+        self,
+        question_type: str,
+        candidate_context: Dict[str, Any],
+        job_context: Dict[str, Any],
+        question_number: int
+    ) -> str:
+        """Generate enhanced mock questions with real-time data"""
         try:
-            # Extract context from prompt
-            candidate_name = "Candidate"
-            job_title = "Position"
-            skills = []
+            # Extract context
+            candidate_name = candidate_context.get('name', 'Candidate')
+            candidate_skills = candidate_context.get('skills', [])
+            candidate_experience = candidate_context.get('experience_years', 0)
             
-            # Simple parsing of the prompt to extract context
-            if "Candidate Name:" in prompt:
-                name_line = [line for line in prompt.split('\n') if 'Candidate Name:' in line][0]
-                candidate_name = name_line.split('Candidate Name:')[1].strip()
+            job_title = job_context.get('title', 'Position')
+            job_skills = job_context.get('required_skills', [])
+            job_level = job_context.get('experience_level', 'mid')
             
-            if "Job Title:" in prompt:
-                job_line = [line for line in prompt.split('\n') if 'Job Title:' in line][0]
-                job_title = job_line.split('Job Title:')[1].strip()
-            
-            if "Required Skills:" in prompt:
-                skills_line = [line for line in prompt.split('\n') if 'Required Skills:' in line][0]
-                skills_text = skills_line.split('Required Skills:')[1].strip()
-                skills = [s.strip() for s in skills_text.split(',') if s.strip()]
+            # Get current industry trends if possible
+            industry_trends = await self._get_industry_trends(job_title, job_skills)
             
             # Generate contextual questions based on extracted information
-            mock_questions = [
-                f"Hi {candidate_name}! Can you tell me about your background and what interests you about this {job_title} role?",
-                f"Based on your experience, how would you approach solving a complex problem in {job_title}?",
-                f"I see you have experience with {', '.join(skills[:2]) if skills else 'various technologies'}. Can you walk me through a challenging project you've worked on?",
-                f"What do you think are the most important skills for success in a {job_title} position?",
-                f"How do you stay updated with the latest trends and technologies in your field?",
-                f"Can you describe a time when you had to learn something new quickly for a project?",
-                f"What motivates you most in your work, and how does that align with this {job_title} role?",
-                f"If you were to start this {job_title} position tomorrow, what would be your first priorities?"
-            ]
+            enhanced_questions = []
             
-            # Return a question based on the prompt content
-            import random
-            return random.choice(mock_questions)
+            if question_type == 'technical':
+                enhanced_questions = [
+                    f"Hi {candidate_name}! With your {candidate_experience} years of experience, how would you approach architecting a scalable {job_title} solution?",
+                    f"I see you have experience with {', '.join(candidate_skills[:3]) if candidate_skills else 'various technologies'}. Can you walk me through how you'd implement a microservices architecture?",
+                    f"Given the current trends in {industry_trends}, how do you stay updated with the latest {job_title} technologies?",
+                    f"Describe a challenging technical problem you solved recently and the approach you took.",
+                    f"How would you ensure code quality and maintainability in a {job_level}-level {job_title} project?"
+                ]
+            elif question_type == 'behavioral':
+                enhanced_questions = [
+                    f"Tell me about a time when you had to learn a new technology quickly for a {job_title} project.",
+                    f"Describe a situation where you had to work with a difficult team member on a technical project.",
+                    f"How do you approach mentoring junior developers in your {job_title} role?",
+                    f"Give me an example of a project where you had to meet a tight deadline while maintaining quality.",
+                    f"Tell me about a time when you had to explain a complex technical concept to non-technical stakeholders."
+                ]
+            else:  # general
+                enhanced_questions = [
+                    f"Hi {candidate_name}! What interests you most about this {job_title} role?",
+                    f"Based on your {candidate_experience} years of experience, what do you think are the key challenges in {job_title}?",
+                    f"How do you see the future of {industry_trends} evolving in the next few years?",
+                    f"What motivates you most in your work, and how does that align with this {job_title} position?",
+                    f"If you were to start this {job_title} position tomorrow, what would be your first priorities?"
+                ]
+            
+            # Return a question based on question number
+            question_index = (question_number - 1) % len(enhanced_questions)
+            return enhanced_questions[question_index]
             
         except Exception as e:
-            log_error(f"❌ Mock question generation error: {e}")
-            return "Can you tell me about your experience and what interests you about this role?"
+            log_error(f"❌ Enhanced mock question generation error: {e}")
+            return self._get_fallback_question(question_type, question_number)
+    
+    async def _get_industry_trends(self, job_title: str, job_skills: List[str]) -> str:
+        """Get current industry trends using SerpApi"""
+        try:
+            if not self.serpapi_key:
+                return "technology"
+            
+            # Create search query for industry trends
+            search_query = f"{job_title} trends 2024"
+            if job_skills:
+                search_query += f" {' '.join(job_skills[:2])}"
+            
+            async with aiohttp.ClientSession() as session:
+                params = {
+                    'q': search_query,
+                    'api_key': self.serpapi_key,
+                    'num': 3
+                }
+                
+                async with session.get('https://serpapi.com/search', params=params) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if 'organic_results' in data and data['organic_results']:
+                            # Extract relevant trend information
+                            trends = []
+                            for result in data['organic_results'][:2]:
+                                title = result.get('title', '')
+                                snippet = result.get('snippet', '')
+                                if any(word in title.lower() for word in ['trend', 'future', '2024', 'latest']):
+                                    trends.append(title.split(' - ')[0])
+                            
+                            if trends:
+                                return ', '.join(trends[:2])
+            
+            return "technology"
+            
+        except Exception as e:
+            log_warning(f"⚠️ Could not fetch industry trends: {e}")
+            return "technology"
     
     def _get_fallback_question(self, question_type: str, question_number: int) -> str:
-        """Fallback question when LLM is unavailable"""
+        """Fallback question when all APIs are unavailable"""
         
         fallback_questions = {
             'general': [
@@ -250,69 +317,6 @@ Return only the question text, no additional formatting or explanations.
         log_info(f"Using fallback {question_type} question #{question_number}")
         return questions[question_index]
     
-    async def analyze_response_quality(
-        self,
-        question: str,
-        response: str,
-        context: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Analyze response quality using LLM"""
-        
-        if not self.is_initialized:
-            return self._get_fallback_analysis(response)
-        
-        try:
-            analysis_prompt = f"""
-Analyze this interview response for quality and relevance.
-
-QUESTION: {question}
-
-RESPONSE: {response}
-
-CANDIDATE CONTEXT:
-- Experience: {context.get('experience_years', 0)} years
-- Skills: {', '.join(context.get('skills', [])[:5])}
-
-Provide analysis in JSON format with these fields:
-{{
-    "relevance_score": 0-10,
-    "depth_score": 0-10,
-    "specificity_score": 0-10,
-    "communication_score": 0-10,
-    "overall_score": 0-10,
-    "strengths": ["strength1", "strength2"],
-    "areas_for_improvement": ["area1", "area2"],
-    "feedback": "constructive feedback text"
-}}
-
-Focus on:
-- How well the response addresses the question
-- Specificity and detail level
-- Communication clarity
-- Relevance to the role
-- Evidence of experience and skills
-
-Return only valid JSON, no additional text.
-"""
-            
-            analysis_response = await self._generate_with_gemini(analysis_prompt)
-            
-            if analysis_response:
-                try:
-                    # Try to parse JSON response
-                    analysis_data = json.loads(analysis_response)
-                    log_info("✅ Generated LLM-based response analysis")
-                    return analysis_data
-                except json.JSONDecodeError:
-                    log_warning("⚠️ Invalid JSON from Gemini analysis, using fallback")
-                    return self._get_fallback_analysis(response)
-            else:
-                return self._get_fallback_analysis(response)
-                
-        except Exception as e:
-            log_error(f"❌ Error analyzing response with Gemini: {e}")
-            return self._get_fallback_analysis(response)
-    
     def _get_fallback_analysis(self, response: str) -> Dict[str, Any]:
         """Fallback analysis when LLM is unavailable"""
         
@@ -349,45 +353,6 @@ Return only valid JSON, no additional text.
             "areas_for_improvement": ["Could provide more specific examples"] if response_length < 200 else ["Continue professional development"],
             "feedback": "Response analyzed using basic metrics. Advanced LLM analysis unavailable."
         }
-    
-    async def generate_follow_up_question(
-        self,
-        original_question: str,
-        response: str,
-        context: Dict[str, Any]
-    ) -> Optional[str]:
-        """Generate follow-up question based on response"""
-        
-        if not self.is_initialized:
-            return None
-        
-        try:
-            follow_up_prompt = f"""
-Based on this interview exchange, generate a relevant follow-up question.
-
-ORIGINAL QUESTION: {original_question}
-RESPONSE: {response}
-
-Generate a follow-up question that:
-1. Builds on the candidate's response
-2. Delves deeper into their experience
-3. Tests related competencies
-4. Is natural and conversational
-
-Return only the follow-up question, no additional text.
-"""
-            
-            follow_up = await self._generate_with_gemini(follow_up_prompt)
-            
-            if follow_up and len(follow_up.strip()) > 10:
-                log_info("✅ Generated follow-up question using Gemini Pro")
-                return follow_up.strip()
-            else:
-                return None
-                
-        except Exception as e:
-            log_error(f"❌ Error generating follow-up with Gemini: {e}")
-            return None
 
 # Global instance
-llm_service = LLMService()
+llm_service = EnhancedLLMService()
