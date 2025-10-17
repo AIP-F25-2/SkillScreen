@@ -711,6 +711,39 @@ async def get_ai_generated_summary(session_id: str):
         "recommendation": "Strong Consider" if avg_score >= 7.0 else "Do Not Hire"
     }
 
+def analyze_responses(responses: List[Dict]) -> Dict[str, int]:
+    """Analyze responses to provide more specific feedback"""
+    analysis = {
+        'technical_depth': 0,
+        'experience_relevance': 0,
+        'communication': 0,
+        'effort': 0
+    }
+    
+    technical_keywords = ['algorithm', 'database', 'api', 'framework', 'architecture', 'optimization', 'scalability', 'testing', 'deployment']
+    experience_keywords = ['project', 'team', 'company', 'worked', 'developed', 'implemented', 'managed', 'led']
+    
+    for response in responses:
+        response_text = response.get('response_text', '').lower()
+        
+        # Check technical depth
+        if any(keyword in response_text for keyword in technical_keywords):
+            analysis['technical_depth'] += 1
+            
+        # Check experience relevance
+        if any(keyword in response_text for keyword in experience_keywords):
+            analysis['experience_relevance'] += 1
+            
+        # Check communication quality (length and structure)
+        if len(response_text.split()) > 20:  # Substantial response
+            analysis['communication'] += 1
+            
+        # Check effort (any response shows effort)
+        if len(response_text.strip()) > 0:
+            analysis['effort'] += 1
+    
+    return analysis
+
 async def generate_contextual_question(question_number, candidate, job, resume_text, job_description, required_skills):
     """Generate contextual questions using LLM service with fallback to template-based approach"""
     
@@ -862,59 +895,73 @@ def generate_human_like_summary(session, candidate, job, avg_score):
         tone = "negative"
         recommendation = "not recommend for hire"
     
-    # Generate contextual feedback
+    # Generate contextual feedback based on actual responses
     strengths = []
     weaknesses = []
     suggestions = []
     
+    # Analyze responses for more specific feedback
+    response_analysis = analyze_responses(session['responses'])
+    
     if avg_score >= 7.0:
         strengths = [
-            "demonstrated strong communication skills throughout the interview",
-            "showed good technical knowledge and problem-solving approach",
-            "provided relevant examples from past experience",
-            "displayed enthusiasm for the role and company"
+            "demonstrated strong communication skills with clear, structured responses",
+            "showed solid technical knowledge and provided relevant examples",
+            "displayed good problem-solving approach and analytical thinking",
+            "exhibited enthusiasm and cultural fit for the role"
         ]
+        if response_analysis.get('technical_depth', 0) > 0:
+            strengths.append("provided detailed technical explanations and examples")
+        if response_analysis.get('experience_relevance', 0) > 0:
+            strengths.append("shared relevant past experience that aligns with role requirements")
+            
         weaknesses = [
-            "could benefit from more specific technical examples",
-            "may need to elaborate more on complex problem-solving scenarios"
+            "could benefit from more specific technical implementation details",
+            "may need to elaborate more on complex problem-solving methodologies"
         ]
         suggestions = [
             "Continue developing expertise in current technologies",
-            "Practice articulating technical concepts more clearly",
-            "Prepare more detailed examples for future interviews"
+            "Practice articulating technical concepts with more precision",
+            "Prepare detailed case studies for future interviews"
         ]
     elif avg_score >= 5.0:
         strengths = [
-            "showed basic competency in required skills",
-            "demonstrated willingness to learn and grow",
+            "showed basic competency in core required skills",
+            "demonstrated willingness to learn and adapt",
             "provided some relevant experience examples"
         ]
+        if response_analysis.get('communication', 0) > 0:
+            strengths.append("maintained clear communication throughout the interview")
+            
         weaknesses = [
-            "lacked depth in technical explanations",
-            "could improve communication clarity",
-            "needed more specific examples and details"
+            "lacked depth in technical explanations and implementation details",
+            "could improve clarity in expressing complex ideas",
+            "needed more specific examples with measurable outcomes"
         ]
         suggestions = [
-            "Focus on strengthening technical fundamentals",
-            "Practice explaining complex concepts simply",
-            "Prepare more detailed project examples",
-            "Consider additional training in key technologies"
+            "Focus on strengthening technical fundamentals through hands-on practice",
+            "Practice explaining complex concepts using simple, clear language",
+            "Prepare detailed project examples with specific metrics and outcomes",
+            "Consider additional training in key technologies mentioned in the role"
         ]
     else:
         strengths = [
             "participated actively in the interview process"
         ]
+        if response_analysis.get('effort', 0) > 0:
+            strengths.append("showed genuine interest and effort in responding to questions")
+            
         weaknesses = [
-            "demonstrated insufficient technical knowledge",
-            "struggled with clear communication",
-            "lacked relevant experience examples",
-            "showed limited understanding of role requirements"
+            "demonstrated insufficient technical knowledge for the role requirements",
+            "struggled with clear communication and structured responses",
+            "lacked relevant experience examples and specific details",
+            "showed limited understanding of key role responsibilities"
         ]
         suggestions = [
-            "Invest in comprehensive technical training",
-            "Practice interview skills and communication",
-            "Gain more hands-on experience in relevant technologies",
-            "Consider entry-level positions to build experience"
+            "Invest in comprehensive technical training in core technologies",
+            "Practice interview skills and structured communication techniques",
+            "Gain hands-on experience through projects or internships",
+            "Consider entry-level positions to build foundational experience"
         ]
     
     # Use extracted name if available, otherwise fallback to stored name

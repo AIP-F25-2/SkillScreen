@@ -173,15 +173,36 @@ class ResumeParser:
         experience_years = 0
         found_dates = set()  # Track dates to avoid double counting
         
-        # First, try to find work experience sections specifically
-        work_experience_sections = re.findall(
-            r'(?:work\s+experience|professional\s+experience|employment|career|experience)[:\s]*([^\n]+(?:\n[^\n]+)*)',
-            text, re.IGNORECASE | re.MULTILINE
-        )
+        # Split text into sections and exclude education sections
+        sections = re.split(r'\n\s*\n', text)
+        work_sections = []
         
-        # Process work experience sections
-        for section in work_experience_sections:
-            for pattern in self.experience_patterns:
+        for section in sections:
+            section_lower = section.lower()
+            # Skip education sections
+            if any(edu_word in section_lower for edu_word in ['education', 'academic', 'qualification', 'degree', 'university', 'college', 'bachelor', 'master', 'phd']):
+                continue
+            # Include work-related sections
+            if any(work_word in section_lower for work_word in ['experience', 'employment', 'career', 'work', 'professional']):
+                work_sections.append(section)
+            # Include sections with job titles
+            elif any(job_word in section_lower for job_word in ['engineer', 'developer', 'analyst', 'manager', 'consultant', 'specialist', 'lead', 'senior', 'junior', 'intern']):
+                work_sections.append(section)
+        
+        # If no work sections found, use entire text but exclude education patterns
+        if not work_sections:
+            work_sections = [text]
+        
+        # Process work sections
+        for section in work_sections:
+            # Look for date patterns in work context
+            date_patterns = [
+                r'(\d{4})\s*[-–]\s*(\d{4}|\bpresent\b|\bcurrent\b)',
+                r'(\w+\s+\d{4})\s*[-–]\s*(\w+\s+\d{4}|\bpresent\b|\bcurrent\b)',
+                r'(\d{1,2}/\d{4})\s*[-–]\s*(\d{1,2}/\d{4}|\bpresent\b|\bcurrent\b)',
+            ]
+            
+            for pattern in date_patterns:
                 matches = re.findall(pattern, section, re.IGNORECASE)
                 for match in matches:
                     start_date, end_date = match
@@ -195,6 +216,10 @@ class ResumeParser:
                     if not start_year:
                         continue
                     
+                    # Skip if it's clearly education (before 2015 for most cases)
+                    if start_year < 2015:
+                        continue
+                    
                     # Parse end date
                     if end_date.lower() in ['present', 'current']:
                         end_year = datetime.now().year
@@ -206,35 +231,13 @@ class ResumeParser:
                     # Calculate duration
                     if end_year >= start_year:
                         duration = end_year - start_year
+                        # Cap individual job duration at reasonable limit (e.g., 5 years)
+                        duration = min(duration, 5)
                         experience_years += duration
                         found_dates.add(date_key)
         
-        # If no work experience sections found, look for job titles and company names with dates
-        if experience_years == 0:
-            # Look for patterns like "Software Engineer at Company (2018-2024)"
-            job_patterns = [
-                r'(?:software\s+engineer|developer|analyst|manager|consultant|specialist|lead|senior|junior|intern)[^()]*\((\d{4})\s*[-–]\s*(\d{4}|\bpresent\b|\bcurrent\b)\)',
-                r'([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*[-–]\s*([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*\((\d{4})\s*[-–]\s*(\d{4}|\bpresent\b|\bcurrent\b)\)',
-            ]
-            
-            for pattern in job_patterns:
-                matches = re.findall(pattern, text, re.IGNORECASE)
-                for match in matches:
-                    if len(match) >= 2:
-                        start_year = self._extract_year(match[-2]) if len(match) > 2 else self._extract_year(match[0])
-                        end_date = match[-1] if len(match) > 1 else match[1]
-                        
-                        if start_year:
-                            if end_date.lower() in ['present', 'current']:
-                                end_year = datetime.now().year
-                            else:
-                                end_year = self._extract_year(end_date)
-                            
-                            if end_year and end_year >= start_year:
-                                duration = end_year - start_year
-                                experience_years += duration
-        
-        return max(0, experience_years)
+        # Cap total experience at reasonable limit
+        return min(max(0, experience_years), 10)
 
     def _extract_year(self, date_str: str) -> Optional[int]:
         """Extract year from date string"""

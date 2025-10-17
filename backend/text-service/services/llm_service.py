@@ -122,31 +122,35 @@ class EnhancedLLMService:
         
         # Create comprehensive prompt with real-time context
         prompt = f"""
-You are an expert technical interviewer conducting a {question_type} interview. Generate a personalized, engaging question for question #{question_number}.
+You are a senior {job_title} professional conducting a natural, conversational interview. Generate a realistic question that a human interviewer would ask.
 
-CANDIDATE PROFILE:
+CANDIDATE BACKGROUND:
 - Name: {candidate_name}
-- Experience: {candidate_experience} years
-- Skills: {', '.join(candidate_skills[:8]) if candidate_skills else 'Not specified'}
+- Experience: {candidate_experience} years in the field
+- Skills: {', '.join(candidate_skills[:6]) if candidate_skills else 'Various technical skills'}
 - Current Date: {datetime.now().strftime('%B %Y')}
 
-JOB CONTEXT:
-- Position: {job_title} at {job_company}
-- Level: {job_level}
-- Required Skills: {', '.join(job_skills[:8]) if job_skills else 'Not specified'}
-- Job Description: {job_description[:300] if job_description else 'Not provided'}
+POSITION DETAILS:
+- Role: {job_title} at {job_company}
+- Level: {job_level} level position
+- Key Requirements: {', '.join(job_skills[:6]) if job_skills else 'Technical expertise'}
+- Job Focus: {job_description[:200] if job_description else 'Technical development'}
 
-QUESTION REQUIREMENTS:
-- Type: {question_type}
-- Question Number: {question_number}
-- Make it specific to the candidate's background and job requirements
-- Include current industry trends and technologies
-- Avoid generic questions
-- Focus on practical, real-world scenarios
-- Keep it conversational and engaging
-- Ensure it hasn't been asked before{prev_questions_text}
+INTERVIEW CONTEXT:
+- Question #{question_number} of the interview
+- Question Type: {question_type}
+- Previous topics covered: {prev_questions_text if prev_questions_text else 'None yet'}
 
-Generate a single, well-crafted interview question that:
+INSTRUCTIONS:
+- Write as a natural, human interviewer would speak
+- Make it conversational and relatable
+- Reference their specific experience level ({candidate_experience} years)
+- Connect to their skills: {', '.join(candidate_skills[:4]) if candidate_skills else 'their background'}
+- Avoid overly formal or AI-sounding language
+- Focus on practical scenarios they would encounter
+- Keep it specific to the {job_title} role
+
+Generate ONE natural interview question:
 1. Is personalized to this candidate's experience and skills
 2. Relates to the specific job requirements
 3. Tests relevant competencies for a {job_level} level {job_title} position
