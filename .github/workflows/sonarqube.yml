@@ -1,0 +1,66 @@
+name: SonarQube Analysis
+
+on:
+  push:
+    branches: [ main, dev, frontend/fastapi-streamlit-integration ]
+  pull_request:
+    branches: [ main, dev ]
+
+jobs:
+  sonarqube:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Shallow clones should be disabled for better analysis
+        
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r backend/text-service/requirements_production.txt
+        pip install -r backend/text-service/requirements_test.txt
+        
+    - name: Cache SonarQube packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.sonar/cache
+        key: ${{ runner.os }}-sonar
+        restore-keys: ${{ runner.os }}-sonar
+        
+    - name: Cache SonarQube scanner
+      id: cache-sonar-scanner
+      uses: actions/cache@v3
+      with:
+        path: .sonar/scanner
+        key: ${{ runner.os }}-sonar-scanner
+        restore-keys: ${{ runner.os }}-sonar-scanner
+        
+    - name: Install SonarQube Scanner
+      if: steps.cache-sonar-scanner.outputs.cache-hit != 'true'
+      run: |
+        mkdir -p .sonar/scanner
+        curl -sSLo .sonar/scanner/sonar-scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-4.8.0.2856-linux.zip
+        unzip -q .sonar/scanner/sonar-scanner.zip -d .sonar/scanner
+        mv .sonar/scanner/sonar-scanner-4.8.0.2856 .sonar/scanner/sonar-scanner
+        
+    - name: Run SonarQube Scanner
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      run: |
+        .sonar/scanner/sonar-scanner/bin/sonar-scanner \
+          -Dsonar.projectKey=skillscreen \
+          -Dsonar.organization=aip-f25-2 \
+          -Dsonar.sources=backend/text-service,frontend/streamlit-app,shared \
+          -Dsonar.python.version=3.9 \
+          -Dsonar.python.coverage.reportPaths=coverage.xml \
+          -Dsonar.exclusions=**/node_modules/**,**/__pycache__/**,**/venv/**,**/env/**,**/.git/**,**/logs/**,**/k8s/**,**/docker-compose.yml,**/Dockerfile \
+          -Dsonar.coverage.exclusions=**/test_*,**/tests/**,**/__pycache__/**,**/logs/**
