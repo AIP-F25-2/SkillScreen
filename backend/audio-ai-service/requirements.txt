@@ -25,7 +25,7 @@ openai-whisper==20231117
 faster-whisper==1.0.3 #Optimized for streaming
 
 #Text-to-Speech
-# edge-tts==6.1.9
+edge-tts==7.2.0
 # google tts:
 gTTS==2.4.0
 
