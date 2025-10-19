@@ -8,6 +8,17 @@ from controllers.audio_controller import router as audio_router
 from controllers.test_controller import router as test_router
 from middleware.error_handler import validation_exception_handler, general_exception_handler
 from controllers.tts_controller import router as tts_router
+from controllers.streaming_controller import router as streaming_router
+import warnings
+
+
+# Suppress specific warnings
+
+warnings.filterwarnings("ignore", category=UserWarning, module="pyannote")
+warnings.filterwarnings("ignore", category=UserWarning, module="speechbrain")
+warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio")
+warnings.filterwarnings("ignore", message=".*torchaudio._backend.*")
+warnings.filterwarnings("ignore", message=".*MPEG_LAYER_III.*")
 
 # Define lifespan context manager
 @asynccontextmanager
@@ -51,6 +62,7 @@ app.include_router(health_router, prefix="/health", tags=["Health"])
 app.include_router(audio_router, prefix="/api/audio", tags=["Audio Processing"])
 app.include_router(test_router, prefix="/api/test", tags=["Testing & Debug"])
 app.include_router(tts_router, prefix="/api/tts", tags=["Text-to-Speech"])
+app.include_router(streaming_router, prefix="/api/stream", tags=["Streaming"])
 
 # Root endpoint
 @app.get("/")
@@ -61,6 +73,8 @@ async def root():
         "status": "running",
         "docs": "/docs"
     }
+
+
 
 
 if __name__ == "__main__":

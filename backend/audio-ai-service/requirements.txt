@@ -3,6 +3,7 @@ fastapi==0.108.0
 uvicorn[standard]==0.25.0
 python-multipart==0.0.6
 python-dotenv==1.0.0
+websockets==12.0  #WebSocket support
 
 # Data Validation
 pydantic==2.5.0
@@ -18,9 +19,10 @@ ffmpeg-python==0.2.0
 # Audio Processing
 librosa==0.10.1
 soundfile==0.12.1
-praat-parselmouth==0.4.6
+#praat-parselmouth==0.4.6
 # ASR
 openai-whisper==20231117
+faster-whisper==1.0.3 #Optimized for streaming
 
 #Text-to-Speech
 # edge-tts==6.1.9
@@ -38,6 +40,7 @@ pyannote.audio==3.1.1
 PyYAML==6.0.1
 numpy==1.24.3
 psutil==5.9.6
+gdown==4.7.1
 
 # Development & Testing
 pytest==7.4.3

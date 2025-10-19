@@ -1,4 +1,5 @@
 .audioai-service
 .env
+test_analytics.py
 
 __pycache__/
