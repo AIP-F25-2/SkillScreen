@@ -4,11 +4,13 @@ import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Download, Clock, FileText, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Download, Clock, FileText, CheckCircle, ShieldAlert } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function InterviewSummaryPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { user, isLoading: authLoading } = useAuth();
   const interviewId = searchParams?.get('id');
   const isProcessingParam = searchParams?.get('processing') === 'true';
 
@@ -16,8 +18,23 @@ export default function InterviewSummaryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showInitialProcessing, setShowInitialProcessing] = useState(isProcessingParam);
+  const [accessDenied, setAccessDenied] = useState(false);
 
   useEffect(() => {
+    // Check if user is authenticated and is a recruiter
+    if (!authLoading && !user) {
+      setAccessDenied(true);
+      setLoading(false);
+      return;
+    }
+
+    // Check user role - only recruiters can access
+    if (!authLoading && user && user.role !== 'recruiter') {
+      setAccessDenied(true);
+      setLoading(false);
+      return;
+    }
+
     const fetchInterview = async () => {
       if (!interviewId) {
         setError('No interview ID provided');
@@ -44,7 +61,9 @@ export default function InterviewSummaryPage() {
       }
     };
 
-    fetchInterview();
+    if (!authLoading && user && user.role === 'recruiter') {
+      fetchInterview();
+    }
 
     // Poll for updates if processing
     const pollInterval = setInterval(async () => {
@@ -67,7 +86,39 @@ export default function InterviewSummaryPage() {
     }, 10000); // Poll every 10 seconds
 
     return () => clearInterval(pollInterval);
-  }, [interviewId, isProcessingParam]);
+  }, [interviewId, isProcessingParam, user, authLoading]);
+
+  // Show access denied screen
+  if (accessDenied) {
+    return (
+      <div className="min-h-screen bg-[#1E1E1E] flex items-center justify-center">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center max-w-md px-6"
+        >
+          <ShieldAlert className="w-24 h-24 text-red-400 mx-auto mb-6" />
+          <h1 className="text-white text-3xl font-bold mb-4">Access Denied</h1>
+          <p className="text-white/70 text-lg mb-6">
+            Interview summaries are only accessible to recruiters.
+          </p>
+          <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 mb-6">
+            <p className="text-red-300 text-sm">
+              {!user 
+                ? 'Please log in as a recruiter to view this page.' 
+                : 'Your account does not have permission to view interview summaries.'}
+            </p>
+          </div>
+          <button
+            onClick={() => router.push(user ? '/recruiter' : '/login')}
+            className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
+          >
+            {user ? 'Go to Dashboard' : 'Go to Login'}
+          </button>
+        </motion.div>
+      </div>
+    );
+  }
 
   // Show big processing message when first redirected
   if (showInitialProcessing && loading) {
@@ -117,7 +168,7 @@ export default function InterviewSummaryPage() {
           <h1 className="text-white text-2xl font-bold mb-4">Error</h1>
           <p className="text-white/70">{error || 'Interview not found'}</p>
           <button
-            onClick={() => router.push('/candidate')}
+            onClick={() => router.push('/recruiter')}
             className="mt-6 px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg"
           >
             Back to Dashboard
@@ -130,7 +181,7 @@ export default function InterviewSummaryPage() {
   // Video path from backend is like: /ashish/filename.mp4
   // Use configurable API base URL for video serving
   const videoUrl = interview.video_path
-    ? `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000'}/media/video${interview.video_path}`
+    ? `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001'}/media/video${interview.video_path}`
     : '';
   
   console.log('Interview data:', interview);

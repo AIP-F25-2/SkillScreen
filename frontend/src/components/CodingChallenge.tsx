@@ -163,6 +163,10 @@ export default function CodingChallenge({ userType, participantName }: CodingCha
             className="w-full h-full bg-transparent text-white font-mono text-sm p-4 resize-none focus:outline-none"
             placeholder="Write your solution here..."
             readOnly={userType === 'recruiter'}
+            data-allow-copy="true"
+            data-allow-paste="true"
+            data-allow-cut="true"
+            data-allow-select="true"
           />
         </div>
       </div>

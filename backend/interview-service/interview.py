@@ -1,11 +1,27 @@
-from fastapi import FastAPI, Request
-from datetime import datetime
+from fastapi import FastAPI, Request, HTTPException
+from datetime import datetime, timedelta
 import uuid
+import logging
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Import email service
+import sys
+sys.path.append(os.path.dirname(__file__))
+from services.email_service import email_service
 
 app = FastAPI(title="Interview Service")
 
-# In-memory storage for sessions
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# In-memory storage for sessions and tokens
 sessions_db = {}
+token_store = {}
 
 def create_response(data, success=True):
     """Create standardized API response"""
@@ -96,3 +112,177 @@ async def save_session_transcript(session_id: str, request: Request):
     sessions_db[session_id]["updated_at"] = datetime.utcnow().isoformat()
     
     return create_response(sessions_db[session_id])
+
+# ========================================
+# Token Management Endpoints
+# ========================================
+
+@app.post("/api/token/validate")
+async def validate_token(request: Request):
+    """Validate an interview access token"""
+    try:
+        data = await request.json()
+        token = data.get('token')
+        
+        if not token:
+            raise HTTPException(status_code=400, detail="Token is required")
+        
+        # Check if token exists
+        if token not in token_store:
+            logger.warning(f"Token not found: {token[:10]}...")
+            raise HTTPException(status_code=404, detail="Invalid or expired token")
+        
+        token_data = token_store[token]
+        
+        # Check if token is expired
+        expires_at = datetime.fromisoformat(token_data['expires_at'])
+        if datetime.utcnow() > expires_at:
+            logger.warning(f"Token expired: {token[:10]}...")
+            raise HTTPException(status_code=410, detail="This interview link has expired")
+        
+        # Check if token was already used
+        if token_data.get('used_at'):
+            logger.warning(f"Token already used: {token[:10]}...")
+            raise HTTPException(status_code=410, detail="This interview link has already been used")
+        
+        # Mark token as used
+        token_data['used_at'] = datetime.utcnow().isoformat()
+        
+        logger.info(f"Token validated successfully: {token[:10]}... for {token_data['candidate_email']}")
+        
+        return {
+            "valid": True,
+            "data": {
+                "token": token,
+                "candidateId": token_data['candidate_id'],
+                "candidateName": token_data['candidate_name'],
+                "candidateEmail": token_data['candidate_email'],
+                "sessionId": token_data['session_id'],
+                "expiresAt": token_data['expires_at'],
+                "usedAt": token_data.get('used_at')
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Token validation error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An error occurred while validating the token")
+
+
+@app.post("/api/token/store")
+async def store_token(request: Request):
+    """Store a new interview token"""
+    try:
+        data = await request.json()
+        
+        required_fields = ['token', 'candidate_id', 'candidate_name', 'candidate_email', 'session_id', 'expires_at']
+        for field in required_fields:
+            if field not in data:
+                raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
+        
+        token = data['token']
+        
+        # Store token data
+        token_store[token] = {
+            'candidate_id': data['candidate_id'],
+            'candidate_name': data['candidate_name'],
+            'candidate_email': data['candidate_email'],
+            'session_id': data['session_id'],
+            'expires_at': data['expires_at'],
+            'used_at': None
+        }
+        
+        logger.info(f"Token stored: {token[:10]}... for {data['candidate_email']}")
+        
+        return create_response({
+            "message": "Token stored successfully"
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Token storage error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An error occurred while storing the token")
+
+# ========================================
+# Email Endpoints
+# ========================================
+
+@app.post("/api/email/send-invitation")
+async def send_invitation(request: Request):
+    """Send an interview invitation email to a candidate"""
+    try:
+        data = await request.json()
+        
+        # Validate required fields
+        required_fields = ['candidate_email', 'candidate_name', 'candidate_id', 'session_id']
+        for field in required_fields:
+            if field not in data:
+                raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
+        
+        # Send invitation email
+        result = email_service.send_interview_invitation(
+            candidate_email=data['candidate_email'],
+            candidate_name=data['candidate_name'],
+            candidate_id=data['candidate_id'],
+            session_id=data['session_id'],
+            recruiter_name=data.get('recruiter_name'),
+            company_name=data.get('company_name'),
+            expires_in_hours=data.get('expires_in_hours', 48)
+        )
+        
+        # Store token
+        token_store[result['token']] = {
+            'candidate_id': result['candidate_id'],
+            'candidate_name': result['candidate_name'],
+            'candidate_email': result['candidate_email'],
+            'session_id': result['session_id'],
+            'expires_at': result['expires_at'],
+            'used_at': None
+        }
+        
+        return create_response({
+            "email_id": result['email_id'],
+            "token": result['token'],
+            "expires_at": result['expires_at'],
+            "interview_link": f"{email_service.base_url}/interview-link?token={result['token']}"
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to send invitation: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/email/send-completion-notification")
+async def send_completion_notification(request: Request):
+    """Send interview completion notification to recruiter"""
+    try:
+        data = await request.json()
+        
+        # Validate required fields
+        required_fields = ['recruiter_email', 'recruiter_name', 'candidate_name', 'interview_id', 'session_id']
+        for field in required_fields:
+            if field not in data:
+                raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
+        
+        # Send completion notification
+        result = email_service.send_interview_completion_notification(
+            recruiter_email=data['recruiter_email'],
+            recruiter_name=data['recruiter_name'],
+            candidate_name=data['candidate_name'],
+            interview_id=data['interview_id'],
+            session_id=data['session_id']
+        )
+        
+        return create_response({
+            "email_id": result['email_id']
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to send completion notification: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))

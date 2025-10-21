@@ -14,5 +14,6 @@ COPY . .
 
 # Use .env variables inside container
 ENV FLASK_APP=media_service.py
+ENV PYTHONUNBUFFERED=1
 
-CMD ["python", "media_service.py"]
+CMD ["python", "-u", "media_service.py"]

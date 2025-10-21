@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { CheatPreventionProvider } from "@/contexts/CheatPreventionContext";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -19,7 +20,9 @@ export default function RootLayout({
     <html lang="en" className="dark">
       <body className={`${inter.className} min-h-screen bg-background text-foreground antialiased`}>
         <AuthProvider>
-          {children}
+          <CheatPreventionProvider>
+            {children}
+          </CheatPreventionProvider>
         </AuthProvider>
       </body>
     </html>
