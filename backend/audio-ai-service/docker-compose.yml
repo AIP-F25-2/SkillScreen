@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  audio-ai-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: audio-ai-service
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_NAME=audio-ai-service
+      - ENVIRONMENT=development
+      - DEBUG=True
+      - LOG_LEVEL=INFO
+      - WHISPER_MODEL_SIZE=base
+      - WHISPER_DEVICE=cpu
+    volumes:
+      # Mount for development (hot reload)
+      - .:/app
+      # Persistent storage for models (avoid re-downloading)
+      - audio-models:/app/models
+      # Temporary audio files
+      - audio-temp:/app/temp_audio
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health/live')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  audio-models:
+  audio-temp:

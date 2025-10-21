@@ -1,7 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import { Video, Search, Bell, RotateCw, LayoutGrid, Maximize2, ChevronDown } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { Video, Search, Bell, RotateCw, LayoutGrid, Maximize2, ChevronDown, FileText, Clock, PlayCircle } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { apiClient } from '@/lib/api';
 
 interface RecentApplication {
   company: string;
@@ -15,6 +18,12 @@ interface ATSScore {
 }
 
 export default function CandidateDashboard() {
+  const router = useRouter();
+  const { user } = useAuth();
+  const [interviews, setInterviews] = useState<any[]>([]);
+  const [scheduledInterviews, setScheduledInterviews] = useState<any[]>([]);
+  const [loadingInterviews, setLoadingInterviews] = useState(true);
+
   const recentApplications: RecentApplication[] = [
     { company: 'Meta', status: 'pending' },
     { company: 'Amazon', status: 'pending' },
@@ -28,6 +37,67 @@ export default function CandidateDashboard() {
     { category: 'Experience', percentage: 28, color: 'bg-red-400' },
     { category: 'Projects', percentage: 18, color: 'bg-yellow-400' }
   ];
+
+  // Fetch all interviews and candidates
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoadingInterviews(true);
+        
+        // Fetch all interviews
+        const interviewsResponse = await apiClient.getAllInterviews();
+        if (interviewsResponse.success) {
+          const allInterviews = interviewsResponse.data.interviews || [];
+          const completedInterviews = allInterviews.filter(i => i.status === 'completed');
+          setInterviews(completedInterviews);
+        }
+
+        // Fetch all candidates
+        const candidatesResponse = await apiClient.getAllCandidates();
+        if (candidatesResponse.success) {
+          const allCandidates = candidatesResponse.data.candidates || [];
+          const scheduledCandidates = allCandidates.filter(c => c.status === 'scheduled');
+          setScheduledInterviews(scheduledCandidates);
+        }
+      } catch (error) {
+        console.error('Failed to fetch data:', error);
+      } finally {
+        setLoadingInterviews(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return 'Unknown';
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) {
+        return 'Invalid Date';
+      }
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      });
+    } catch {
+      return 'Unknown';
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return 'bg-green-500/20 text-green-400';
+      case 'processing':
+        return 'bg-yellow-500/20 text-yellow-400';
+      case 'failed':
+        return 'bg-red-500/20 text-red-400';
+      default:
+        return 'bg-gray-500/20 text-gray-400';
+    }
+  };
 
   return (
     <div className="min-h-screen p-6">
@@ -55,6 +125,161 @@ export default function CandidateDashboard() {
           </div>
         </div>
 
+        {/* Quick Action - Test Interview Setup */}
+        <div className="mb-8">
+          <button
+            onClick={() => router.push('/interview-setup')}
+            className="w-full glass-dark p-6 rounded-xl hover:bg-white/10 transition-all duration-300 group"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                  <Video className="w-6 h-6 text-white" />
+                </div>
+                <div className="text-left">
+                  <h3 className="text-lg font-semibold text-white">Test Your Interview Setup</h3>
+                  <p className="text-white/60 text-sm">Check camera & microphone before your interview</p>
+                </div>
+              </div>
+              <svg className="w-6 h-6 text-white/40 group-hover:text-white group-hover:translate-x-2 transition-all duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+              </svg>
+            </div>
+          </button>
+        </div>
+
+        {/* My Interviews Section */}
+        <div className="mb-8">
+          <div className="glass-dark rounded-xl p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+                <Video className="w-6 h-6" />
+                My Interviews
+              </h2>
+              <span className="text-white/50 text-sm">
+                {scheduledInterviews.length + interviews.length} total ({scheduledInterviews.length} scheduled, {interviews.length} completed)
+              </span>
+            </div>
+
+            {loadingInterviews ? (
+              <div className="flex justify-center py-12">
+                <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+              </div>
+            ) : scheduledInterviews.length === 0 && interviews.length === 0 ? (
+              <div className="text-center py-12">
+                <FileText className="w-16 h-16 text-white/30 mx-auto mb-4" />
+                <p className="text-white/70 mb-2">No interviews yet</p>
+                <p className="text-white/50 text-sm">Complete an interview to see it here</p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Scheduled Interviews */}
+                {scheduledInterviews.length > 0 && (
+                  <div>
+                    <h3 className="text-white/80 text-sm font-medium mb-3 flex items-center gap-2">
+                      <Clock className="w-4 h-4" />
+                      Scheduled Interviews
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {scheduledInterviews.map((candidate) => (
+                        <div
+                          key={candidate.candidate_id}
+                          className="glass p-4 rounded-xl hover:bg-white/10 transition-all cursor-pointer border-2 border-blue-500/30"
+                          onClick={() => router.push(`/interview?session_id=${candidate.session_id}`)}
+                        >
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center animate-pulse">
+                                <PlayCircle className="w-5 h-5 text-white" />
+                              </div>
+                              <div>
+                                <p className="text-white font-medium text-sm">{candidate.candidate_name || candidate.candidate_id}</p>
+                                <p className="text-white/50 text-xs">{formatDate(candidate.scheduled_at || candidate.uploaded_at || candidate.created_at)}</p>
+                              </div>
+                            </div>
+                            <span className="px-2 py-1 rounded-lg text-xs font-medium bg-blue-500/20 text-blue-300">
+                              Ready
+                            </span>
+                          </div>
+                          
+                          <div className="flex items-center gap-2 text-white/60 text-xs mb-2">
+                            <span className="flex items-center gap-1">
+                              <FileText className="w-3 h-3" />
+                              Session: {candidate.session_id}
+                            </span>
+                          </div>
+
+                          <div className="mt-3 pt-3 border-t border-white/10">
+                            <button className="w-full bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors flex items-center justify-center gap-2">
+                              <PlayCircle className="w-4 h-4" />
+                              Start Interview Now
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Completed Interviews */}
+                {interviews.length > 0 && (
+                  <div>
+                    {scheduledInterviews.length > 0 && (
+                      <h3 className="text-white/80 text-sm font-medium mb-3 flex items-center gap-2">
+                        <FileText className="w-4 h-4" />
+                        Completed Interviews
+                      </h3>
+                    )}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {interviews.map((interview) => (
+                        <div
+                          key={interview.interview_id}
+                          className="glass p-4 rounded-xl hover:bg-white/10 transition-all cursor-pointer"
+                          onClick={() => router.push(`/interview-summary?id=${interview.session_id}`)}
+                        >
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-lg flex items-center justify-center">
+                                <PlayCircle className="w-5 h-5 text-white" />
+                              </div>
+                              <div>
+                                <p className="text-white font-medium text-sm">{interview.candidate_name || interview.candidate_id}</p>
+                                <p className="text-white/50 text-xs">{formatDate(interview.created_at || interview.scheduled_at)}</p>
+                              </div>
+                            </div>
+                            <span className={`px-2 py-1 rounded-lg text-xs font-medium ${getStatusColor(interview.status)}`}>
+                              {interview.status}
+                            </span>
+                          </div>
+                          
+                          {interview.transcript && interview.transcript.word_count && (
+                            <div className="flex items-center gap-4 text-white/60 text-xs">
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                {Math.floor((interview.transcript.duration_seconds || 0) / 60)}m
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <FileText className="w-3 h-3" />
+                                {interview.transcript.word_count} words
+                              </span>
+                            </div>
+                          )}
+
+                          {interview.status === 'processing' && (
+                            <div className="mt-2 text-yellow-400/70 text-xs">
+                              Transcription in progress...
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      
         {/* Performance Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
           <div className="glass-dark p-6 rounded-xl">

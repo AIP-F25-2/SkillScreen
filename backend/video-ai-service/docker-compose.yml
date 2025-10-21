@@ -1,0 +1,23 @@
+version: "3.8"
+
+services:
+  anti-cheat:
+    command: uvicorn app.video-service:app --host 0.0.0.0 --port ${SERVER_PORT}
+    build: .
+    container_name: anti-cheat-1
+    env_file:
+      - .env
+    environment:
+      # Persist Ultralytics settings to a mounted folder
+      YOLO_CONFIG_DIR: /app/.ultra_cfg
+      YOLOv8_DIR: /app/.ultra_cfg
+    ports:
+      - "${SERVER_PORT}:${SERVER_PORT}"
+    volumes:
+      # Host → Container mounts (all read/write)
+      - ${UPLOADS_HOST_VOLUME_MOUNT_PATH}:${UPLOAD_FOLDER}
+      - ${PROCESSED_HOST_VOLUME_MOUNT_PATH}:${PROCESSED_FOLDER}
+      - ${CHEATING_MODEL_PATH}:${MODELS_PATH}
+      # Persist Ultralytics settings.json
+      - ./ultra_cfg:/app/.ultra_cfg
+    restart: unless-stopped

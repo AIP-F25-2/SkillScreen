@@ -1,98 +1,48 @@
-# Video AI Service
+# Anti‑Cheating Video Service (FastAPI, MVC)
 
-Simple Video AI Service for deployment testing and health monitoring.
+A production‑ready service for one‑person exam recordings. It detects:
+- Face presence & tracking, identity consistency (same person), **liveness**
+- **Gaze** (eye‑contact proxy), **head pose**, **posture**
+- **Anti‑cheating** signals: multiple faces, additional persons, **prohibited items** (phone/laptop/book)
+- **Environment**: lighting & background motion
+- **Engagement** score
+- Returns **timeframes** (start/end in seconds) for each event, plus metrics & overall verdict
 
-## Features
-- ✅ Simple deployment check endpoint
-- ✅ Environment variable configuration
-- ✅ Docker containerization
-- ✅ Port configuration from .env file
-- ✅ Preserved directory structure with .gitkeep files
-
-## Quick Start
-
-### Docker Deployment
-```bash
-# Build the image
-docker build -t video-ai-service .
-
-# Run with environment file
-docker run -d --name video-ai-service-container -p 5016:5016 --env-file .env video-ai-service
-
-# Test the service
-curl http://localhost:5016
+## Folder layout (MVC)
+```
+app/
+  controllers/
+    analyze_controller.py
+  core/
+    config.py
+    logging.py
+    segmentation.py
+  services/
+    models_loader.py
+    detectors.py
+    analysis.py
+    pose_helper.py
+    pipelines/
+      cheating_pipeline.py
+.env.example
+requirements.txt
+Dockerfile
+docker-compose.yml
 ```
 
-### Local Development
+### Quick start
 ```bash
-# Install dependencies
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-
-# Run locally
-python app.py
+cp .env.example .env  # set model paths in ./models
+uvicorn app.main:app --reload
 ```
 
-## API Endpoints
+### API
+- `POST /analyze` -> `{ "input_path": "path/to/video.mp4" }` returns JSON with segments and summary.
+- `POSTMAN Link` ->  [POSTMAN LINK](https://web.postman.co/workspace/My-Workspace~d654d325-098b-43d3-8bdc-459980921bae/collection/6664275-6add62e5-a00b-4ca0-9011-476c055919fc?action=share&source=copy-link&creator=6664275) to test all the endpoints.
 
-### Root Endpoint
-- `GET /` - Service status and deployment check
-
-**Response:**
-```json
-{
-  "message": "Video AI Service is running",
-  "status": "deployed",
-  "service": "video-ai-service",
-  "port": "5016"
-}
-```
-
-## Environment Configuration
-
-The service reads configuration from `.env` file:
-
-```bash
-# Copy example environment file
-cp .env.example .env
-
-# Edit .env file to customize settings
-PORT=5016
-FLASK_ENV=production
-```
-
-## Docker Commands
-
-```bash
-# Stop and remove container
-docker stop video-ai-service-container
-docker rm video-ai-service-container
-
-# Rebuild and redeploy
-docker build -t video-ai-service .
-docker run -d --name video-ai-service-container -p 5016:5016 --env-file .env video-ai-service
-
-# View logs
-docker logs -f video-ai-service-container
-```
-
-## Files Structure
-```
-video-ai-service/
-├── app.py              # Main Flask application (22 lines)
-├── Dockerfile          # Docker configuration
-├── requirements.txt    # Python dependencies
-├── .env.example        # Environment template
-├── .env                # Environment file
-├── src/                # Source directories (preserved with .gitkeep)
-│   ├── config/
-│   ├── controllers/
-│   ├── prompts/
-│   ├── routes/
-│   ├── services/
-│   └── utils/
-├── tests/              # Test directories (preserved with .gitkeep)
-│   ├── fixtures/
-│   ├── integration/
-│   └── unit/
-└── README.md          # This file
-```
+### Notes
+- Uses **Ultralytics YOLO** for faces/persons/objects; swap model paths in `.env`.
+- Identity/liveness are efficient heuristics; you can plug real **face embeddings** later.
+- Pose helper stub is ready to wire YOLO‑pose keypoints for richer head/posture analysis.

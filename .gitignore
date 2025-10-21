@@ -2,7 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
+*.pemx
 # C extensions
 *.so
 
@@ -314,3 +314,5 @@ build/
 *.temp
 *.bak
 *.backup
+
+.sonar
