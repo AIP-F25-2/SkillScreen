@@ -6,6 +6,7 @@ import { apiClient } from '@/lib/api';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Download, Clock, FileText, CheckCircle, ShieldAlert } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { API_BASE_URL } from '@/lib/config';
 
 export default function InterviewSummaryPage() {
   const searchParams = useSearchParams();
@@ -181,7 +182,7 @@ export default function InterviewSummaryPage() {
   // Video path from backend is like: /ashish/filename.mp4
   // Use configurable API base URL for video serving
   const videoUrl = interview.video_path
-    ? `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001'}/media/video${interview.video_path}`
+    ? `${API_BASE_URL}/media/video${interview.video_path}`
     : '';
   
   console.log('Interview data:', interview);

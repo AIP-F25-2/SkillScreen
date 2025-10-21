@@ -1,4 +1,5 @@
 // Interview token management for email-based candidate access
+import { API_BASE_URL } from './config';
 
 export interface InterviewToken {
   token: string;
@@ -83,7 +84,7 @@ export async function validateInterviewToken(token: string): Promise<{
   error?: string;
 }> {
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001'}/interview/api/token/validate`, {
+    const response = await fetch(`${API_BASE_URL}/interview/api/token/validate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

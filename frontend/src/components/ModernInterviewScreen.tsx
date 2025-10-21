@@ -9,6 +9,7 @@ import QuestionModal from './QuestionModal';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/lib/api';
 import { getDemoInterviewQuestions } from '@/lib/demoHelpers';
+import { API_BASE_URL } from '@/lib/config';
 
 interface ModernInterviewScreenProps {
   participantName: string;
@@ -237,7 +238,7 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
 
       // Reset chunks on server and wait for confirmation
       if (user) {
-        const resetResponse = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001'}/media/reset_chunks`, {
+        const resetResponse = await fetch(`${API_BASE_URL}/media/reset_chunks`, {
           method: 'POST',
           headers: getAuthHeaders(),
           body: JSON.stringify({ user_id: user.id })
@@ -425,7 +426,7 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
         formData.append('user_id', user.id);
         
         try {
-          const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001'}/media/upload_chunk`, {
+          const response = await fetch(`${API_BASE_URL}/media/upload_chunk`, {
             method: 'POST',
             headers: headers,
             body: formData
@@ -450,7 +451,7 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
       });
 
       // Finalize upload on media service
-      const finalizeResponse = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001'}/media/finalize_upload`, {
+      const finalizeResponse = await fetch(`${API_BASE_URL}/media/finalize_upload`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
