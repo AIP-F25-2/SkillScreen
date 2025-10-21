@@ -50,7 +50,7 @@ class Settings(BaseSettings):
 
         # TTS Configuration
     TTS_PROVIDER: str = "edge"  # Options: gtts, edge, azure, aws
-    TTS_DEFAULT_VOICE: str = "ar-BH-LailaNeural"
+    TTS_DEFAULT_VOICE: str = "en-US-AriaNeural"  # Default voice for TTS
     
     # Azure TTS (if using Azure)
     AZURE_TTS_KEY: Optional[str] = None
