@@ -318,7 +318,7 @@ def _extract_ts_from_basename(user_id: str, basename: str) -> Optional[str]:
     return ts
 
 def _delete_file_if_exists(path: Optional[str], deleted: list) -> None:
-    _LOG.info("Deleting file path: " + str(path))
+    _LOG.info("Deleting file path: {path}")
     if path and os.path.isfile(path):
         os.remove(path)
         deleted.append(path)

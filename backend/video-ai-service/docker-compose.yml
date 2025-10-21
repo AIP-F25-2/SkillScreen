@@ -4,7 +4,7 @@ services:
   anti-cheat:
     command: uvicorn app.video-service:app --host 0.0.0.0 --port ${SERVER_PORT}
     build: .
-    container_name: anti-cheat-1
+    container_name: video-ai-service
     env_file:
       - .env
     environment:

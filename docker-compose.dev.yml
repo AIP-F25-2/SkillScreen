@@ -122,18 +122,30 @@ services:
       context: ./backend/video-ai-service
       dockerfile: Dockerfile
     container_name: video-ai-service
-    ports:
-      - "5005:8080"
+    command: uvicorn app.video-service:app --host 0.0.0.0 --port ${SERVER_PORT:-8080}
+    env_file:
+      - ./backend/video-ai-service/.env
     environment:
-      - PORT=8080
-      - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://postgres:password@postgres:5432/skill_screen_platform_dev
+      # service config
+      PORT: ${SERVER_PORT:-8080}
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://postgres:password@postgres:5432/skill_screen_platform_dev
+      # Ultralytics config
+      YOLO_CONFIG_DIR: /app/.ultra_cfg
+      YOLOv8_DIR: /app/.ultra_cfg
+    ports:
+      - "${ANTI_CHEAT_PORT:-5013}:${SERVER_PORT:-8080}"
     volumes:
       - ./backend/video-ai-service:/app
-    depends_on:
-      - postgres
+      - ./uploads:/app/uploads
+      - ./processed_uploads:/app/processed
+      - ./backend/video-ai-service/models:/app/models
+      - ./backend/video-ai-service/ultra_cfg:/app/.ultra_cfg
+    restart: unless-stopped
     networks:
       - skill-screen-network
+    depends_on:
+      - postgres
 
   text-ai-service:
     build:

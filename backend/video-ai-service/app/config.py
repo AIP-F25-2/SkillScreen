@@ -1,5 +1,6 @@
 # app/config.py
 import os
+import json
 
 def _get_bool(name: str, default: str = "0") -> bool:
     return os.getenv(name, default).strip() in ("1", "true", "TRUE", "yes", "YES")

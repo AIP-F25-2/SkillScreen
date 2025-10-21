@@ -598,7 +598,7 @@ class VideoAnalyzer:
             "events": events,
             "segments": segments,
             "rollup": {"num_segments": len(segments), **summary},
-             "performance": perf, 
+            "performance": perf, 
             "thumbnails_dir": (os.path.join(user_proc_dir, "thumbs") if getattr(settings, "EMIT_THUMBNAILS", True) else None),
         }
 

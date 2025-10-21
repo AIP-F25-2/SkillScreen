@@ -1,3 +1,5 @@
+pydantic
+pydantic-Core
 python-dotenv==1.0.1
 # Optional (identity/emotion):
 deepface==0.0.93
@@ -13,7 +15,6 @@ numpy>=1.24
 # API (adjust if you’re not using FastAPI)
 fastapi>=0.110
 uvicorn[standard]>=0.23
-pydantic>=2.0
 python-multipart>=0.0.9
 # Optional: let Ultralytics pull a matching torch wheel automatically.
 # If you want to pin CPU-only Torch explicitly, uncomment one of these known-good lines:

@@ -7,14 +7,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # --- System Dependencies ---
 # Includes: cmake, OpenCV runtime libs, git (for model weights), and build essentials for compiling dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
-    cmake \
-    libgl1 \
-    libglib2.0-0 \
-    git \
     build-essential \
     curl \
     ca-certificates \
+    cmake \
+    ffmpeg \
+    git \
+    libgl1 \
+    libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # --- Python Dependencies ---
@@ -25,7 +25,7 @@ RUN pip install --no-cache-dir --upgrade pip \
  && pip install --no-cache-dir -r /app/requirements.txt
 
 # --- Copy App Code ---
-COPY . /app
+COPY . .
 
 # --- Environment Variables ---
 # These make Ultralytics write config/settings to a persistent folder (mounted via Docker Compose)
