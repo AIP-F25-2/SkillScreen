@@ -5,6 +5,7 @@ import { ShaderAnimation } from '@/components/ui/shader-lines';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
+import Footer from '@/components/Footer';
 
 type UserType = 'recruiter' | 'job_seeker' | '';
 
@@ -37,6 +38,7 @@ interface Errors {
   experience?: string;
   skills?: string;
   preferredRole?: string;
+  submit?: string;
 }
 
 export default function Onboarding() {
@@ -721,6 +723,8 @@ export default function Onboarding() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <Footer />
     </>
   );
 }

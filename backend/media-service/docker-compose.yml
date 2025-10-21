@@ -1,0 +1,10 @@
+version: '3.8'
+services:
+  media-service:
+    build: .
+    env_file:
+      - .env
+    ports:
+      - "${SERVER_PORT}:${SERVER_PORT}"
+    volumes:
+      - ${HOST_VOLUME_MOUNT_PATH}:/app/uploads
