@@ -1,10 +1,21 @@
-version: '3.8'
 services:
-  media-service:
+  video-service:
     build: .
+    image: media-service:latest
+    container_name: media-service
+    ports:
+      - "5004:5004"
     env_file:
       - .env
-    ports:
-      - "${SERVER_PORT}:${SERVER_PORT}"
+    environment:
+      # Fallbacks if not in .env
+      SERVER_HOST: "0.0.0.0"
+      SERVER_PORT: "5004"
+      UPLOAD_FOLDER: "/app/uploads"
+      MAX_CONTENT_LENGTH_BYTES: "524288000"
+      CORS_ORIGINS: "*"
+      # Set a strong token in .env for production!
+      ADMIN_TOKEN: "${ADMIN_TOKEN:?set-in-.env}"
     volumes:
-      - ${HOST_VOLUME_MOUNT_PATH}:/app/uploads
+      - /Users/mukulgarg/Downloads/AIP_backup/video_recordings:/app/uploads
+    restart: unless-stopped

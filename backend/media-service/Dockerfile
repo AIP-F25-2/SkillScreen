@@ -1,18 +1,15 @@
-FROM python:3.12-slim
-
-# Install ffmpeg and other dependencies
-RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
-
+# syntax=docker/dockerfile:1.7
+FROM python:3.11-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg ca-certificates curl && rm -rf /var/lib/apt/lists/*
+RUN useradd -m -u 10001 appuser
 WORKDIR /app
-
-# Copy requirements and install
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application code
-COPY . .
-
-# Use .env variables inside container
-ENV FLASK_APP=media_service.py
-
-CMD ["python", "media_service.py"]
+RUN pip install --no-cache-dir -r requirements.txt && pip install --no-cache-dir gunicorn
+COPY . /app
+RUN mkdir -p /app/uploads && chown -R appuser:appuser /app
+USER appuser
+ENV SERVER_HOST=0.0.0.0 SERVER_PORT=5004 UPLOAD_FOLDER=/app/uploads MAX_CONTENT_LENGTH_BYTES=524288000 CORS_ORIGINS="*"
+EXPOSE 5004
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD curl -fsS http://127.0.0.1:5004/healthz || exit 1
+CMD sh -c 'exec gunicorn --workers ${GUNICORN_WORKERS:-3} --threads ${GUNICORN_THREADS:-2} --timeout ${GUNICORN_TIMEOUT:-120} --bind 0.0.0.0:${SERVER_PORT} media_service:app'
