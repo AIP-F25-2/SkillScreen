@@ -179,20 +179,33 @@ class EmailExtractor:
             if line and len(line) > 3:  # Skip very short lines
                 logger.info(f"Checking line {i}: '{line}'")
                 
-                # Check if it looks like a name (2-4 words, all starting with capital letters)
-                words = line.split()
-                if 2 <= len(words) <= 4:
-                    if all(word[0].isupper() and word.isalpha() for word in words):
-                        # Additional check: make sure it's not a section header or common resume words
-                        line_lower = line.lower()
-                        if not any(skip_word in line_lower for skip_word in [
-                            'technical', 'skills', 'experience', 'education', 'projects', 
-                            'summary', 'objective', 'profile', 'contact', 'phone', 'email',
-                            'address', 'linkedin', 'github', 'portfolio', 'certifications'
-                        ]):
-                            logger.info(f"Found potential name: '{line}'")
-                            return line
+                if self._is_potential_name_line(line):
+                    logger.info(f"Found potential name: '{line}'")
+                    return line
         return None
+    
+    def _is_potential_name_line(self, line: str) -> bool:
+        """Check if a line looks like a potential name"""
+        # Check if it looks like a name (2-4 words, all starting with capital letters)
+        words = line.split()
+        if not (2 <= len(words) <= 4):
+            return False
+        
+        if not all(word[0].isupper() and word.isalpha() for word in words):
+            return False
+        
+        # Additional check: make sure it's not a section header or common resume words
+        return not self._is_section_header(line)
+    
+    def _is_section_header(self, line: str) -> bool:
+        """Check if line is a section header"""
+        line_lower = line.lower()
+        section_headers = [
+            'technical', 'skills', 'experience', 'education', 'projects', 
+            'summary', 'objective', 'profile', 'contact', 'phone', 'email',
+            'address', 'linkedin', 'github', 'portfolio', 'certifications'
+        ]
+        return any(skip_word in line_lower for skip_word in section_headers)
     
     def _is_valid_name(self, name: str) -> bool:
         """Check if the extracted text looks like a valid name"""

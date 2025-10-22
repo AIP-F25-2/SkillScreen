@@ -107,7 +107,7 @@ class ResumeService:
             # Validate file
             validation = self.file_processor.validate_file(filename, len(file_content))
             if not validation["valid"]:
-                logger.warning(f"File validation failed for {filename}: {validation['error']}")
+                logger.warning(f"File validation failed for file: {validation['error']}")
                 return {
                     "filename": filename,
                     "status": "failed",
@@ -118,7 +118,7 @@ class ResumeService:
             # Save file
             save_result = await self.file_processor.save_file(file_content, filename, upload_path)
             if not save_result["success"]:
-                logger.error(f"Failed to save file {filename}: {save_result['error']}")
+                logger.error(f"Failed to save file: {save_result['error']}")
                 return {
                     "filename": filename,
                     "status": "failed",
@@ -135,10 +135,10 @@ class ResumeService:
             
             # Handle ZIP files
             if validation["file_type"] == "zip":
-                return await self._process_zip_file(file_result, upload_path, upload_id)
+                return self._process_zip_file(file_result, upload_path, upload_id)
             
             # Process resume file
-            return await self._process_resume_file(file_result, save_result["file_path"], upload_id)
+            return self._process_resume_file_sync(file_result, save_result["file_path"])
             
         except Exception as e:
             logger.error(f"Error processing file {file.filename}: {str(e)}")
@@ -149,7 +149,7 @@ class ResumeService:
                 "size": len(file_content) if 'file_content' in locals() else 0
             }
     
-    async def _process_zip_file(self, file_result: Dict[str, Any], upload_path: Path, upload_id: str) -> Dict[str, Any]:
+    def _process_zip_file(self, file_result: Dict[str, Any], upload_path: Path, upload_id: str) -> Dict[str, Any]:
         """Process ZIP file and extract individual files"""
         try:
             zip_path = Path(file_result["url"].replace("/temp/resumes/", "temp/resumes/"))
@@ -162,12 +162,11 @@ class ResumeService:
             
             for extracted_file in extracted_files:
                 if self.text_extractor.is_text_extractable(extracted_file["file_path"]):
-                    processed_file = await self._process_resume_file(extracted_file, extracted_file["file_path"], upload_id)
+                    processed_file = self._process_resume_file_sync(extracted_file, extracted_file["file_path"])
                     if processed_file:
                         processed_files.append(processed_file)
             
             # ZIP files are processed, no additional fields needed
-            pass
             
             return file_result
             
@@ -177,8 +176,41 @@ class ResumeService:
             file_result["error"] = str(e)
             return file_result
     
-    async def _process_resume_file(self, file_result: Dict[str, Any], file_path: str, upload_id: str) -> Dict[str, Any]:
+    async def _process_resume_file(self, file_result: Dict[str, Any], file_path: str) -> Dict[str, Any]:
         """Process individual resume file and extract information"""
+        try:
+            # Extract text from file
+            text_result = self.text_extractor.extract_text(file_path)
+            
+            if not text_result["success"]:
+                file_result["status"] = "failed"
+                file_result["error"] = text_result["error"]
+                return file_result
+            
+            # Extract candidate information
+            candidate_info = self.email_extractor.extract_candidate_info(text_result["text"])
+            
+            # Update file result
+            file_result.update({
+                "extracted_emails": candidate_info["emails"],
+                "extracted_name": candidate_info["name"],
+                "email_count": candidate_info["email_count"]
+            })
+            
+            logger.info(f"Processed {file_result['filename']}: "
+                       f"emails={len(candidate_info['emails'])}, "
+                       f"name={candidate_info['name']}")
+            
+            return file_result
+            
+        except Exception as e:
+            logger.error(f"Error processing resume file {file_path}: {str(e)}")
+            file_result["status"] = "failed"
+            file_result["error"] = str(e)
+            return file_result
+    
+    def _process_resume_file_sync(self, file_result: Dict[str, Any], file_path: str) -> Dict[str, Any]:
+        """Process individual resume file and extract information (synchronous version)"""
         try:
             # Extract text from file
             text_result = self.text_extractor.extract_text(file_path)

@@ -6,6 +6,7 @@ from typing import List, Dict, Any, Optional
 from pathlib import Path
 import logging
 from datetime import datetime
+import aiofiles
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +63,9 @@ class FileProcessor:
         try:
             file_path = upload_path / filename
             
-            # Write file content
-            with open(file_path, 'wb') as f:
-                f.write(file_content)
+            # Write file content using async file operations
+            async with aiofiles.open(file_path, 'wb') as f:
+                await f.write(file_content)
             
             return {
                 "success": True,
