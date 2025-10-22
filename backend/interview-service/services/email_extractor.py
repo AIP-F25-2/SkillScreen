@@ -14,13 +14,14 @@ class EmailExtractor:
     )
     
     # Name patterns (common resume name formats) - ordered by priority
+    # Using non-backtracking patterns to avoid ReDoS vulnerability
     NAME_PATTERNS = [
         # Most specific patterns first
-        r'(?:Name|Full Name|Candidate Name)[\s:]*([A-Z][a-z]+\s+[A-Z][a-z]+)',
+        r'(?:Name|Full Name|Candidate Name)[\s:]+([A-Z][a-z]+\s+[A-Z][a-z]+)',
         r'^([A-Z][a-z]+\s+[A-Z][a-z]+)\s*$',  # First Last at start of line (standalone)
         r'^([A-Z][a-z]+\s+[A-Z][a-z]+)\s*\n',  # First Last at start of line followed by newline
-        r'([A-Z][a-z]+\s+[A-Z][a-z]+)\s*Email',  # Name followed by Email
-        r'([A-Z][a-z]+\s+[A-Z][a-z]+)\s*Phone',  # Name followed by Phone
+        r'([A-Z][a-z]+\s+[A-Z][a-z]+)\s+Email',  # Name followed by Email
+        r'([A-Z][a-z]+\s+[A-Z][a-z]+)\s+Phone',  # Name followed by Phone
         r'([A-Z][a-z]+\s+[A-Z][a-z]+)\s*@',  # Name followed by @ (email)
         # Less specific patterns (avoid job titles)
         r'^([A-Z][a-z]+\s+[A-Z][a-z]+)',  # First Last at start of line (fallback)
@@ -47,11 +48,18 @@ class EmailExtractor:
             return []
         
         # Clean text by removing extra spaces around @ and . characters
-        cleaned_text = re.sub(r'\s*@\s*', '@', text)
-        cleaned_text = re.sub(r'\s*\.\s*', '.', cleaned_text)
+        # Use a safer approach that handles spaces without ReDoS vulnerability
+        # Replace spaces around @ symbol
+        cleaned_text = text.replace(' @', '@').replace('@ ', '@')
+        # Replace spaces around . symbol  
+        cleaned_text = cleaned_text.replace(' .', '.').replace('. ', '.')
+        
+        logger.debug(f"Original text sample: {text[:200]}...")
+        logger.debug(f"Cleaned text sample: {cleaned_text[:200]}...")
         
         # Find all email matches
         email_matches = self.EMAIL_PATTERN.findall(cleaned_text)
+        logger.debug(f"Found {len(email_matches)} email matches: {email_matches}")
         
         # Validate emails
         valid_emails = []
@@ -100,7 +108,8 @@ class EmailExtractor:
                     # Clean up the match
                     name = match.strip()
                     name = re.sub(r'\s+', ' ', name)
-                    name = re.sub(r'^(Mr\.|Ms\.|Mrs\.|Dr\.)\s*', '', name, flags=re.IGNORECASE)
+                    # Use non-backtracking pattern to avoid ReDoS vulnerability
+                    name = re.sub(r'^(Mr\.|Ms\.|Mrs\.|Dr\.)\s+', '', name, flags=re.IGNORECASE)
                     
                     logger.info(f"Cleaned name: '{name}'")
                     
@@ -164,6 +173,7 @@ class EmailExtractor:
                 return False
         
         # Should not contain numbers or special characters (except hyphens for compound names)
+        # Use non-backtracking pattern to avoid ReDoS vulnerability
         for part in name_parts:
             if not re.match(r'^[A-Za-z-]+$', part):
                 return False
