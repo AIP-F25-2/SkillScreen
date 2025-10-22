@@ -6,7 +6,7 @@ from ..utils.filename import secure_part
 
 files_bp = Blueprint("files", __name__)
 
-@files_bp.route("/upload_general_file", methods=["POST"])
+@files_bp.route("/upload", methods=["POST"])
 def upload_general_file():
     file = request.files.get("file")
     user_id = request.form.get("user_id")
