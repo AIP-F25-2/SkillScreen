@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 import logging
 import sys
@@ -68,7 +68,7 @@ def health():
     return create_response({
         "service": "interview-service",
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "features": ["resume_upload", "file_processing", "email_extraction"]
     })
 

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Request
 from typing import List
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 from services.resume_service import ResumeService
@@ -18,7 +18,7 @@ def create_response(data, success=True, error=None):
         "data": data,
         "error": error,
         "meta": {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
             "request_id": f"req_{uuid.uuid4().hex[:8]}",
             "version": "v1"
         }

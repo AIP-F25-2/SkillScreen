@@ -6,6 +6,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Constants
+CANDIDATE_NOT_FOUND_ERROR = "Candidate not found"
+
 class CandidateService:
     """Service layer for candidate operations"""
     
@@ -53,7 +56,7 @@ class CandidateService:
                 if not candidate:
                     return {
                         "success": False,
-                        "error": "Candidate not found",
+                        "error": CANDIDATE_NOT_FOUND_ERROR,
                         "data": None
                     }
                 
@@ -102,7 +105,7 @@ class CandidateService:
                 if not candidate:
                     return {
                         "success": False,
-                        "error": "Candidate not found",
+                        "error": CANDIDATE_NOT_FOUND_ERROR,
                         "data": None
                     }
                 
@@ -130,7 +133,7 @@ class CandidateService:
                 if not success:
                     return {
                         "success": False,
-                        "error": "Candidate not found",
+                        "error": CANDIDATE_NOT_FOUND_ERROR,
                         "data": None
                     }
                 

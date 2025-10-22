@@ -2,7 +2,7 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from models.candidate import Candidate
 
@@ -70,7 +70,7 @@ class CandidateRepository:
             if hasattr(candidate, field):
                 setattr(candidate, field, value)
         
-        candidate.updated_at = datetime.utcnow()
+        candidate.updated_at = datetime.now(timezone.utc)
         self.session.flush()
         return candidate
     
@@ -80,7 +80,7 @@ class CandidateRepository:
         if not candidate:
             return False
         
-        candidate.deleted_at = datetime.utcnow()
+        candidate.deleted_at = datetime.now(timezone.utc)
         self.session.flush()
         return True
     

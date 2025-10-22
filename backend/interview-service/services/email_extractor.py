@@ -89,49 +89,84 @@ class EmailExtractor:
         
         logger.info("Starting name extraction...")
         
-        # First, try to get the first line of the resume (usually the name)
+        # Try first line method
+        name = self._try_first_line_method(text)
+        if name:
+            return name
+        
+        # Try pattern matching method
+        name = self._try_pattern_matching_method(text)
+        if name:
+            return name
+        
+        logger.info("No valid name found")
+        return None
+    
+    def _try_first_line_method(self, text: str) -> Optional[str]:
+        """Try to extract name from first line"""
         first_line = self._get_first_line(text)
         if first_line and self._is_valid_name(first_line):
             first_line_lower = first_line.lower()
             if not any(job_title in first_line_lower for job_title in self.JOB_TITLES):
                 logger.info(f"Using first line as name: {first_line}")
                 return first_line.title()
-        
+        return None
+    
+    def _try_pattern_matching_method(self, text: str) -> Optional[str]:
+        """Try to extract name using pattern matching"""
         logger.info("First line method didn't work, trying patterns...")
         
-        # Try each name pattern in order of priority
         for i, pattern in enumerate(self.compiled_name_patterns):
             matches = pattern.findall(text)
             if matches:
                 logger.info(f"Pattern {i} found matches: {matches}")
                 for match in matches:
-                    # Clean up the match
-                    name = match.strip()
-                    name = re.sub(r'\s+', ' ', name)
-                    # Use non-backtracking pattern to avoid ReDoS vulnerability
-                    name = re.sub(r'^(Mr\.|Ms\.|Mrs\.|Dr\.)\s+', '', name, flags=re.IGNORECASE)
-                    
-                    logger.info(f"Cleaned name: '{name}'")
-                    
-                    # Basic validation - should have at least first and last name
-                    name_parts = name.split()
-                    if len(name_parts) >= 2:
-                        # Check if it's not a job title or section header
-                        name_lower = name.lower()
-                        if not any(job_title in name_lower for job_title in self.JOB_TITLES):
-                            # Additional check for section headers
-                            if not any(skip_word in name_lower for skip_word in [
-                                'technical', 'skills', 'experience', 'education', 'projects', 
-                                'summary', 'objective', 'profile', 'contact', 'phone', 'email',
-                                'address', 'linkedin', 'github', 'portfolio', 'certifications'
-                            ]):
-                                # Additional validation: check if it looks like a real name
-                                if self._is_valid_name(name):
-                                    logger.info(f"Using pattern match as name: {name}")
-                                    return name.title()
-        
-        logger.info("No valid name found")
+                    name = self._process_pattern_match(match)
+                    if name:
+                        return name
         return None
+    
+    def _process_pattern_match(self, match: str) -> Optional[str]:
+        """Process a pattern match to extract valid name"""
+        # Clean up the match
+        name = match.strip()
+        name = re.sub(r'\s+', ' ', name)
+        # Use non-backtracking pattern to avoid ReDoS vulnerability
+        name = re.sub(r'^(Mr\.|Ms\.|Mrs\.|Dr\.)\s+', '', name, flags=re.IGNORECASE)
+        
+        logger.info(f"Cleaned name: '{name}'")
+        
+        # Basic validation - should have at least first and last name
+        name_parts = name.split()
+        if len(name_parts) < 2:
+            return None
+        
+        # Check if it's not a job title or section header
+        if self._is_job_title_or_section_header(name):
+            return None
+        
+        # Additional validation: check if it looks like a real name
+        if self._is_valid_name(name):
+            logger.info(f"Using pattern match as name: {name}")
+            return name.title()
+        
+        return None
+    
+    def _is_job_title_or_section_header(self, name: str) -> bool:
+        """Check if the name is actually a job title or section header"""
+        name_lower = name.lower()
+        
+        # Check for job titles
+        if any(job_title in name_lower for job_title in self.JOB_TITLES):
+            return True
+        
+        # Check for section headers
+        section_headers = [
+            'technical', 'skills', 'experience', 'education', 'projects', 
+            'summary', 'objective', 'profile', 'contact', 'phone', 'email',
+            'address', 'linkedin', 'github', 'portfolio', 'certifications'
+        ]
+        return any(skip_word in name_lower for skip_word in section_headers)
     
     def _get_first_line(self, text: str) -> Optional[str]:
         """Get the first non-empty line from the text"""
