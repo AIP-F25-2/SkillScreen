@@ -2,13 +2,32 @@ from fastapi import FastAPI
 from datetime import datetime
 import uuid
 import logging
+import sys
+import os
+from dotenv import load_dotenv
+
+# Add common-service to path
+sys.path.append("/common-service")
+
+# Import common-service database setup
+from db import DBFactory
 
 # Import resume controller
 from controllers.resume_controller import router as resume_router
 
+# Load environment variables
+load_dotenv()
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Initialize database connection
+try:
+    DBFactory.init()
+    logger.info("Database connection initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize database: {e}")
 
 app = FastAPI(title="Interview Service")
 
