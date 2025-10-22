@@ -74,11 +74,31 @@ services:
       - skill-screen-network
 
   # AI Services
+  ai-logic-service:
+    build:
+      context: ./backend/ai-logic-service
+      dockerfile: Dockerfile.dev
+    container_name: ai-logic-service
+    ports:
+      - "8001:8080"
+    environment:
+      - PORT=8080
+      - HOST=0.0.0.0
+      - APP_NAME=ai-logic-service
+      - ENVIRONMENT=development
+      - DEBUG=True
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./backend/ai-logic-service:/app
+    networks:
+      - skill-screen-network
+
   audio-ai-service:
     build:
       context: ./backend/audio-ai-service
       dockerfile: Dockerfile
     container_name: audio-ai-service
+    platform: linux/amd64
     ports:
       - "8000:8080"
     environment:

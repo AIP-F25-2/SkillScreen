@@ -1,7 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { FileUploadDemo } from '@/components/ui/file-upload-demo';
+import { apiClient } from '@/lib/api';
+import { FileText, User } from 'lucide-react';
 
 interface Candidate {
   id: string;
@@ -96,8 +99,62 @@ const mockJobPostings: JobPosting[] = [
 ];
 
 export default function RecruiterDashboard() {
-  const [activeTab, setActiveTab] = useState<'candidates' | 'jobs' | 'analytics'>('candidates');
+  const router = useRouter();
+  const [activeTab, setActiveTab] = useState<'interviews' | 'candidates' | 'jobs' | 'analytics'>('interviews');
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
+  const [interviews, setInterviews] = useState<any[]>([]);
+  const [loadingInterviews, setLoadingInterviews] = useState(true);
+  const [candidates, setCandidates] = useState<any[]>([]);
+  const [loadingCandidates, setLoadingCandidates] = useState(true);
+
+  // Fetch all interviews and candidates
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoadingInterviews(true);
+        setLoadingCandidates(true);
+
+        // Fetch all interviews
+        const interviewsResponse = await apiClient.getAllInterviews();
+        if (interviewsResponse.success) {
+          setInterviews(interviewsResponse.data.interviews || []);
+        }
+
+        // Fetch all candidates
+        const candidatesResponse = await apiClient.getAllCandidates();
+        if (candidatesResponse.success) {
+          setCandidates(candidatesResponse.data.candidates || []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch data:', error);
+      } finally {
+        setLoadingInterviews(false);
+        setLoadingCandidates(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return 'Unknown';
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) {
+        return 'Invalid Date';
+      }
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch {
+      return 'Unknown';
+    }
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -148,6 +205,16 @@ export default function RecruiterDashboard() {
         {/* Navigation Tabs */}
         <div className="flex space-x-1 mb-8 bg-primary-200/10 rounded-lg p-1">
           <button
+            onClick={() => setActiveTab('interviews')}
+            className={`px-6 py-3 rounded-md font-semibold transition-colors ${
+              activeTab === 'interviews'
+                ? 'bg-white text-primary-300'
+                : 'text-white hover:bg-primary-200/20'
+            }`}
+          >
+            Interviews
+          </button>
+          <button
             onClick={() => setActiveTab('candidates')}
             className={`px-6 py-3 rounded-md font-semibold transition-colors ${
               activeTab === 'candidates'
@@ -155,7 +222,7 @@ export default function RecruiterDashboard() {
                 : 'text-white hover:bg-primary-200/20'
             }`}
           >
-            Candidates
+            Resume Pipeline
           </button>
           <button
             onClick={() => setActiveTab('jobs')}
@@ -180,18 +247,91 @@ export default function RecruiterDashboard() {
         </div>
 
         {/* Tab Content */}
+        {/* Interviews Tab */}
+        {activeTab === 'interviews' && (
+          <div className="bg-primary-200/20 backdrop-blur-sm rounded-xl p-6 border border-primary-200/30">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-semibold text-white flex items-center gap-2">
+                <FileText className="w-6 h-6" />
+                All Interviews
+              </h2>
+              <span className="text-primary-100">
+                {interviews.length} total interviews
+              </span>
+            </div>
+
+            {loadingInterviews ? (
+              <div className="flex justify-center py-12">
+                <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
+              </div>
+            ) : interviews.length === 0 ? (
+              <div className="text-center py-12">
+                <FileText className="w-16 h-16 text-white/30 mx-auto mb-4" />
+                <p className="text-white/60">No interviews yet</p>
+                <p className="text-white/40 text-sm">Interviews will appear here after they are completed</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-white/10">
+                      <th className="text-left py-3 px-4 text-white/80 font-medium">Candidate</th>
+                      <th className="text-left py-3 px-4 text-white/80 font-medium">User</th>
+                      <th className="text-left py-3 px-4 text-white/80 font-medium">Date</th>
+                      <th className="text-left py-3 px-4 text-white/80 font-medium">Duration</th>
+                      <th className="text-left py-3 px-4 text-white/80 font-medium">Words</th>
+                      <th className="text-left py-3 px-4 text-white/80 font-medium">Status</th>
+                      <th className="text-left py-3 px-4 text-white/80 font-medium">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {interviews.map((interview) => (
+                      <tr key={interview.interview_id} className="border-b border-white/5 hover:bg-white/5">
+                        <td className="py-4 px-4">
+                          <div className="flex items-center gap-3">
+                            <div className="bg-blue-500/20 rounded-full p-2">
+                              <User className="w-5 h-5 text-blue-300" />
+                            </div>
+                            <span className="text-white font-medium">{interview.candidate_name || interview.candidate_id}</span>
+                          </div>
+                        </td>
+                        <td className="py-4 px-4 text-white/80">{interview.assigned_user || interview.user_id || '-'}</td>
+                        <td className="py-4 px-4 text-white/80">{formatDate(interview.created_at || interview.scheduled_at)}</td>
+                        <td className="py-4 px-4 text-white/80">
+                          {interview.transcript?.duration_seconds 
+                            ? `${Math.floor(interview.transcript.duration_seconds / 60)}m`
+                            : '-'}
+                        </td>
+                        <td className="py-4 px-4 text-white/80">
+                          {interview.transcript?.word_count || '-'}
+                        </td>
+                        <td className="py-4 px-4">
+                          <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(interview.status)}`}>
+                            {interview.status}
+                          </span>
+                        </td>
+                        <td className="py-4 px-4">
+                          <button
+                            onClick={() => router.push(`/interview-summary?id=${interview.interview_id}`)}
+                            className="text-blue-400 hover:text-blue-300 font-medium"
+                          >
+                            View
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Candidates Tab */}
         {activeTab === 'candidates' && (
           <div className="bg-primary-200/20 backdrop-blur-sm rounded-xl p-6 border border-primary-200/30">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-semibold text-white">Candidate Pipeline</h2>
-              <div className="flex space-x-3">
-                <a href="/interview" className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-semibold transition-colors">
-                  Start Interview
-                </a>
-                <button className="bg-white text-primary-300 px-4 py-2 rounded-lg font-semibold hover:bg-primary-100 hover:text-white transition-colors">
-                  Add Candidate
-                </button>
-              </div>
             </div>
             
             <div className="overflow-x-auto">
