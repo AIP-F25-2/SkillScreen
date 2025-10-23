@@ -135,3 +135,51 @@ def insert_interview_record(data: dict):
             "scheduled_at": row[2],
             "settings": row[3]
         }
+
+
+def get_interview_by_id(interview_id: str):
+    """
+    Retrieve full interview row by ID.
+    """
+    sql = """
+    SELECT id, organization_id, job_position_id, candidate_id, interviewer_id,
+           template_id, status, mode, scheduled_at, settings, created_at, updated_at
+    FROM interviews
+    WHERE id = %s;
+    """
+    with _conn() as conn, conn.cursor() as cur:
+        cur.execute(sql, (interview_id,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        return dict(zip([desc.name for desc in cur.description], row))
+
+
+def update_interview_status(interview_id: str, new_status: str):
+    """
+    Update interview status and set timestamps if needed.
+    """
+    time_fields = {
+        "in_progress": "started_at",
+        "completed": "completed_at"
+    }
+    extra_field = time_fields.get(new_status)
+    
+    sql = f"""
+    UPDATE interviews
+    SET status = %(status)s,
+        updated_at = NOW()
+        {f", {extra_field} = NOW()" if extra_field else ""}
+    WHERE id = %(id)s
+    RETURNING id, status, updated_at;
+    """
+    with _conn() as conn, conn.cursor() as cur:
+        cur.execute(sql, {"status": new_status, "id": interview_id})
+        row = cur.fetchone()
+        if not row:
+            return None
+        return {
+            "id": str(row[0]),
+            "status": row[1],
+            "updated_at": row[2]
+        }

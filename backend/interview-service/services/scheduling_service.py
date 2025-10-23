@@ -6,43 +6,61 @@
 #     return False
 
 from fastapi import HTTPException
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import uuid
+
+from repositories.interviews_repository import update_interview_status
+from fastapi import HTTPException
 
 from repositories.interviews_repository import (
     check_time_conflicts,
     insert_interview_record,
-    verify_fk_belong_to_org,   # NEW: light FK/org checks to help beginners
+    verify_fk_belong_to_org,
 )
 
-def schedule_interview_service(request):
-    # 1) Basic time sanity
-    if request.scheduled_at < datetime.utcnow():
-        raise HTTPException(status_code=400, detail="Scheduled time cannot be in the past")
+def _to_utc(dt: datetime) -> datetime:
+    """Return a timezone-aware UTC datetime."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
-    # 2) Verify foreign keys exist & belong to same org (helps avoid 500s from FK errors)
+def schedule_interview_service(request):
+    # ---- 1) Normalize datetimes to UTC (FIX for naive vs aware) ----
+    scheduled_at_utc = _to_utc(request.scheduled_at)
+    now_utc = datetime.now(timezone.utc)
+
+    if scheduled_at_utc <= now_utc:
+        raise HTTPException(status_code=400, detail="scheduled_at must be in the future (UTC)")
+
+    # Optional: compute end time if your conflict checker needs a window
+    duration = (request.duration_minutes or 45)
+    end_at_utc = scheduled_at_utc + timedelta(minutes=duration)
+
+    # ---- 2) Verify FK / same-org coherence ----
     ok, msg = verify_fk_belong_to_org(
         org_id=request.organization_id,
         job_position_id=request.job_position_id,
-        candidate_id=request.candidate_id,   # candidates.id
-        interviewer_id=request.interviewer_id,  # users.id
+        candidate_id=request.candidate_id,
+        interviewer_id=request.interviewer_id,
         template_id=request.template_id
     )
     if not ok:
         raise HTTPException(status_code=400, detail=msg)
 
-    # 3) Conflict checks (candidate or interviewer busy)
+    # ---- 3) Conflict checks (pass UTC times) ----
     has_conflict = check_time_conflicts(
         org_id=request.organization_id,
         candidate_id=request.candidate_id,
         interviewer_id=request.interviewer_id,
-        scheduled_at=request.scheduled_at,
-        duration=request.duration_minutes,
+        scheduled_at=scheduled_at_utc,
+        duration=duration,
+        # if your repo supports end time, pass end_at_utc too
+        # end_at=end_at_utc,
     )
     if has_conflict:
         raise HTTPException(status_code=409, detail="Scheduling conflict detected")
 
-    # 4) (Optional) calendar stub
+    # ---- 4) Calendar stub (unchanged) ----
     calendar_info = None
     if request.create_calendar_event:
         calendar_info = {
@@ -51,23 +69,30 @@ def schedule_interview_service(request):
             "join_url": "https://meet.placeholder/abc-defg-hij"
         }
 
-    # 5) Build payload to insert
+    # ---- 5) Build payload using UTC datetime ----
     interview_data = {
         "organization_id": request.organization_id,
         "job_position_id": request.job_position_id,
-        "candidate_id": request.candidate_id,     # candidates.id
-        "interviewer_id": request.interviewer_id, # users.id
+        "candidate_id": request.candidate_id,
+        "interviewer_id": request.interviewer_id,
         "template_id": request.template_id,
         "status": "scheduled",
-        "mode": request.mode,
-        "scheduled_at": request.scheduled_at,
+        "mode": request.mode,                     # "chat" | "audio" | "video" | "hybrid"
+        "scheduled_at": scheduled_at_utc,         # <-- use UTC-aware value
         "settings": {
             "calendar": calendar_info,
-            "duration_minutes": request.duration_minutes,
+            "duration_minutes": duration,
             "timezone": (request.settings or {}).get("timezone", "UTC")
         }
     }
 
-    # 6) Insert row → return minimal view
+    # ---- 6) Insert row and return ----
     created = insert_interview_record(interview_data)
     return created
+
+def update_interview_status_service(interview_id: str, new_status: str):
+    result = update_interview_status(interview_id, new_status)
+    if not result:
+        raise HTTPException(status_code=404, detail="Interview not found")
+    return result
+
