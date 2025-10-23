@@ -217,41 +217,8 @@ class ResumeService:
             file_result["error"] = str(e)
             return file_result
     
-    def _process_resume_file(self, file_result: Dict[str, Any], file_path: str) -> Dict[str, Any]:
-        """Process individual resume file and extract information"""
-        try:
-            # Extract text from file
-            text_result = self.text_extractor.extract_text(file_path)
-            
-            if not text_result["success"]:
-                file_result["status"] = "failed"
-                file_result["error"] = text_result["error"]
-                return file_result
-            
-            # Extract candidate information
-            candidate_info = self.email_extractor.extract_candidate_info(text_result["text"])
-            
-            # Update file result
-            file_result.update({
-                "extracted_emails": candidate_info["emails"],
-                "extracted_name": candidate_info["name"],
-                "email_count": candidate_info["email_count"]
-            })
-            
-            logger.info(f"Processed {file_result['filename']}: "
-                       f"emails={len(candidate_info['emails'])}, "
-                       f"name={candidate_info['name']}")
-            
-            return file_result
-            
-        except Exception as e:
-            logger.error(f"Error processing resume file {file_path}: {str(e)}")
-            file_result["status"] = "failed"
-            file_result["error"] = str(e)
-            return file_result
-    
     def _process_resume_file_sync(self, file_result: Dict[str, Any], file_path: str) -> Dict[str, Any]:
-        """Process individual resume file and extract information (synchronous version)"""
+        """Process individual resume file and extract information"""
         try:
             # Extract text from file
             text_result = self.text_extractor.extract_text(file_path)
