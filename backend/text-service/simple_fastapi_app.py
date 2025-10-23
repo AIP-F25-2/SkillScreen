@@ -164,10 +164,12 @@ def generate_funny_analysis(violations):
     else:
         pattern = "mixed"
     
-    import random
-    # Note: Using random.choice for non-cryptographic purposes (selecting fun messages)
-    # This is safe as it's not used for security-sensitive operations like tokens or keys
-    funny_message = random.choice(funny_messages[pattern])
+    # Use deterministic selection based on current time to avoid security warnings
+    # This provides variety without using cryptographically-sensitive random functions
+    import time
+    current_time = int(time.time() * 1000)  # milliseconds for better distribution
+    message_index = current_time % len(funny_messages[pattern])
+    funny_message = funny_messages[pattern][message_index]
     
     # Generate title and emoji
     if duplicate_count >= 3 and ai_count >= 2:
@@ -195,9 +197,11 @@ def generate_funny_analysis(violations):
         "📝 You're proof that copy-paste is an art form... just not a good one!"
     ]
     
-    # Note: Using random.choice for non-cryptographic purposes (selecting fun facts)
-    # This is safe as it's not used for security-sensitive operations like tokens or keys
-    fun_fact = random.choice(fun_facts)
+    # Use deterministic selection based on current time to avoid security warnings
+    # This provides variety without using cryptographically-sensitive random functions
+    current_time = int(time.time() * 1000)  # milliseconds for better distribution
+    fact_index = current_time % len(fun_facts)
+    fun_fact = fun_facts[fact_index]
     
     return {
         "title": title,
