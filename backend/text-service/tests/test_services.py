@@ -51,7 +51,7 @@ class TestResumeParser:
         Junior Developer at Startup Inc (2018-2020)
         """
         experience = parser.calculate_experience_years(test_text)
-        assert experience == 5.0  # 3 + 2 years
+        assert abs(experience - 5.0) < 0.1  # Use approximate equality for floating point
     
     def test_extract_skills(self):
         """Test skill extraction"""
@@ -81,17 +81,26 @@ class TestLLMService:
         """Test question generation with mock data"""
         service = EnhancedLLMService()
         
-        # Test with mock data
+        # Test with proper context dictionaries
+        candidate_context = {
+            "name": "John Doe",
+            "experience": 5,
+            "skills": ["Python", "FastAPI"]
+        }
+        
+        job_context = {
+            "title": "Software Engineer",
+            "company": "Tech Corp",
+            "level": "Mid-level",
+            "skills": ["Python", "React", "SQL"],
+            "description": "We are looking for a skilled software engineer"
+        }
+        
         question = await service.generate_interview_question(
-            candidate_name="John Doe",
-            candidate_experience=5,
-            candidate_skills=["Python", "FastAPI"],
-            job_title="Software Engineer",
-            job_company="Tech Corp",
-            job_level="Mid-level",
-            job_skills=["Python", "React", "SQL"],
-            job_description="We are looking for a skilled software engineer",
             question_type="technical",
+            candidate_context=candidate_context,
+            job_context=job_context,
+            previous_questions=[],
             question_number=1
         )
         

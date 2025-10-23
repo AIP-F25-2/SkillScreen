@@ -12,6 +12,8 @@ import json
 import uuid
 from datetime import datetime
 import os
+import asyncio
+import aiofiles
 
 # Import our modules
 from database.database import get_db
@@ -444,9 +446,9 @@ async def upload_resume(
         file_path = f"uploads/resumes/{file.filename}"
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         
-        with open(file_path, "wb") as buffer:
+        async with aiofiles.open(file_path, "wb") as buffer:
             content = await file.read()
-            buffer.write(content)
+            await buffer.write(content)
         
         # Parse resume using existing parser
         from app_dynamic import SimpleResumeParser

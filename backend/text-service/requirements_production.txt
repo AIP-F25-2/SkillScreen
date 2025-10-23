@@ -1,6 +1,6 @@
 # SkillScreen Production Requirements
 # Core FastAPI and web framework
-fastapi==0.104.1
+aiofiles==23.2.1
 uvicorn[standard]==0.24.0
 python-multipart==0.0.6
 

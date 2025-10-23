@@ -262,12 +262,9 @@ def main():
                                 pdf_parsed = True
                                 st.success("✅ PDF parsed using basic text extraction")
                             except Exception as e:
-                                st.warning(f"⚠️ Basic extraction failed: {str(e)}")
-                                
-                        except Exception as e:
-                            st.error(f"❌ Error reading PDF file: {str(e)}")
-                            st.info("💡 **Tip**: Try copying and pasting the text content instead of uploading the PDF file.")
-                            return
+                                st.error(f"❌ Error reading PDF file: {str(e)}")
+                                st.info("💡 **Tip**: Try copying and pasting the text content instead of uploading the PDF file.")
+                                return
                     else:
                         # Use pasted text
                         resume_text = resume_text or ""

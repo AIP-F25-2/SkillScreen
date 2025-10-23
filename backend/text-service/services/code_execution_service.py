@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import uuid
 import time
+import asyncio
 from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
 import logging
@@ -81,14 +82,8 @@ class CodeExecutionService:
             lang_config = self.supported_languages[language]
             file_extension = lang_config['extension']
             
-            with tempfile.NamedTemporaryFile(
-                mode='w',
-                suffix=file_extension,
-                delete=False,
-                encoding='utf-8'
-            ) as temp_file:
-                temp_file.write(code)
-                temp_file_path = temp_file.name
+            # Use async file operations
+            temp_file_path = await self._create_temp_file(code, file_extension)
             
             # Execute code
             result = await self._run_code(
@@ -150,58 +145,50 @@ class CodeExecutionService:
         try:
             if language == 'java':
                 # Compile Java first
-                compile_result = subprocess.run(
+                compile_result = await self._run_subprocess_async(
                     [lang_config['command'], file_path],
-                    capture_output=True,
-                    text=True,
                     timeout=timeout
                 )
                 
-                if compile_result.returncode != 0:
+                if compile_result['returncode'] != 0:
                     return {
                         'success': False,
                         'output': '',
-                        'error': f'Compilation error: {compile_result.stderr}'
+                        'error': f'Compilation error: {compile_result["stderr"]}'
                     }
                 
                 # Run compiled class
                 class_name = os.path.splitext(os.path.basename(file_path))[0]
-                run_result = subprocess.run(
+                run_result = await self._run_subprocess_async(
                     ['java', class_name],
-                    capture_output=True,
-                    text=True,
                     timeout=timeout,
                     cwd=os.path.dirname(file_path)
                 )
                 
                 return {
-                    'success': run_result.returncode == 0,
-                    'output': run_result.stdout,
-                    'error': run_result.stderr if run_result.returncode != 0 else ''
+                    'success': run_result['returncode'] == 0,
+                    'output': run_result['stdout'],
+                    'error': run_result['stderr'] if run_result['returncode'] != 0 else ''
                 }
             
             elif language == 'cpp':
                 # Compile C++ first
                 executable_path = file_path.replace('.cpp', '.exe')
-                compile_result = subprocess.run(
+                compile_result = await self._run_subprocess_async(
                     [lang_config['command'], '-o', executable_path, file_path],
-                    capture_output=True,
-                    text=True,
                     timeout=timeout
                 )
                 
-                if compile_result.returncode != 0:
+                if compile_result['returncode'] != 0:
                     return {
                         'success': False,
                         'output': '',
-                        'error': f'Compilation error: {compile_result.stderr}'
+                        'error': f'Compilation error: {compile_result["stderr"]}'
                     }
                 
                 # Run executable
-                run_result = subprocess.run(
+                run_result = await self._run_subprocess_async(
                     [executable_path],
-                    capture_output=True,
-                    text=True,
                     timeout=timeout
                 )
                 
@@ -210,37 +197,82 @@ class CodeExecutionService:
                     os.unlink(executable_path)
                 
                 return {
-                    'success': run_result.returncode == 0,
-                    'output': run_result.stdout,
-                    'error': run_result.stderr if run_result.returncode != 0 else ''
+                    'success': run_result['returncode'] == 0,
+                    'output': run_result['stdout'],
+                    'error': run_result['stderr'] if run_result['returncode'] != 0 else ''
                 }
             
             else:
                 # Direct execution for Python, JavaScript, etc.
-                result = subprocess.run(
+                result = await self._run_subprocess_async(
                     [lang_config['command'], file_path],
-                    capture_output=True,
-                    text=True,
                     timeout=timeout
                 )
                 
                 return {
-                    'success': result.returncode == 0,
-                    'output': result.stdout,
-                    'error': result.stderr if result.returncode != 0 else ''
+                    'success': result['returncode'] == 0,
+                    'output': result['stdout'],
+                    'error': result['stderr'] if result['returncode'] != 0 else ''
                 }
                 
-        except subprocess.TimeoutExpired:
-            return {
-                'success': False,
-                'output': '',
-                'error': f'Execution timeout after {timeout} seconds'
-            }
         except Exception as e:
             return {
                 'success': False,
                 'output': '',
                 'error': f'Execution error: {str(e)}'
+            }
+    
+    async def _create_temp_file(self, code: str, file_extension: str) -> str:
+        """Create temporary file asynchronously"""
+        loop = asyncio.get_event_loop()
+        temp_file = await loop.run_in_executor(
+            None, 
+            lambda: tempfile.NamedTemporaryFile(
+                mode='w',
+                suffix=file_extension,
+                delete=False,
+                encoding='utf-8'
+            )
+        )
+        
+        # Write code to file
+        await loop.run_in_executor(None, temp_file.write, code)
+        await loop.run_in_executor(None, temp_file.close)
+        
+        return temp_file.name
+    
+    async def _run_subprocess_async(self, cmd: List[str], timeout: int, cwd: Optional[str] = None) -> Dict[str, Any]:
+        """Run subprocess asynchronously"""
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=cwd
+            )
+            
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(), 
+                timeout=timeout
+            )
+            
+            return {
+                'returncode': process.returncode,
+                'stdout': stdout.decode('utf-8') if stdout else '',
+                'stderr': stderr.decode('utf-8') if stderr else ''
+            }
+            
+        except asyncio.TimeoutError:
+            return {
+                'returncode': -1,
+                'stdout': '',
+                'stderr': f'Execution timeout after {timeout} seconds'
+            }
+        except Exception as e:
+            return {
+                'returncode': -1,
+                'stdout': '',
+                'stderr': f'Execution error: {str(e)}'
             }
     
     async def _run_test_cases(

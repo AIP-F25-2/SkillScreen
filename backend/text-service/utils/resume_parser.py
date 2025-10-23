@@ -156,7 +156,7 @@ class ResumeParser:
                 found_skills.append(skill.title())
         
         # Also look for skills mentioned in specific sections
-        skills_sections = re.findall(r'(?:skills?|technologies?|technologies?|tools?|languages?)[:\s]*([^\n]+)', 
+        skills_sections = re.findall(r'(?:skills?|technologies?|tools?|languages?)[:\s]*([^\n]+)', 
                                     text_lower, re.IGNORECASE)
         
         for section in skills_sections:
