@@ -38,11 +38,18 @@ jobs:
         python -m pytest tests/ --cov=. --cov-report=xml --cov-report=html || echo "Coverage report generated"
         
     - name: SonarQube Scan
-      uses: SonarSource/sonarqube-scan-action@master
+      uses: SonarSource/sonarqube-scan-action@v1.0.0
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: https://sonarcloud.io
       with:
-        projectKey: ${{ github.repository }}
-        organization: aip-f25-2
+        args: >
+          -Dsonar.projectKey=AIP-F25-2_SkillScreen
+          -Dsonar.organization=aip-f25-2
+          -Dsonar.sources=backend/text-service,frontend/streamlit-app,shared
+          -Dsonar.python.version=3.11
+          -Dsonar.python.coverage.reportPaths=backend/text-service/coverage.xml
+          -Dsonar.exclusions=**/node_modules/**,**/__pycache__/**,**/venv/**,**/env/**,**/.git/**,**/logs/**,**/k8s/**,**/docker-compose.yml,**/Dockerfile
+          -Dsonar.coverage.exclusions=**/test_*,**/tests/**,**/__pycache__/**,**/logs/**
+          -Dsonar.qualitygate.wait=false
