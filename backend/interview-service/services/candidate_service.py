@@ -1,11 +1,7 @@
 from typing import Dict, Any
-import sys
 import logging
 
-# Add common-service to path
-sys.path.append("/common-service")
-
-# Import common-service modules directly
+# Import local modules
 from repository.candidate_repository import CandidateRepository
 from models.candidate import Candidate
 from db import UnitOfWork
@@ -24,18 +20,10 @@ class CandidateService:
             with self.uow:
                 repo = CandidateRepository(self.uow.session)
                 
-                # Check if candidate already exists
-                if repo.candidate_exists(candidate_data['organization_id'], candidate_data['email']):
-                    logger.warning(f"Candidate with email {candidate_data['email']} already exists")
-                    return {
-                        "success": False,
-                        "error": "Candidate with this email already exists",
-                        "data": None
-                    }
-                
+                # Try to create candidate (may fail due to unique constraint)
                 candidate = repo.create_candidate(candidate_data)
                 
-                logger.info(f"Successfully saved candidate to database: {candidate_data['full_name']} - {candidate_data['email']}")
+                logger.info(f"Successfully saved candidate to database: {candidate_data['full_name']} - {candidate_data['email']} with ID: {candidate.id}")
                 
                 return {
                     "success": True,
@@ -44,9 +32,22 @@ class CandidateService:
                 }
                 
         except Exception as e:
-            logger.error(f"Error creating candidate: {str(e)}")
-            return {
-                "success": False,
-                "error": str(e),
-                "data": None
-            }
+            error_str = str(e)
+            logger.error(f"Error creating candidate: {error_str}")
+            
+            # Check if it's a unique constraint violation
+            if "duplicate key value violates unique constraint" in error_str and "uq_candidates_org_email" in error_str:
+                # Database has unique constraint - this is expected behavior
+                # We'll return a specific error message
+                return {
+                    "success": False,
+                    "error": "Database constraint: Only one candidate per email address is allowed. Please use a different email or contact support to update existing candidate.",
+                    "data": None
+                }
+            else:
+                # Other database errors
+                return {
+                    "success": False,
+                    "error": f"Database error: {error_str}",
+                    "data": None
+                }

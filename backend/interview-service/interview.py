@@ -2,14 +2,10 @@ from fastapi import FastAPI, Request
 from datetime import datetime, timezone
 import uuid
 import logging
-import sys
 import os
 from dotenv import load_dotenv
 
-# Add common-service to path
-sys.path.append("/common-service")
-
-# Import common-service database setup
+# Import local database setup
 from db import DBFactory
 
 # Import resume controller

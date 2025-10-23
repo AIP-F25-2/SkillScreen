@@ -64,13 +64,22 @@ class ResumeService:
                         'projects': None
                     }
                     
-                    # Save to database using common service
+                    # Save to database using candidate service
                     result = self.candidate_service.create_candidate(db_candidate_data)
                     if result['success']:
                         saved_candidates.append(result['data'])
-                        logger.info(f"Saved candidate: {file_result['extracted_name']} - {file_result['extracted_emails'][0]}")
+                        # Add candidate ID to file result
+                        file_result['id'] = result['data']['id']
+                        logger.info(f"Saved candidate: {file_result['extracted_name']} - {file_result['extracted_emails'][0]} with ID: {result['data']['id']}")
                     else:
                         logger.warning(f"Failed to save candidate: {result['error']}")
+                        # Add error information to file result
+                        file_result['candidate_save_error'] = result['error']
+                        
+                        # Check if it's a unique constraint error
+                        if "Database constraint: Only one candidate per email address is allowed" in result['error']:
+                            file_result['status'] = 'duplicate_email'
+                            logger.info(f"Candidate with email {file_result['extracted_emails'][0]} already exists - marked as duplicate")
             
             # Prepare response data
             response_data = {

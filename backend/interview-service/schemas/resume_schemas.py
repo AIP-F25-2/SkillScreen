@@ -7,10 +7,12 @@ class FileInfo(BaseModel):
     filename: str
     url: str
     size: int
-    status: str
+    status: str  # Can be: "processed", "failed", "duplicate_email"
     extracted_emails: List[str] = []
     extracted_name: Optional[str] = None
     email_count: int = 0
+    id: Optional[str] = None  # Candidate ID from database
+    candidate_save_error: Optional[str] = None  # Error if candidate save failed
 
 class ResumeUploadResponse(BaseModel):
     """Response for resume upload endpoint"""
