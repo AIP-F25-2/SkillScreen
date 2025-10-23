@@ -37,12 +37,12 @@ class EnhancedLLMService:
                 log_warning("⚠️ GEMINI_API_KEY not found")
             
             # Initialize Wolfram Alpha
-            self.wolfram_app_id = os.getenv('WOLFRAM_APP_ID', '2YEX8JPAX9')
+            self.wolfram_app_id = os.getenv('WOLFRAM_APP_ID')
             if self.wolfram_app_id:
                 log_info("✅ Wolfram Alpha API configured")
             
             # Initialize SerpApi
-            self.serpapi_key = os.getenv('SERPAPI_KEY', '06b0894e680c5a3d83301aa47e928055862bb1c985a30b11f21b472575c4eb84')
+            self.serpapi_key = os.getenv('SERPAPI_KEY')
             if self.serpapi_key:
                 log_info("✅ SerpApi configured")
             

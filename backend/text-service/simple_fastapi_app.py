@@ -29,10 +29,13 @@ try:
 except ImportError:
     LLM_SERVICE_AVAILABLE = False
 
-# Set up environment variables for API keys
-os.environ.setdefault('GEMINI_API_KEY', 'AIzaSyAPXY4cTHUO8e8cUHTIW7jDc_2puXkrgbw')
-os.environ.setdefault('WOLFRAM_APP_ID', '2YEX8JPAX9')
-os.environ.setdefault('SERPAPI_KEY', '06b0894e680c5a3d83301aa47e928055862bb1c985a30b11f21b472575c4eb84')
+# Import configuration loader
+from utils.config_loader import get_config
+
+# Set up environment variables for API keys from config
+os.environ.setdefault('GEMINI_API_KEY', get_config('GEMINI_API_KEY', ''))
+os.environ.setdefault('WOLFRAM_APP_ID', get_config('WOLFRAM_APP_ID', ''))
+os.environ.setdefault('SERPAPI_KEY', get_config('SERPAPI_KEY', ''))
 
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), 'utils'))
