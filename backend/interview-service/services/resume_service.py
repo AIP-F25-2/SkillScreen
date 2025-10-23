@@ -74,7 +74,7 @@ class ResumeService:
         for file_result in processed_files:
             if self._should_save_candidate(file_result):
                 candidate_data = self._prepare_candidate_data(file_result)
-                save_result = await self._save_single_candidate(candidate_data, file_result)
+                save_result = self._save_single_candidate(candidate_data, file_result)
                 if save_result:
                     saved_candidates.append(save_result)
         
@@ -101,7 +101,7 @@ class ResumeService:
             'projects': None
         }
     
-    async def _save_single_candidate(self, candidate_data: Dict[str, Any], file_result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _save_single_candidate(self, candidate_data: Dict[str, Any], file_result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Save a single candidate to database"""
         logger.info(f"File: {file_result.get('filename')}, Status: {file_result.get('status')}, Name: {file_result.get('extracted_name')}, Emails: {file_result.get('extracted_emails')}")
         
