@@ -10,6 +10,7 @@ import tempfile
 import uuid
 import time
 import asyncio
+import aiofiles
 from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
 import logging
@@ -223,23 +224,18 @@ class CodeExecutionService:
             }
     
     async def _create_temp_file(self, code: str, file_extension: str) -> str:
-        """Create temporary file asynchronously"""
-        loop = asyncio.get_event_loop()
-        temp_file = await loop.run_in_executor(
-            None, 
-            lambda: tempfile.NamedTemporaryFile(
-                mode='w',
-                suffix=file_extension,
-                delete=False,
-                encoding='utf-8'
-            )
-        )
+        """Create temporary file asynchronously using aiofiles"""
+        import tempfile
         
-        # Write code to file
-        await loop.run_in_executor(None, temp_file.write, code)
-        await loop.run_in_executor(None, temp_file.close)
+        # Create temporary file path
+        temp_fd, temp_path = tempfile.mkstemp(suffix=file_extension)
+        os.close(temp_fd)  # Close the file descriptor
         
-        return temp_file.name
+        # Write code to file asynchronously
+        async with aiofiles.open(temp_path, 'w', encoding='utf-8') as f:
+            await f.write(code)
+        
+        return temp_path
     
     async def _run_subprocess_async(self, cmd: List[str], timeout: int, cwd: Optional[str] = None) -> Dict[str, Any]:
         """Run subprocess asynchronously"""
