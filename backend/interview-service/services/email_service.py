@@ -7,7 +7,11 @@ import secrets
 import logging
 from datetime import datetime, timedelta
 from typing import Optional
+from dotenv import load_dotenv
 import resend
+
+# Load environment variables
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +41,10 @@ class EmailService:
     ) -> dict:
         """
         Send an interview invitation email to a candidate
+        NOTE: Currently redirects all emails to dummyintervuai@gmail.com for testing
         
         Args:
-            candidate_email: Candidate's email address
+            candidate_email: Candidate's email address (logged but redirected)
             candidate_name: Candidate's full name
             candidate_id: Unique candidate identifier
             session_id: Interview session ID
@@ -60,26 +65,30 @@ class EmailService:
             # Calculate expiration time
             expires_at = datetime.utcnow() + timedelta(hours=expires_in_hours)
             
-            # Prepare email content
-            subject = f"Your Interview Invitation - {company_name or 'SkillScreen'}"
+            # Redirect all emails to dummyintervuai@gmail.com for testing
+            test_email = "dummyintervuai@gmail.com"
+            
+            # Prepare email content with original recipient info
+            subject = f"Interview Invitation for {candidate_name} - {company_name or 'SkillScreen'}"
             
             html_content = self._build_invitation_email_html(
                 candidate_name=candidate_name,
                 interview_link=interview_link,
                 recruiter_name=recruiter_name,
                 company_name=company_name,
-                expires_at=expires_at
+                expires_at=expires_at,
+                original_email=candidate_email  # Include original email in content
             )
             
-            # Send email via Resend
+            # Send email via Resend to test account
             response = resend.Emails.send({
                 "from": self.from_email,
-                "to": candidate_email,
+                "to": test_email,
                 "subject": subject,
                 "html": html_content,
             })
             
-            logger.info(f"Interview invitation sent to {candidate_email} (session: {session_id})")
+            logger.info(f"Interview invitation sent to {test_email} (originally for {candidate_email}, session: {session_id})")
             
             return {
                 "success": True,
@@ -156,12 +165,25 @@ class EmailService:
         interview_link: str,
         recruiter_name: Optional[str],
         company_name: Optional[str],
-        expires_at: datetime
+        expires_at: datetime,
+        original_email: Optional[str] = None
     ) -> str:
         """Build HTML content for interview invitation email"""
         
         recruiter_text = f"{recruiter_name} from " if recruiter_name else ""
         company_text = company_name or "SkillScreen"
+        
+        # Add original email info if provided (for testing)
+        original_email_section = ""
+        if original_email:
+            original_email_section = f"""
+                                    <div style="background-color: #f8f9fa; border-left: 4px solid #007bff; padding: 15px; margin: 20px 0; border-radius: 4px;">
+                                        <p style="margin: 0; color: #495057; font-size: 14px;">
+                                            <strong>📧 Original Recipient:</strong> {original_email}<br>
+                                            <strong>🔄 Redirected to:</strong> dummyintervuai@gmail.com (for testing)
+                                        </p>
+                                    </div>
+            """
         
         return f"""
         <!DOCTYPE html>
@@ -191,6 +213,8 @@ class EmailService:
                                     <p style="margin: 0 0 20px; color: #333333; font-size: 16px; line-height: 1.6;">
                                         Hello <strong>{candidate_name}</strong>,
                                     </p>
+                                    
+                                    {original_email_section}
                                     
                                     <p style="margin: 0 0 20px; color: #333333; font-size: 16px; line-height: 1.6;">
                                         {recruiter_text}<strong>{company_text}</strong> has invited you to complete an AI-powered interview.

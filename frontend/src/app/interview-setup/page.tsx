@@ -285,12 +285,12 @@ export default function InterviewSetup() {
       cancelAnimationFrame(animationFrameRef.current);
     }
 
-    // Navigate to interview with params
+    // Navigate to interview with secure token-based flow
     if (fromToken) {
-      // Token-based flow - no ID needed, will use session from token
-      router.push(`/interview?fromToken=true&name=${encodeURIComponent(candidateName)}`);
+      // Token-based flow - use token data from session storage, no sensitive data in URL
+      router.push('/interview?fromToken=true');
     } else {
-      // Regular flow
+      // Regular flow - still use ID for non-token users
       const interviewId = searchParams?.get('id') || 'interview-123';
       router.push(`/interview?id=${interviewId}&name=${encodeURIComponent(candidateName)}`);
     }

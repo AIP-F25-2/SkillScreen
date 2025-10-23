@@ -24,7 +24,7 @@ services:
       - AUDIO_AI_SERVICE_URL=http://audio-ai-service:8080
       - VIDEO_AI_SERVICE_URL=http://video-ai-service:8080
       - TEXT_AI_SERVICE_URL=http://text-ai-service:8080
-      - INTERVIEW_SERVICE_URL=http://interview-service:8080
+      - INTERVIEW_SERVICE_URL=http://host.docker.internal:8003
       - NOTIFICATION_SERVICE_URL=http://notification-service:8080
       - LOGGER_SERVICE_URL=http://logger-service:8080
     volumes:
