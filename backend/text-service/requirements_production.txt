@@ -37,7 +37,6 @@ pydantic==2.5.0
 pydantic-settings==2.0.3
 
 # Async support
-asyncio==3.4.3
 aiofiles==23.2.1
 
 # HTTP client
@@ -49,7 +48,7 @@ email-validator==2.1.0
 phonenumbers==8.13.25
 
 # Security
-cryptography==41.0.8
+cryptography>=42.0.0
 passlib[bcrypt]==1.7.4
 python-jose[cryptography]==3.3.0
 
