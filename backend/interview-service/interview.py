@@ -3,7 +3,11 @@ from datetime import datetime, timezone
 import uuid
 import logging
 import os
+import sys
 from dotenv import load_dotenv
+
+# Add common-service to Python path
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'common-service'))
 
 # Import local database setup
 from db import DBFactory

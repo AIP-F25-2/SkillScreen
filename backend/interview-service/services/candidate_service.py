@@ -4,6 +4,12 @@ import logging
 # Import local modules
 from repository.candidate_repository import CandidateRepository
 from models.candidate import Candidate
+import os
+import sys
+
+# Add common-service to Python path
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'common-service'))
+
 from db import UnitOfWork
 
 logger = logging.getLogger(__name__)
