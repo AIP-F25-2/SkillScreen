@@ -8,7 +8,7 @@ services:
     environment:
       POSTGRES_DB: skillscreen
       POSTGRES_USER: skillscreen
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-skillscreen_password}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -39,7 +39,7 @@ services:
   api:
     build: .
     environment:
-      - DATABASE_URL=postgresql://skillscreen:${POSTGRES_PASSWORD:-skillscreen_password}@postgres:5432/skillscreen
+      - DATABASE_URL=postgresql://skillscreen:${POSTGRES_PASSWORD}@postgres:5432/skillscreen
       - REDIS_URL=redis://redis:6379
       - ENVIRONMENT=production
       - DEBUG=false
@@ -79,7 +79,7 @@ services:
     build: .
     command: celery -A celery_app worker --loglevel=info
     environment:
-      - DATABASE_URL=postgresql://skillscreen:${POSTGRES_PASSWORD:-skillscreen_password}@postgres:5432/skillscreen
+      - DATABASE_URL=postgresql://skillscreen:${POSTGRES_PASSWORD}@postgres:5432/skillscreen
       - REDIS_URL=redis://redis:6379
       - ENVIRONMENT=production
     volumes:
@@ -96,7 +96,7 @@ services:
     build: .
     command: celery -A celery_app beat --loglevel=info
     environment:
-      - DATABASE_URL=postgresql://skillscreen:${POSTGRES_PASSWORD:-skillscreen_password}@postgres:5432/skillscreen
+      - DATABASE_URL=postgresql://skillscreen:${POSTGRES_PASSWORD}@postgres:5432/skillscreen
       - REDIS_URL=redis://redis:6379
       - ENVIRONMENT=production
     volumes:
@@ -129,7 +129,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
     volumes:
       - grafana_data:/var/lib/grafana
       - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
