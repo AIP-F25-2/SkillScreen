@@ -27,70 +27,20 @@ class ResumeService:
     async def process_resume_upload(self, files: List[Any]) -> Dict[str, Any]:
         """Process uploaded resume files"""
         try:
-            # Generate upload ID
+            # Generate upload ID and path
             upload_id = self.file_processor.generate_upload_id()
             upload_path = self.file_processor.create_upload_directory(upload_id)
             
-            processed_files = []
-            
             logger.info(f"Processing {len(files)} files for upload {upload_id}")
             
-            # Process each uploaded file
-            for file in files:
-                file_result = await self._process_single_file(file, upload_path, upload_id)
-                if file_result:
-                    processed_files.append(file_result)
+            # Process all files
+            processed_files = await self._process_all_files(files, upload_path, upload_id)
             
             # Save candidates to database
-            saved_candidates = []
-            logger.info(f"Checking {len(processed_files)} files for candidate saving...")
-            for file_result in processed_files:
-                logger.info(f"File: {file_result.get('filename')}, Status: {file_result.get('status')}, Name: {file_result.get('extracted_name')}, Emails: {file_result.get('extracted_emails')}")
-                if (file_result.get('status') == 'processed' and 
-                    file_result.get('extracted_name') and 
-                    file_result.get('extracted_emails')):
-                    
-                    # Prepare candidate data for database
-                    db_candidate_data = {
-                        'organization_id': '25cfc4a5-136f-4bd8-9ec1-5778c78cded2',  # Default organization ID
-                        'full_name': file_result['extracted_name'],
-                        'email': file_result['extracted_emails'][0],  # Use first email
-                        'resume_url': file_result.get('url'),
-                        'phone': None,
-                        'location': None,
-                        'skills': None,
-                        'experience': None,
-                        'education': None,
-                        'projects': None
-                    }
-                    
-                    # Save to database using candidate service
-                    result = self.candidate_service.create_candidate(db_candidate_data)
-                    if result['success']:
-                        saved_candidates.append(result['data'])
-                        # Add candidate ID to file result
-                        file_result['id'] = result['data']['id']
-                        logger.info(f"Saved candidate: {file_result['extracted_name']} - {file_result['extracted_emails'][0]} with ID: {result['data']['id']}")
-                    else:
-                        logger.warning(f"Failed to save candidate: {result['error']}")
-                        # Add error information to file result
-                        file_result['candidate_save_error'] = result['error']
-                        
-                        # Check if it's a unique constraint error
-                        if "Database constraint: Only one candidate per email address is allowed" in result['error']:
-                            file_result['status'] = 'duplicate_email'
-                            logger.info(f"Candidate with email {file_result['extracted_emails'][0]} already exists - marked as duplicate")
+            saved_candidates = await self._save_candidates_to_database(processed_files)
             
             # Prepare response data
-            response_data = {
-                "upload_id": upload_id,
-                "status": "completed",
-                "files_received": len(files),
-                "files_processed": len(processed_files),
-                "files": processed_files,
-                "candidates_saved": len(saved_candidates),
-                "timestamp": datetime.now().isoformat()
-            }
+            response_data = self._prepare_response_data(upload_id, files, processed_files, saved_candidates)
             
             return {
                 "success": True,
@@ -104,6 +54,88 @@ class ResumeService:
                 "error": str(e),
                 "data": None
             }
+    
+    async def _process_all_files(self, files: List[Any], upload_path: Path, upload_id: str) -> List[Dict[str, Any]]:
+        """Process all uploaded files"""
+        processed_files = []
+        
+        for file in files:
+            file_result = await self._process_single_file(file, upload_path, upload_id)
+            if file_result:
+                processed_files.append(file_result)
+        
+        return processed_files
+    
+    async def _save_candidates_to_database(self, processed_files: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Save candidates to database"""
+        saved_candidates = []
+        logger.info(f"Checking {len(processed_files)} files for candidate saving...")
+        
+        for file_result in processed_files:
+            if self._should_save_candidate(file_result):
+                candidate_data = self._prepare_candidate_data(file_result)
+                save_result = await self._save_single_candidate(candidate_data, file_result)
+                if save_result:
+                    saved_candidates.append(save_result)
+        
+        return saved_candidates
+    
+    def _should_save_candidate(self, file_result: Dict[str, Any]) -> bool:
+        """Check if a file result should be saved as a candidate"""
+        return (file_result.get('status') == 'processed' and 
+                file_result.get('extracted_name') and 
+                file_result.get('extracted_emails'))
+    
+    def _prepare_candidate_data(self, file_result: Dict[str, Any]) -> Dict[str, Any]:
+        """Prepare candidate data for database"""
+        return {
+            'organization_id': '25cfc4a5-136f-4bd8-9ec1-5778c78cded2',  # Default organization ID
+            'full_name': file_result['extracted_name'],
+            'email': file_result['extracted_emails'][0],  # Use first email
+            'resume_url': file_result.get('url'),
+            'phone': None,
+            'location': None,
+            'skills': None,
+            'experience': None,
+            'education': None,
+            'projects': None
+        }
+    
+    async def _save_single_candidate(self, candidate_data: Dict[str, Any], file_result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Save a single candidate to database"""
+        logger.info(f"File: {file_result.get('filename')}, Status: {file_result.get('status')}, Name: {file_result.get('extracted_name')}, Emails: {file_result.get('extracted_emails')}")
+        
+        result = self.candidate_service.create_candidate(candidate_data)
+        
+        if result['success']:
+            file_result['id'] = result['data']['id']
+            logger.info(f"Saved candidate: {file_result['extracted_name']} - {file_result['extracted_emails'][0]} with ID: {result['data']['id']}")
+            return result['data']
+        else:
+            self._handle_candidate_save_error(result, file_result)
+            return None
+    
+    def _handle_candidate_save_error(self, result: Dict[str, Any], file_result: Dict[str, Any]) -> None:
+        """Handle candidate save errors"""
+        logger.warning(f"Failed to save candidate: {result['error']}")
+        file_result['candidate_save_error'] = result['error']
+        
+        # Check if it's a unique constraint error
+        if "Database constraint: Only one candidate per email address is allowed" in result['error']:
+            file_result['status'] = 'duplicate_email'
+            logger.info(f"Candidate with email {file_result['extracted_emails'][0]} already exists - marked as duplicate")
+    
+    def _prepare_response_data(self, upload_id: str, files: List[Any], processed_files: List[Dict[str, Any]], saved_candidates: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Prepare response data"""
+        return {
+            "upload_id": upload_id,
+            "status": "completed",
+            "files_received": len(files),
+            "files_processed": len(processed_files),
+            "files": processed_files,
+            "candidates_saved": len(saved_candidates),
+            "timestamp": datetime.now().isoformat()
+        }
     
     async def _process_single_file(self, file: Any, upload_path: Path, upload_id: str) -> Optional[Dict[str, Any]]:
         """Process a single uploaded file"""
