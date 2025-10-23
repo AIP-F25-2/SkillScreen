@@ -43,19 +43,37 @@ jobs:
         cd backend/text-service
         python -m pytest tests/ --cov=. --cov-report=xml --cov-report=html || echo "Coverage report generated"
         
-    - name: SonarQube Scan
-      uses: SonarSource/sonarqube-scan-action@v1.1.0
+    - name: Download and Run SonarQube Scanner
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: https://sonarcloud.io
-      with:
-        args: >
-          -Dsonar.projectKey=AIP-F25-2_SkillScreen
-          -Dsonar.organization=aip-f25-2
-          -Dsonar.sources=backend/text-service,frontend/streamlit-app,shared
-          -Dsonar.python.version=3.11
-          -Dsonar.python.coverage.reportPaths=backend/text-service/coverage.xml
-          -Dsonar.exclusions=**/node_modules/**,**/__pycache__/**,**/venv/**,**/env/**,**/.git/**,**/logs/**,**/k8s/**,**/docker-compose.yml,**/Dockerfile
-          -Dsonar.coverage.exclusions=**/test_*,**/tests/**,**/__pycache__/**,**/logs/**
-          -Dsonar.host.url=https://sonarcloud.io
+      run: |
+        # Download SonarQube scanner
+        wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-4.8.0.2856-linux.zip
+        unzip -q sonar-scanner-cli-4.8.0.2856-linux.zip
+        
+        # Find the scanner directory
+        SCANNER_DIR=$(find . -maxdepth 1 -type d -name "sonar-scanner-*" | head -1)
+        if [ -z "$SCANNER_DIR" ]; then
+          echo "SonarQube scanner directory not found"
+          ls -la
+          exit 1
+        fi
+        
+        # Verify Java version
+        echo "Java version:"
+        java -version
+        echo "JAVA_HOME: $JAVA_HOME"
+        
+        # Run SonarQube scanner with explicit Java 17
+        export JAVA_HOME=$JAVA_HOME
+        $SCANNER_DIR/bin/sonar-scanner \
+          -Dsonar.projectKey=AIP-F25-2_SkillScreen \
+          -Dsonar.organization=aip-f25-2 \
+          -Dsonar.sources=backend/text-service,frontend/streamlit-app,shared \
+          -Dsonar.python.version=3.11 \
+          -Dsonar.python.coverage.reportPaths=backend/text-service/coverage.xml \
+          -Dsonar.exclusions=**/node_modules/**,**/__pycache__/**,**/venv/**,**/env/**,**/.git/**,**/logs/**,**/k8s/**,**/docker-compose.yml,**/Dockerfile \
+          -Dsonar.coverage.exclusions=**/test_*,**/tests/**,**/__pycache__/**,**/logs/** \
+          -Dsonar.host.url=https://sonarcloud.io \
           -Dsonar.qualitygate.wait=false
