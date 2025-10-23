@@ -47,7 +47,17 @@ jobs:
       run: |
         wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-4.8.0.2856-linux.zip
         unzip -q sonar-scanner-cli-4.8.0.2856-linux.zip
-        sudo mv sonar-scanner-4.8.0.2856 /opt/sonar-scanner
+        # List contents to debug
+        ls -la
+        # Find the actual extracted directory name
+        SCANNER_DIR=$(find . -maxdepth 1 -type d -name "sonar-scanner-*" | head -1)
+        if [ -n "$SCANNER_DIR" ]; then
+          sudo mv "$SCANNER_DIR" /opt/sonar-scanner
+        else
+          echo "SonarQube scanner directory not found after extraction"
+          ls -la
+          exit 1
+        fi
         
     - name: Run SonarQube Scanner
       env:
