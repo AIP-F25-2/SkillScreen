@@ -27,6 +27,12 @@ jobs:
         pip install -r backend/text-service/requirements_production.txt
         pip install -r backend/text-service/requirements_test.txt
         
+    - name: Set up Java 17
+      uses: actions/setup-java@v3
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+        
     - name: Run basic tests
       run: |
         cd backend/text-service
