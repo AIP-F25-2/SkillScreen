@@ -9,25 +9,30 @@ ENV PYTHONPATH=/app
 # Set work directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    curl \
-    software-properties-common \
-    git \
-    libpq-dev \
-    libmagic1 \
-    libmagic-dev \
-    ffmpeg \
-    libsndfile1 \
-    && rm -rf /var/lib/apt/lists/*
+# Install system dependencies with explicit package versions for security
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential=12.9ubuntu3 \
+    curl=7.81.0-1ubuntu1.14 \
+    software-properties-common=0.99.22.9 \
+    git=1:2.34.1-1ubuntu1.9 \
+    libpq-dev=14.9-0ubuntu0.22.04.1 \
+    libmagic1=5.41-3ubuntu0.1 \
+    libmagic-dev=5.41-3ubuntu0.1 \
+    ffmpeg=7:4.4.2-0ubuntu0.22.04.1 \
+    libsndfile1=1.0.31-2ubuntu0.1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # Install Python dependencies
 COPY requirements_production.txt .
 RUN pip install --no-cache-dir -r requirements_production.txt
 
-# Copy application code
-COPY . .
+# Copy only necessary application files (not recursive)
+COPY simple_fastapi_app.py .
+COPY services/ ./services/
+COPY utils/ ./utils/
+COPY database/ ./database/
+COPY schemas/ ./schemas/
 
 # Create necessary directories
 RUN mkdir -p logs uploads reports static

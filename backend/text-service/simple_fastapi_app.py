@@ -165,6 +165,8 @@ def generate_funny_analysis(violations):
         pattern = "mixed"
     
     import random
+    # Note: Using random.choice for non-cryptographic purposes (selecting fun messages)
+    # This is safe as it's not used for security-sensitive operations like tokens or keys
     funny_message = random.choice(funny_messages[pattern])
     
     # Generate title and emoji
@@ -193,6 +195,8 @@ def generate_funny_analysis(violations):
         "📝 You're proof that copy-paste is an art form... just not a good one!"
     ]
     
+    # Note: Using random.choice for non-cryptographic purposes (selecting fun facts)
+    # This is safe as it's not used for security-sensitive operations like tokens or keys
     fun_fact = random.choice(fun_facts)
     
     return {
