@@ -37,7 +37,7 @@ class ResumeService:
             processed_files = await self._process_all_files(files, upload_path, upload_id)
             
             # Save candidates to database
-            saved_candidates = await self._save_candidates_to_database(processed_files)
+            saved_candidates = self._save_candidates_to_database(processed_files)
             
             # Prepare response data
             response_data = self._prepare_response_data(upload_id, files, processed_files, saved_candidates)
@@ -66,7 +66,7 @@ class ResumeService:
         
         return processed_files
     
-    async def _save_candidates_to_database(self, processed_files: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _save_candidates_to_database(self, processed_files: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Save candidates to database"""
         saved_candidates = []
         logger.info(f"Checking {len(processed_files)} files for candidate saving...")
