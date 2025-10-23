@@ -7,7 +7,7 @@ import streamlit as st
 import requests
 import json
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import time
 import base64
 from io import BytesIO
@@ -40,6 +40,47 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# ============================================================================
+# UTILITY FUNCTIONS - Common patterns to reduce duplication
+# ============================================================================
+
+def show_message(message_type: str, message: str, icon: str = ""):
+    """Unified function for displaying messages"""
+    if message_type == "success":
+        st.success(f"{icon} {message}")
+    elif message_type == "error":
+        st.error(f"{icon} {message}")
+    elif message_type == "warning":
+        st.warning(f"{icon} {message}")
+    elif message_type == "info":
+        st.info(f"{icon} {message}")
+
+def show_api_error(error_msg: str = "API Error"):
+    """Show standardized API error message"""
+    show_message("error", error_msg, "❌")
+
+def show_success(message: str):
+    """Show standardized success message"""
+    show_message("success", message, "✅")
+
+def show_warning(message: str):
+    """Show standardized warning message"""
+    show_message("warning", message, "⚠️")
+
+def show_info(message: str):
+    """Show standardized info message"""
+    show_message("info", message, "💡")
+
+def handle_api_response(response_data: Optional[Dict], success_msg: str = "", error_msg: str = "Failed to process request") -> bool:
+    """Handle API response and show appropriate message"""
+    if response_data:
+        if success_msg:
+            show_success(success_msg)
+        return True
+    else:
+        show_api_error(error_msg)
+        return False
+
 def make_api_request(method: str, endpoint: str, data: Optional[Dict] = None) -> Optional[Dict]:
     """Make API request to FastAPI backend"""
     try:
@@ -52,20 +93,20 @@ def make_api_request(method: str, endpoint: str, data: Optional[Dict] = None) ->
         elif method.upper() == "DELETE":
             response = requests.delete(url)
         else:
-            st.error(f"Unsupported HTTP method: {method}")
+            show_api_error(f"Unsupported HTTP method: {method}")
             return None
         
         if response.status_code == 200:
             return response.json()
         else:
-            st.error(f"API Error {response.status_code}: {response.text}")
+            show_api_error(f"API Error {response.status_code}: {response.text}")
             return None
             
     except requests.exceptions.ConnectionError:
-        st.error("❌ Cannot connect to FastAPI backend. Please ensure it's running on http://localhost:8000")
+        show_api_error("Cannot connect to FastAPI backend. Please ensure it's running on http://localhost:8000")
         return None
     except Exception as e:
-        st.error(f"❌ Error making API request: {str(e)}")
+        show_api_error(f"Error making API request: {str(e)}")
         return None
 
 def check_api_health():
@@ -98,41 +139,34 @@ def show_welcome_message():
 def create_candidate(resume_data: Dict) -> Optional[str]:
     """Create candidate in the backend"""
     candidate_data = {
-        "name": resume_data.get("name", "Candidate"),
-        "email": resume_data.get("email", "candidate@example.com"),
-        "resume_text": resume_data.get("resume_text", ""),
-        "experience_years": resume_data.get("experience_years", 0),
-        "skills": resume_data.get("skills", [])
+        "name": resume_data["name"],
+        "email": resume_data["email"],
+        "skills": resume_data["skills"],
+        "experience_years": resume_data["experience_years"],
+        "education": resume_data["education"],
+        "work_experience": resume_data["work_experience"]
     }
     
-    result = make_api_request("POST", "/candidates", candidate_data)
-    if result:
-        return result.get("candidate_id")
-    return None
+    result = make_api_request("POST", "/candidates/", candidate_data)
+    return result["candidate_id"] if result else None
 
 def create_job(job_data: Dict) -> Optional[str]:
     """Create job in the backend"""
-    result = make_api_request("POST", "/jobs", job_data)
-    if result:
-        return result.get("job_id")
-    return None
+    result = make_api_request("POST", "/jobs/", job_data)
+    return result["job_id"] if result else None
 
 def start_interview(candidate_id: str, job_id: str) -> Optional[Dict]:
     """Start interview session"""
-    interview_data = {
+    return make_api_request("POST", "/interviews/start", {
         "candidate_id": candidate_id,
         "job_id": job_id
-    }
-    
-    return make_api_request("POST", "/interviews/start", interview_data)
+    })
 
 def submit_response(session_id: str, response_text: str) -> Optional[Dict]:
-    """Submit candidate response"""
-    response_data = {
+    """Submit interview response"""
+    return make_api_request("POST", f"/interviews/{session_id}/respond", {
         "response_text": response_text
-    }
-    
-    return make_api_request("POST", f"/interviews/{session_id}/respond", response_data)
+    })
 
 def get_interview_summary(session_id: str) -> Optional[Dict]:
     """Get interview summary"""
@@ -141,6 +175,368 @@ def get_interview_summary(session_id: str) -> Optional[Dict]:
 def get_ai_summary(session_id: str) -> Optional[Dict]:
     """Get AI-generated summary"""
     return make_api_request("GET", f"/interviews/{session_id}/ai-summary")
+
+def parse_resume_file(resume_file, resume_text: str) -> Optional[Dict]:
+    """Parse resume file or text with error handling"""
+    try:
+        if resume_file is not None:
+            # Use OpenResume-based PDF parser
+            parsed_data = resume_parser.parse_resume_from_pdf(resume_file)
+            resume_text = parsed_data['raw_text']
+            show_success("PDF parsed using OpenResume-based parser")
+        else:
+            resume_text = resume_text or ""
+        
+        # Use OpenResume-based parser
+        parsed_data = resume_parser.parse_resume(resume_text)
+        
+        return {
+            "name": parsed_data['name'],
+            "email": parsed_data['email'],
+            "experience_years": parsed_data['experience_years'],
+            "skills": parsed_data['skills'] if parsed_data['skills'] else ["General"],
+            "education": parsed_data['education'],
+            "work_experience": parsed_data['work_experience'],
+            "parsing_method": "OpenResume-based parser (Tang, 2024)"
+        }
+        
+    except Exception as e:
+        show_warning(f"OpenResume parser failed: {str(e)}")
+        # Fallback to basic extraction
+        try:
+            if resume_file is not None:
+                import PyPDF2
+                pdf_reader = PyPDF2.PdfReader(resume_file)
+                resume_text = ""
+                for page in pdf_reader.pages:
+                    resume_text += page.extract_text() + "\n"
+                show_success("PDF parsed using basic text extraction")
+            else:
+                resume_text = resume_text or ""
+            
+            # Use OpenResume-based parser
+            parsed_data = resume_parser.parse_resume(resume_text)
+            
+            return {
+                "name": parsed_data['name'],
+                "email": parsed_data['email'],
+                "experience_years": parsed_data['experience_years'],
+                "skills": parsed_data['skills'] if parsed_data['skills'] else ["General"],
+                "education": parsed_data['education'],
+                "work_experience": parsed_data['work_experience'],
+                "parsing_method": "OpenResume-based parser (Tang, 2024)"
+            }
+            
+        except Exception as e:
+            show_api_error(f"Error reading PDF file: {str(e)}")
+            show_info("**Tip**: Try copying and pasting the text content instead of uploading the PDF file.")
+            return None
+
+def parse_job_description(job_title: str, company_name: str, job_description: str) -> Optional[Dict]:
+    """Parse job description with skill extraction"""
+    import re
+    
+    # Extract skills from job description
+    job_lower = job_description.lower()
+    
+    # Common tech skills to look for (using regex for word boundaries)
+    tech_skills = [
+        'python', 'java', 'javascript', 'typescript', 'react', 'angular', 'vue',
+        'node.js', 'express', 'django', 'flask', 'fastapi', 'spring', 'laravel',
+        'sql', 'postgresql', 'mysql', 'mongodb', 'redis', 'elasticsearch',
+        'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'terraform',
+        'git', 'github', 'gitlab', 'jenkins', 'ci/cd', 'devops',
+        'machine learning', 'ai', 'tensorflow', 'pytorch', 'scikit-learn',
+        'data science', 'data analysis', 'tableau', 'power bi', 'excel',
+        'agile', 'scrum', 'kanban', 'project management'
+    ]
+    
+    required_skills = []
+    for skill in tech_skills:
+        if re.search(r'\b' + re.escape(skill) + r'\b', job_lower):
+            required_skills.append(skill.title())
+    
+    # Extract experience level
+    exp_patterns = [
+        (r'\b(\d+)\+?\s*years?\s*(?:of\s*)?experience\b', 'years'),
+        (r'\b(entry|junior|mid|senior|lead|principal)\b', 'level'),
+        (r'\b(0-2|2-5|5-10|10\+)\s*years?\b', 'range')
+    ]
+    
+    exp_level = "Mid-level"
+    for pattern, pattern_type in exp_patterns:
+        match = re.search(pattern, job_lower)
+        if match:
+            if pattern_type == 'years':
+                years = int(match.group(1))
+                if years <= 2:
+                    exp_level = "Entry-level"
+                elif years <= 5:
+                    exp_level = "Mid-level"
+                else:
+                    exp_level = "Senior-level"
+            elif pattern_type == 'level':
+                exp_level = match.group(1).title() + "-level"
+            elif pattern_type == 'range':
+                exp_level = f"{match.group(1)} years experience"
+            break
+    
+    return {
+        "title": job_title,
+        "company": company_name,
+        "description": job_description,
+        "required_skills": required_skills if required_skills else ["General"],
+        "experience_level": exp_level
+    }
+
+def show_status_indicators():
+    """Show current status indicators"""
+    if st.session_state.candidate_id:
+        show_success("Candidate ready")
+    if st.session_state.job_id:
+        show_success("Job ready")
+    if st.session_state.current_session_id:
+        show_success("Interview active")
+
+def handle_interview_start():
+    """Handle interview start process"""
+    try:
+        with st.spinner("Starting interview..."):
+            result = start_interview(st.session_state.candidate_id, st.session_state.job_id)
+            
+            if result:
+                st.session_state.current_session_id = result["session_id"]
+                st.session_state.interview_messages = []
+                st.session_state.interview_completed = False
+                
+                # Add initial question
+                st.session_state.interview_messages.append({
+                    "role": "assistant",
+                    "content": result["first_question"]
+                })
+                # Mark that we've added the first question
+                st.session_state.first_question_added = True
+                
+                show_success("Interview started successfully!")
+                st.rerun()
+            else:
+                show_api_error("Failed to start interview")
+                
+    except Exception as e:
+        show_api_error(f"Error starting interview: {str(e)}")
+
+def handle_response_submission(session_id: str, response_text: str):
+    """Handle response submission process"""
+    try:
+        with st.spinner("Submitting response..."):
+            result = submit_response(session_id, response_text)
+            
+            if result:
+                if result["status"] == "continue":
+                    # Show warnings if any
+                    if result.get("warnings"):
+                        for warning in result["warnings"]:
+                            show_warning(warning)
+                    
+                    # Show anti-cheating counters
+                    if result.get("duplicate_count", 0) > 0:
+                        show_info(f"Duplicate responses detected: {result['duplicate_count']}")
+                    
+                    if result.get("ai_generated_count", 0) > 0:
+                        show_info(f"AI-generated content detected: {result['ai_generated_count']}")
+                    
+                    # Add next question only if it's different from current question
+                    current_question = st.session_state.interview_messages[-1]["content"] if st.session_state.interview_messages else ""
+                    if result["next_question"] != current_question:
+                        st.session_state.interview_messages.append({
+                            "role": "assistant",
+                            "content": result["next_question"]
+                        })
+                        st.rerun()
+                elif result["status"] == "completed":
+                    # Interview completed
+                    st.session_state.interview_completed = True
+                    st.rerun()
+                elif result["status"] == "terminated":
+                    # Interview terminated due to anti-cheating
+                    show_api_error(result.get("message", "Interview terminated due to policy violations"))
+                    st.session_state.interview_completed = True
+                    st.session_state.interview_terminated = True
+                    st.rerun()
+            else:
+                show_api_error("Failed to submit response")
+                
+    except Exception as e:
+        show_api_error(f"Error submitting response: {str(e)}")
+
+def generate_pdf_report(summary_data, ai_summary_data):
+    """Generate PDF report"""
+    if not REPORTLAB_AVAILABLE:
+        return None
+    
+    try:
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4)
+        styles = getSampleStyleSheet()
+        
+        # Custom styles
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            spaceAfter=30,
+            alignment=1  # Center alignment
+        )
+        
+        heading_style = ParagraphStyle(
+            'CustomHeading',
+            parent=styles['Heading2'],
+            fontSize=14,
+            spaceAfter=12,
+            textColor=colors.darkblue
+        )
+        
+        # Build PDF content
+        story = []
+        
+        # Title
+        story.append(Paragraph("SkillScreen Interview Report", title_style))
+        story.append(Spacer(1, 20))
+        
+        # Candidate Information
+        story.append(Paragraph("Candidate Information", heading_style))
+        story.append(Paragraph(f"<b>Name:</b> {summary_data.get('candidate_name', 'N/A')}", styles['Normal']))
+        story.append(Paragraph(f"<b>Email:</b> {summary_data.get('candidate_email', 'N/A')}", styles['Normal']))
+        story.append(Paragraph(f"<b>Experience:</b> {summary_data.get('candidate_experience', 'N/A')} years", styles['Normal']))
+        story.append(Spacer(1, 12))
+        
+        # Job Information
+        story.append(Paragraph("Job Information", heading_style))
+        story.append(Paragraph(f"<b>Position:</b> {summary_data.get('job_title', 'N/A')}", styles['Normal']))
+        story.append(Paragraph(f"<b>Company:</b> {summary_data.get('job_company', 'N/A')}", styles['Normal']))
+        story.append(Spacer(1, 12))
+        
+        # Interview Results
+        story.append(Paragraph("Interview Results", heading_style))
+        story.append(Paragraph(f"<b>Overall Score:</b> {summary_data.get('overall_score', 'N/A')}/100", styles['Normal']))
+        story.append(Paragraph(f"<b>Questions Answered:</b> {summary_data.get('questions_answered', 'N/A')}", styles['Normal']))
+        story.append(Spacer(1, 12))
+        
+        # Strengths
+        if summary_data.get('strengths'):
+            story.append(Paragraph("Strengths", heading_style))
+            for strength in summary_data['strengths']:
+                story.append(Paragraph(f"• {strength}", styles['Normal']))
+            story.append(Spacer(1, 12))
+        
+        # Areas for Improvement
+        if summary_data.get('areas_for_improvement'):
+            story.append(Paragraph("Areas for Improvement", heading_style))
+            for area in summary_data['areas_for_improvement']:
+                story.append(Paragraph(f"• {area}", styles['Normal']))
+            story.append(Spacer(1, 12))
+        
+        # AI Summary
+        if ai_summary_data and ai_summary_data.get('summary'):
+            story.append(Paragraph("AI Analysis", heading_style))
+            story.append(Paragraph(ai_summary_data['summary'], styles['Normal']))
+            story.append(Spacer(1, 12))
+        
+        # Build PDF
+        doc.build(story)
+        buffer.seek(0)
+        
+        return buffer.getvalue()
+        
+    except Exception as e:
+        show_api_error(f"Error generating PDF: {str(e)}")
+        return None
+
+def generate_text_report(summary_data, ai_summary_data):
+    """Generate text report"""
+    report = f"""
+INTERVIEW REPORT
+================
+
+Candidate Information:
+- Name: {summary_data.get('candidate_name', 'N/A')}
+- Email: {summary_data.get('candidate_email', 'N/A')}
+- Experience: {summary_data.get('candidate_experience', 'N/A')} years
+
+Job Information:
+- Position: {summary_data.get('job_title', 'N/A')}
+- Company: {summary_data.get('job_company', 'N/A')}
+
+Interview Results:
+- Overall Score: {summary_data.get('overall_score', 'N/A')}/100
+- Questions Answered: {summary_data.get('questions_answered', 'N/A')}
+
+Strengths:
+"""
+    
+    if summary_data.get('strengths'):
+        for strength in summary_data['strengths']:
+            report += f"- {strength}\n"
+    else:
+        report += "- No specific strengths identified\n"
+    
+    report += "\nAreas for Improvement:\n"
+    if summary_data.get('areas_for_improvement'):
+        for area in summary_data['areas_for_improvement']:
+            report += f"- {area}\n"
+    else:
+        report += "- No specific areas identified\n"
+    
+    if ai_summary_data and ai_summary_data.get('summary'):
+        report += f"\nAI Analysis:\n{ai_summary_data['summary']}\n"
+    
+    report += f"\nGenerated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+    
+    return report
+
+def code_editor_section():
+    """Code editor section for technical assessments"""
+    st.header("💻 Technical Assessment")
+    
+    # Code editor
+    st.subheader("Code Editor")
+    language = st.selectbox("Select Language", ["python", "javascript", "java", "cpp", "sql"])
+    
+    code = st.text_area("Write your code here:", height=300, placeholder=f"# Write your {language} code here...")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("▶️ Run Code", type="primary"):
+            if code.strip():
+                with st.spinner("Executing code..."):
+                    result = make_api_request("POST", "/api/code/execute", {
+                        "code": code,
+                        "language": language
+                    })
+                    
+                    if result:
+                        if result.get("success"):
+                            st.success("✅ Code executed successfully!")
+                            st.code(result.get("output", ""))
+                        else:
+                            show_api_error("Code execution failed")
+                            st.code(result.get("error", ""))
+                    else:
+                        show_api_error("Failed to execute code")
+            else:
+                show_warning("Please enter some code to execute")
+    
+    with col2:
+        if st.button("📝 Get Question"):
+            question_result = make_api_request("GET", "/api/code/question")
+            if question_result:
+                st.info("**Technical Question:**")
+                st.write(question_result.get("question", "No question available"))
+
+# ============================================================================
+# MAIN APPLICATION FUNCTIONS
+# ============================================================================
 
 def main():
     """Main Streamlit application"""
@@ -155,231 +551,123 @@ def main():
         
         1. **Start the FastAPI backend** by running:
            ```bash
-           python SkillScreen/simple_fastapi_app.py
+           cd backend/text-service
+           python simple_fastapi_app.py
            ```
         
-        2. **Ensure it's running** on `http://localhost:8000`
+        2. **Ensure it's running on** http://localhost:8000
         
         3. **Refresh this page** once the backend is running
         """)
         return
     
-    # Show welcome message if no session is active
-    if 'current_session_id' not in st.session_state:
-        show_welcome_message()
-    
-    st.markdown("---")
-    
-    # Display parsed data in main frame
-    if 'parsed_resume' in st.session_state or 'parsed_job' in st.session_state:
-        st.subheader("🔍 Parsed Data Review")
-        st.info("📋 Review the extracted information before starting the interview")
-        
-        # Parsing methodology note removed for cleaner UI
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            if 'parsed_resume' in st.session_state:
-                st.markdown("### 📄 Parsed Resume")
-                resume = st.session_state.parsed_resume
-                st.write(f"**Name:** {resume['name']}")
-                st.write(f"**Email:** {resume['email']}")
-                st.write(f"**Phone:** {resume['phone']}")
-                st.write(f"**Experience:** {resume['experience_years']} years")
-                st.write(f"**Skills Found:** {', '.join(resume['skills'])}")
-                with st.expander("View Full Resume Data"):
-                    st.json(resume)
-        
-        with col2:
-            if 'parsed_job' in st.session_state:
-                st.markdown("### 💼 Parsed Job")
-                job = st.session_state.parsed_job
-                st.write(f"**Position:** {job['title']}")
-                st.write(f"**Required Skills:** {', '.join(job['required_skills'])}")
-                st.write(f"**Experience Level:** {job['experience_level']}")
-                with st.expander("View Full Job Data"):
-                    st.json(job)
-        
-        st.markdown("---")
-    
     # Initialize session state
-    if 'current_session_id' not in st.session_state:
-        st.session_state.current_session_id = None
     if 'candidate_id' not in st.session_state:
         st.session_state.candidate_id = None
     if 'job_id' not in st.session_state:
         st.session_state.job_id = None
+    if 'current_session_id' not in st.session_state:
+        st.session_state.current_session_id = None
     if 'interview_messages' not in st.session_state:
         st.session_state.interview_messages = []
     if 'interview_completed' not in st.session_state:
         st.session_state.interview_completed = False
     if 'interview_terminated' not in st.session_state:
         st.session_state.interview_terminated = False
+    if 'parsed_resume' not in st.session_state:
+        st.session_state.parsed_resume = None
+    if 'parsed_job' not in st.session_state:
+        st.session_state.parsed_job = None
+    if 'first_question_added' not in st.session_state:
+        st.session_state.first_question_added = False
     
-    # Sidebar for setup
+    # Sidebar for input
     with st.sidebar:
-        st.header("📋 Interview Setup")
+        st.header("📋 Setup")
         
-        # Resume upload
+        # Resume input
         st.subheader("📄 Resume")
-        resume_file = st.file_uploader("Upload Resume", type=['pdf', 'docx', 'txt'], key="resume_upload")
-        resume_text = st.text_area("Or paste resume text:", height=100, key="resume_text")
+        resume_option = st.radio("Choose input method:", ["Upload PDF", "Paste Text"])
         
-        # Job description
+        resume_file = None
+        resume_text = ""
+        
+        if resume_option == "Upload PDF":
+            resume_file = st.file_uploader("Upload Resume (PDF)", type=['pdf'])
+        else:
+            resume_text = st.text_area("Paste Resume Text", height=150)
+        
+        # Job description input
         st.subheader("💼 Job Description")
-        job_title = st.text_input("Job Title:", placeholder="e.g., Senior Python Developer")
-        company_name = st.text_input("Company:", placeholder="e.g., TechCorp")
-        job_description = st.text_area("Job Description:", height=150, key="job_description")
+        job_title = st.text_input("Job Title")
+        company_name = st.text_input("Company Name")
+        job_description = st.text_area("Job Description", height=150)
         
-        # Parse and create candidate/job
+        # Parse buttons
         col1, col2 = st.columns(2)
         
         with col1:
             if st.button("📄 Parse Resume", use_container_width=True):
                 if resume_file or resume_text:
-                    import re
-                    from datetime import datetime
-                    
-                    # Extract text from PDF if file is uploaded
-                    if resume_file is not None:
-                        try:
-                            import io
-                            # Use OpenResume-based PDF parser
-                            parsed_data = resume_parser.parse_resume_from_pdf(resume_file)
-                            resume_text = parsed_data['raw_text']
-                            pdf_parsed = True
-                            st.success("✅ PDF parsed using OpenResume-based parser")
-                        except Exception as e:
-                            st.warning(f"⚠️ OpenResume parser failed: {str(e)}")
-                            # Fallback to basic extraction
-                            try:
-                                import PyPDF2
-                                pdf_reader = PyPDF2.PdfReader(resume_file)
-                                resume_text = ""
-                                for page in pdf_reader.pages:
-                                    resume_text += page.extract_text() + "\n"
-                                pdf_parsed = True
-                                st.success("✅ PDF parsed using basic text extraction")
-                            except Exception as e:
-                                st.error(f"❌ Error reading PDF file: {str(e)}")
-                                st.info("💡 **Tip**: Try copying and pasting the text content instead of uploading the PDF file.")
-                                return
-                    else:
-                        # Use pasted text
-                        resume_text = resume_text or ""
-                    
-                    # Use OpenResume-based parser
-                    parsed_data = resume_parser.parse_resume(resume_text)
-                    
-                    parsed_resume = {
-                        "name": parsed_data['name'] or "Candidate",
-                        "email": parsed_data['email'] or "candidate@example.com",
-                        "phone": parsed_data['phone'] or "Not provided",
-                        "resume_text": resume_text or "Resume uploaded",
-                        "experience_years": parsed_data['experience_years'],
-                        "skills": parsed_data['skills'] if parsed_data['skills'] else ["General"],
-                        "education": parsed_data['education'],
-                        "work_experience": parsed_data['work_experience'],
-                        "parsing_method": "OpenResume-based parser (Tang, 2024)"
-                    }
-                    
-                    candidate_id = create_candidate(parsed_resume)
-                    if candidate_id:
-                        st.session_state.candidate_id = candidate_id
-                        st.session_state.parsed_resume = parsed_resume
-                        st.success("✅ Resume parsed and candidate created!")
-                    else:
-                        st.error("❌ Failed to create candidate")
+                    parsed_resume = parse_resume_file(resume_file, resume_text)
+                    if parsed_resume:
+                        candidate_id = create_candidate(parsed_resume)
+                        if handle_api_response(candidate_id, "Resume parsed and candidate created!", "Failed to create candidate"):
+                            st.session_state.candidate_id = candidate_id
+                            st.session_state.parsed_resume = parsed_resume
                 else:
-                    st.error("❌ Please upload a resume or paste text")
+                    show_api_error("Please upload a resume or paste text")
         
         with col2:
             if st.button("💼 Parse Job", use_container_width=True):
                 if job_title and company_name and job_description:
-                    import re
-                    
-                    # Extract skills from job description
-                    job_lower = job_description.lower()
-                    
-                    # Common tech skills to look for (using regex for word boundaries)
-                    tech_skills = ['python', 'java', 'javascript', 'c\\+\\+', 'sql', 'fastapi', 'django', 
-                                   'flask', 'react', 'vue', 'angular', 'node', 'mongodb', 'postgresql',
-                                   'machine learning', 'deep learning', 'nlp', 'computer vision',
-                                   'data science', 'data analysis', 'tableau', 'power bi', 'excel',
-                                   'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'git', 'streamlit',
-                                   'tensorflow', 'pytorch', 'pandas', 'numpy', 'scikit-learn', 'ml']
-                    
-                    required_skills = []
-                    for skill in tech_skills:
-                        if re.search(rf'\b{skill}\b', job_lower):
-                            # Clean up display name
-                            display_skill = skill.replace('\\+\\+', '++').title()
-                            if display_skill not in required_skills:
-                                required_skills.append(display_skill)
-                    
-                    # Determine experience level
-                    if 'senior' in job_lower or 'lead' in job_lower:
-                        exp_level = "senior"
-                    elif 'junior' in job_lower or 'entry' in job_lower or 'intern' in job_lower:
-                        exp_level = "junior"
-                    else:
-                        exp_level = "mid"
-                    
-                    job_data = {
-                        "title": job_title,
-                        "company": company_name,
-                        "description": job_description,
-                        "required_skills": required_skills if required_skills else ["General"],
-                        "experience_level": exp_level
-                    }
-                    
-                    job_id = create_job(job_data)
-                    if job_id:
-                        st.session_state.job_id = job_id
-                        st.session_state.parsed_job = job_data
-                        st.success("✅ Job created successfully!")
-                    else:
-                        st.error("❌ Failed to create job")
+                    job_data = parse_job_description(job_title, company_name, job_description)
+                    if job_data:
+                        job_id = create_job(job_data)
+                        if handle_api_response(job_id, "Job created successfully!", "Failed to create job"):
+                            st.session_state.job_id = job_id
+                            st.session_state.parsed_job = job_data
                 else:
-                    st.error("❌ Please fill in job title, company, and description")
-        
+                    show_api_error("Please fill in job title, company, and description")
         
         # Start interview button
         if st.session_state.candidate_id and st.session_state.job_id:
             if st.button("🚀 Start Interview", type="primary", use_container_width=True):
-                try:
-                    with st.spinner("Starting interview..."):
-                        result = start_interview(st.session_state.candidate_id, st.session_state.job_id)
-                        
-                        if result:
-                            st.session_state.current_session_id = result["session_id"]
-                            st.session_state.interview_messages = []
-                            st.session_state.interview_completed = False
-                            
-                            # Add initial question
-                            st.session_state.interview_messages.append({
-                                "role": "assistant",
-                                "content": result["first_question"]
-                            })
-                            # Mark that we've added the first question
-                            st.session_state.first_question_added = True
-                            
-                            st.success("✅ Interview started successfully!")
-                            st.rerun()
-                        else:
-                            st.error("❌ Failed to start interview")
-                            
-                except Exception as e:
-                    st.error(f"❌ Error starting interview: {str(e)}")
+                handle_interview_start()
         
         # Show current status
-        if st.session_state.candidate_id:
-            st.success("✅ Candidate ready")
-        if st.session_state.job_id:
-            st.success("✅ Job ready")
-        if st.session_state.current_session_id:
-            st.success("✅ Interview active")
+        show_status_indicators()
+    
+    st.markdown("---")
+    
+    # Display parsed data in main frame
+    if 'parsed_resume' in st.session_state or 'parsed_job' in st.session_state:
+        st.subheader("🔍 Parsed Data Review")
+        show_info("📋 Review the extracted information before starting the interview")
+        
+        col1, col2 = st.columns(2)
+        
+        if st.session_state.parsed_resume:
+            with col1:
+                st.markdown("### 👤 Candidate Information")
+                resume_data = st.session_state.parsed_resume
+                st.write(f"**Name:** {resume_data['name']}")
+                st.write(f"**Email:** {resume_data['email']}")
+                st.write(f"**Experience:** {resume_data['experience_years']} years")
+                st.write(f"**Skills:** {', '.join(resume_data['skills'][:10])}")  # Show first 10 skills
+                if len(resume_data['skills']) > 10:
+                    st.write(f"... and {len(resume_data['skills']) - 10} more skills")
+        
+        if st.session_state.parsed_job:
+            with col2:
+                st.markdown("### 💼 Job Information")
+                job_data = st.session_state.parsed_job
+                st.write(f"**Title:** {job_data['title']}")
+                st.write(f"**Company:** {job_data['company']}")
+                st.write(f"**Level:** {job_data['experience_level']}")
+                st.write(f"**Required Skills:** {', '.join(job_data['required_skills'][:10])}")  # Show first 10 skills
+                if len(job_data['required_skills']) > 10:
+                    st.write(f"... and {len(job_data['required_skills']) - 10} more skills")
     
     # Main content area
     if st.session_state.current_session_id and not st.session_state.interview_completed:
@@ -390,7 +678,7 @@ def main():
         else:
             show_interview_summary()
     else:
-        st.info("👈 Please set up your resume and job description in the sidebar to start the interview.")
+        show_info("👈 Please set up your resume and job description in the sidebar to start the interview.")
 
 def show_interview_interface():
     """Show the main interview interface"""
@@ -399,7 +687,7 @@ def show_interview_interface():
     # Get current interview status
     interview_data = make_api_request("GET", f"/interviews/{session_id}")
     if not interview_data:
-        st.error("❌ Failed to get interview data")
+        show_api_error("Failed to get interview data")
         return
     
     # Show interview progress with round information
@@ -411,96 +699,39 @@ def show_interview_interface():
         round_info = "🔧 Round 2: Technical Assessment"
         round_desc = "Technical skills and hands-on experience"
     else:
-        round_info = "🧠 Round 3: Theoretical Assessment"
-        round_desc = "Concepts, best practices, and deep knowledge"
+        round_info = "🎯 Round 3: Final Assessment"
+        round_desc = "Final evaluation and fit assessment"
     
     # Progress bar
-    progress = min(question_num / 9, 1.0)
-    st.progress(progress, text=f"Question {question_num}/9")
+    progress = min(question_num / 5, 1.0)  # Assuming 5 questions total
+    st.progress(progress)
+    
+    # Round information
     st.markdown(f"### {round_info}")
     st.markdown(f"*{round_desc}*")
-    
-    # Metrics
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Questions Asked", interview_data["questions_asked"])
-    with col2:
-        st.metric("Responses Given", interview_data["responses_received"])
-    with col3:
-        st.metric("Current Score", f"{interview_data['total_score']:.1f}")
-    
-    st.markdown("---")
+    st.markdown(f"**Question {question_num} of 5**")
     
     # Chat interface
-    st.subheader("💬 Interview Chat")
+    st.markdown("### 💬 Interview Chat")
     
     # Display chat messages
     for message in st.session_state.interview_messages:
-        if message["role"] == "assistant":
-            with st.chat_message("assistant"):
-                st.write(message["content"])
-        elif message["role"] == "user":
-            with st.chat_message("user"):
-                st.write(message["content"])
-    
-    # Current question
-    if interview_data["current_question"]:
-        with st.chat_message("assistant"):
-            st.write(interview_data["current_question"])
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
     
     # Response input
-    if interview_data["status"] == "active":
-        user_response = st.chat_input("Type your response here...")
+    if st.session_state.interview_messages:
+        response_text = st.chat_input("Type your response here...")
         
-        if user_response:
-            # Add user response to chat
+        if response_text:
+            # Add user message to chat
             st.session_state.interview_messages.append({
                 "role": "user",
-                "content": user_response
+                "content": response_text
             })
             
             # Submit response
-            try:
-                with st.spinner("Processing your response..."):
-                    result = submit_response(session_id, user_response)
-                    
-                    if result:
-                        if result["status"] == "continue":
-                            # Show warnings if any
-                            if result.get("warnings"):
-                                for warning in result["warnings"]:
-                                    st.warning(warning)
-                            
-                            # Show anti-cheating counters
-                            if result.get("duplicate_count", 0) > 0:
-                                st.info(f"⚠️ Duplicate responses detected: {result['duplicate_count']}")
-                            
-                            if result.get("ai_generated_count", 0) > 0:
-                                st.info(f"🤖 AI-generated content detected: {result['ai_generated_count']}")
-                            
-                            # Add next question only if it's different from current question
-                            current_question = st.session_state.interview_messages[-1]["content"] if st.session_state.interview_messages else ""
-                            if result["next_question"] != current_question:
-                                st.session_state.interview_messages.append({
-                                    "role": "assistant",
-                                    "content": result["next_question"]
-                                })
-                            st.rerun()
-                        elif result["status"] == "completed":
-                            # Interview completed
-                            st.session_state.interview_completed = True
-                            st.rerun()
-                        elif result["status"] == "terminated":
-                            # Interview terminated due to anti-cheating
-                            st.error(result.get("message", "Interview terminated due to policy violations"))
-                            st.session_state.interview_completed = True
-                            st.session_state.interview_terminated = True
-                            st.rerun()
-                    else:
-                        st.error("❌ Failed to submit response")
-                        
-            except Exception as e:
-                st.error(f"❌ Error submitting response: {str(e)}")
+            handle_response_submission(session_id, response_text)
 
 def show_termination_summary():
     """Show termination summary for anti-cheating violations"""
@@ -511,75 +742,44 @@ def show_termination_summary():
     # Get interview data
     interview_data = make_api_request("GET", f"/interviews/{session_id}")
     if not interview_data:
-        st.error("❌ Failed to get interview data")
+        show_api_error("Failed to get interview data")
         return
     
     # Display termination message
-    st.error("🚨 **Interview Terminated Due to Policy Violations**")
+    show_api_error("🚨 **Interview Terminated Due to Policy Violations**")
     
     st.markdown("### 📋 Termination Details")
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.metric("Final Score", "0/10")
+        st.metric("Questions Answered", interview_data.get("responses_received", 0))
     
     with col2:
-        st.metric("Questions Answered", interview_data.get("questions_asked", 0))
+        st.metric("Duplicate Responses", interview_data.get("duplicate_count", 0))
     
     with col3:
-        st.metric("Status", "Terminated")
+        st.metric("AI-Generated Content", interview_data.get("ai_generated_count", 0))
     
     # Show termination reason
     termination_reason = interview_data.get("termination_reason", "anti_cheating")
-    termination_message = interview_data.get("termination_message", "Interview terminated due to policy violations")
-    
-    st.markdown("### ⚠️ Reason for Termination")
-    st.warning(termination_message)
+    st.markdown(f"**Reason:** {termination_reason.replace('_', ' ').title()}")
     
     # Show policy violations
-    st.markdown("### 📜 Policy Violations Detected")
-    
-    violations = []
-    if interview_data.get("duplicate_count", 0) > 0:
-        violations.append(f"• Duplicate responses: {interview_data['duplicate_count']} times")
-    
-    if interview_data.get("ai_generated_count", 0) > 0:
-        violations.append(f"• AI-generated content: {interview_data['ai_generated_count']} times")
-    
-    if violations:
-        for violation in violations:
-            st.write(violation)
-    else:
-        st.write("• Multiple suspicious activities detected")
-    
-    # Show warnings history
-    warnings = interview_data.get("warnings", [])
-    if warnings:
-        st.markdown("### ⚠️ Warnings Issued")
-        for i, warning in enumerate(warnings, 1):
-            st.write(f"{i}. {warning}")
-    
-    # Show next steps
-    st.markdown("### 📝 Next Steps")
-    st.info("""
-    **For Future Interviews:**
-    - Provide original, personal responses based on your own experience
-    - Avoid copying from external sources or AI tools
-    - Ensure each response is unique and relevant to the question
-    - Take time to think before responding
-    """)
+    if interview_data.get("violations"):
+        st.markdown("### 🚨 Policy Violations")
+        for violation in interview_data["violations"]:
+            st.write(f"• {violation}")
     
     # Restart option
     st.markdown("---")
-    if st.button("🔄 Start New Interview", type="secondary", use_container_width=True):
+    if st.button("🔄 Start New Interview", type="primary"):
         # Reset session state
         st.session_state.current_session_id = None
-        st.session_state.candidate_id = None
-        st.session_state.job_id = None
         st.session_state.interview_messages = []
         st.session_state.interview_completed = False
         st.session_state.interview_terminated = False
+        st.session_state.first_question_added = False
         st.rerun()
 
 def show_interview_summary():
@@ -591,473 +791,90 @@ def show_interview_summary():
     ai_summary_data = get_ai_summary(session_id)
     
     if not summary_data:
-        st.error("❌ Failed to get interview summary")
+        show_api_error("Failed to get interview summary")
         return
     
     st.markdown("## 🎉 Interview Completed!")
     
-    # Display basic metrics
+    # Overall score
+    overall_score = summary_data.get("overall_score", 0)
+    st.metric("Overall Score", f"{overall_score}/100")
+    
+    # Score breakdown
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.metric("Final Score", f"{summary_data['overall_score']}/10")
+        st.metric("Technical Score", f"{summary_data.get('technical_score', 0)}/100")
     
     with col2:
-        st.metric("Total Questions", summary_data['total_questions'])
+        st.metric("Communication Score", f"{summary_data.get('communication_score', 0)}/100")
     
     with col3:
-        st.metric("Recommendation", summary_data['recommendation'])
+        st.metric("Problem Solving", f"{summary_data.get('problem_solving_score', 0)}/100")
     
-    # Show AI-generated summary
-    if ai_summary_data:
-        st.markdown("### 🤖 AI-Generated Feedback")
-        st.markdown("**Human-like interview feedback:**")
-        st.markdown(ai_summary_data['ai_summary'])
-        st.markdown("---")
+    # Detailed feedback
+    st.markdown("### 📊 Detailed Feedback")
     
-    # Show violations analysis with funny messages
-    if summary_data.get('violations_analysis'):
-        violations_data = summary_data['violations_analysis']
-        funny_analysis = violations_data.get('funny_analysis', {})
-        
-        st.markdown("### 🎭 Interview Integrity Analysis")
-        
-        # Display funny title and message
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            st.markdown(f"#### {funny_analysis.get('title', '🎭 Analysis Complete')}")
-            st.markdown(f"**{funny_analysis.get('message', 'Analysis completed!')}**")
-        with col2:
-            st.markdown(f"# {funny_analysis.get('emoji', '🎭')}")
-        
-        # Show fun fact
-        if funny_analysis.get('fun_fact'):
-            st.info(f"💡 **Fun Fact:** {funny_analysis['fun_fact']}")
-        
-        # Show violation statistics
-        if violations_data.get('violation_count', 0) > 0:
-            st.markdown("#### 📊 Violation Statistics")
-            
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Total Violations", violations_data.get('violation_count', 0))
-            with col2:
-                st.metric("Duplicate Responses", violations_data.get('duplicate_count', 0))
-            with col3:
-                st.metric("AI-Generated Content", violations_data.get('ai_generated_count', 0))
-            
-            # Show detailed violations
-            violations = violations_data.get('violations', [])
-            if violations:
-                st.markdown("#### 🔍 Detailed Violations")
-                
-                for i, violation in enumerate(violations, 1):
-                    violation_type = violation.get('type', 'unknown')
-                    question_num = violation.get('question', 0)
-                    response_preview = violation.get('response', '')
-                    
-                    if violation_type == 'duplicate':
-                        st.warning(f"**#{i} Duplicate Response (Question {question_num}):** {response_preview}")
-                    elif violation_type == 'ai_generated':
-                        st.error(f"**#{i} AI-Generated Content (Question {question_num}):** {response_preview}")
-        else:
-            st.success("🎉 **Clean Interview!** No violations detected - you provided original, authentic responses throughout!")
-        
-        st.markdown("---")
-    
-    # Show detailed summary
-    st.markdown("### 📊 Executive Summary")
-    st.write(summary_data['summary'])
-    
-    # Show strengths and areas for improvement
     col1, col2 = st.columns(2)
     
     with col1:
         st.markdown("#### ✅ Strengths")
-        for strength in summary_data['strengths']:
-            st.write(f"• {strength}")
+        strengths = summary_data.get("strengths", [])
+        if strengths:
+            for strength in strengths:
+                st.write(f"• {strength}")
+        else:
+            st.write("No specific strengths identified")
     
     with col2:
-        st.markdown("#### 📈 Areas for Improvement")
-        for improvement in summary_data['areas_for_improvement']:
-            st.write(f"• {improvement}")
+        st.markdown("#### 🔧 Areas for Improvement")
+        improvements = summary_data.get("areas_for_improvement", [])
+        if improvements:
+            for improvement in improvements:
+                st.write(f"• {improvement}")
+        else:
+            st.write("No specific areas identified")
     
-    # Show detailed assessment
-    st.markdown("### 📋 Detailed Assessment")
-    assessment = summary_data['detailed_assessment']
+    # AI Summary
+    if ai_summary_data and ai_summary_data.get("summary"):
+        st.markdown("### 🤖 AI Analysis")
+        st.write(ai_summary_data["summary"])
+    
+    # Export options
+    st.markdown("### 📄 Export Report")
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.metric("Technical Skills", f"{assessment['technical_skills']}/10")
+        if st.button("📄 Download PDF", use_container_width=True):
+            pdf_data = generate_pdf_report(summary_data, ai_summary_data)
+            if pdf_data:
+                st.download_button(
+                    label="📥 Download PDF Report",
+                    data=pdf_data,
+                    file_name=f"interview_report_{session_id}.pdf",
+                    mime="application/pdf"
+                )
     
     with col2:
-        st.metric("Communication", f"{assessment['communication']}/10")
-    
-    with col3:
-        st.metric("Cultural Fit", f"{assessment['cultural_fit']}/10")
-    
-    # Download options
-    st.markdown("---")
-    st.markdown("### 📥 Download Interview Report")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        if st.button("📄 Download PDF Report", type="primary"):
-            if REPORTLAB_AVAILABLE:
-                pdf_buffer = generate_pdf_report(summary_data, ai_summary_data)
-                if pdf_buffer:
-                    st.download_button(
-                        label="📥 Download PDF",
-                        data=pdf_buffer.getvalue(),
-                        file_name=f"interview_report_{session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
-                        mime="application/pdf"
-                    )
-                else:
-                    st.error("❌ Failed to generate PDF")
-            else:
-                st.error("❌ PDF generation not available. Install reportlab: `pip install reportlab`")
-    
-    with col2:
-        if st.button("📝 Download Text Report"):
-            text_content = generate_text_report(summary_data, ai_summary_data)
+        if st.button("📝 Download Text", use_container_width=True):
+            text_report = generate_text_report(summary_data, ai_summary_data)
             st.download_button(
                 label="📥 Download Text Report",
-                data=text_content,
-                file_name=f"interview_report_{session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                data=text_report,
+                file_name=f"interview_report_{session_id}.txt",
                 mime="text/plain"
             )
     
     with col3:
-        if st.button("📊 Download JSON Data"):
-            json_data = json.dumps(summary_data, indent=2, default=str)
-            st.download_button(
-                label="📥 Download JSON",
-                data=json_data,
-                file_name=f"interview_data_{session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                mime="application/json"
-            )
-    
-    # Restart option
-    st.markdown("---")
-    if st.button("🔄 Start New Interview", type="secondary", use_container_width=True):
-        # Reset session state
-        st.session_state.current_session_id = None
-        st.session_state.candidate_id = None
-        st.session_state.job_id = None
-        st.session_state.interview_messages = []
-        st.session_state.interview_completed = False
-        st.rerun()
-
-def generate_pdf_report(summary_data, ai_summary_data):
-    """Generate PDF report"""
-    if not REPORTLAB_AVAILABLE:
-        return None
-    
-    try:
-        buffer = BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=18)
-        
-        # Get styles
-        styles = getSampleStyleSheet()
-        title_style = ParagraphStyle(
-            'CustomTitle',
-            parent=styles['Heading1'],
-            fontSize=18,
-            spaceAfter=30,
-            textColor=colors.darkblue,
-            alignment=1
-        )
-        
-        heading_style = ParagraphStyle(
-            'CustomHeading',
-            parent=styles['Heading2'],
-            fontSize=14,
-            spaceAfter=12,
-            textColor=colors.darkblue
-        )
-        
-        normal_style = styles['Normal']
-        
-        # Build PDF content
-        story = []
-        
-        # Title
-        story.append(Paragraph("INTERVIEW REPORT", title_style))
-        story.append(Paragraph("SkillScreen - AI Interview Assistant", normal_style))
-        story.append(Spacer(1, 20))
-        
-        # Basic info
-        story.append(Paragraph("INTERVIEW SUMMARY", heading_style))
-        story.append(Paragraph(f"<b>Candidate:</b> {summary_data.get('candidate_name', 'N/A')}", normal_style))
-        story.append(Paragraph(f"<b>Position:</b> {summary_data.get('job_title', 'N/A')}", normal_style))
-        story.append(Paragraph(f"<b>Final Score:</b> {summary_data['overall_score']}/10", normal_style))
-        story.append(Paragraph(f"<b>Recommendation:</b> {summary_data['recommendation']}", normal_style))
-        story.append(Paragraph(f"<b>Total Questions:</b> {summary_data['total_questions']}", normal_style))
-        story.append(Spacer(1, 20))
-        
-        # AI Summary
-        if ai_summary_data:
-            story.append(Paragraph("AI-GENERATED FEEDBACK", heading_style))
-            story.append(Paragraph(ai_summary_data['ai_summary'], normal_style))
-            story.append(Spacer(1, 20))
-        
-        # Executive Summary
-        story.append(Paragraph("EXECUTIVE SUMMARY", heading_style))
-        story.append(Paragraph(summary_data['summary'], normal_style))
-        story.append(Spacer(1, 20))
-        
-        # Strengths
-        story.append(Paragraph("STRENGTHS", heading_style))
-        for strength in summary_data['strengths']:
-            story.append(Paragraph(f"• {strength}", normal_style))
-        story.append(Spacer(1, 15))
-        
-        # Areas for Improvement
-        story.append(Paragraph("AREAS FOR IMPROVEMENT", heading_style))
-        for improvement in summary_data['areas_for_improvement']:
-            story.append(Paragraph(f"• {improvement}", normal_style))
-        story.append(Spacer(1, 15))
-        
-        # Detailed Assessment
-        story.append(Paragraph("DETAILED ASSESSMENT", heading_style))
-        assessment = summary_data['detailed_assessment']
-        story.append(Paragraph(f"<b>Technical Skills:</b> {assessment['technical_skills']}/10", normal_style))
-        story.append(Paragraph(f"<b>Communication:</b> {assessment['communication']}/10", normal_style))
-        story.append(Paragraph(f"<b>Cultural Fit:</b> {assessment['cultural_fit']}/10", normal_style))
-        story.append(Spacer(1, 20))
-        
-        # Footer
-        story.append(Paragraph(f"<i>Report generated on {datetime.now().strftime('%B %d, %Y at %I:%M %p')}</i>", normal_style))
-        
-        # Build PDF
-        doc.build(story)
-        buffer.seek(0)
-        return buffer
-        
-    except Exception as e:
-        st.error(f"Error generating PDF: {str(e)}")
-        return None
-
-def generate_text_report(summary_data, ai_summary_data):
-    """Generate text report"""
-    report = f"""
-INTERVIEW REPORT
-SkillScreen - AI Interview Assistant
-Generated on: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}
-
-========================================
-
-INTERVIEW SUMMARY
-========================================
-Candidate: {summary_data.get('candidate_name', 'N/A')}
-Position: {summary_data.get('job_title', 'N/A')}
-Final Score: {summary_data['overall_score']}/10
-Recommendation: {summary_data['recommendation']}
-Total Questions: {summary_data['total_questions']}
-
-========================================
-
-AI-GENERATED FEEDBACK
-========================================
-"""
-    
-    if ai_summary_data:
-        report += ai_summary_data['ai_summary']
-    else:
-        report += "AI-generated feedback not available."
-    
-    report += f"""
-
-========================================
-
-EXECUTIVE SUMMARY
-========================================
-{summary_data['summary']}
-
-========================================
-
-STRENGTHS
-========================================
-"""
-    
-    for strength in summary_data['strengths']:
-        report += f"• {strength}\n"
-    
-    report += f"""
-========================================
-
-AREAS FOR IMPROVEMENT
-========================================
-"""
-    
-    for improvement in summary_data['areas_for_improvement']:
-        report += f"• {improvement}\n"
-    
-    report += f"""
-========================================
-
-DETAILED ASSESSMENT
-========================================
-Technical Skills: {summary_data['detailed_assessment']['technical_skills']}/10
-Communication: {summary_data['detailed_assessment']['communication']}/10
-Cultural Fit: {summary_data['detailed_assessment']['cultural_fit']}/10
-
-========================================
-
-Report generated by SkillScreen AI Interview Assistant
-"""
-    
-    return report
-
-def code_editor_section():
-    """Code editor section for technical assessments"""
-    st.header("💻 Technical Assessment")
-    
-    # Check if code execution service is available
-    try:
-        response = requests.get("http://localhost:8000/api/code/languages")
-        if response.status_code == 200:
-            languages_data = response.json()
-            available_languages = languages_data.get("languages", [])
-            st.success(f"✅ Code execution service available. Supported languages: {', '.join(available_languages)}")
-        else:
-            st.error("❌ Code execution service not available")
-            return
-    except requests.exceptions.RequestException:
-        st.error("❌ Cannot connect to code execution service")
-        return
-    
-    # Language selection
-    col1, col2 = st.columns([1, 1])
-    
-    with col1:
-        language = st.selectbox("Select Programming Language", available_languages)
-    
-    with col2:
-        difficulty = st.selectbox("Difficulty Level", ["easy", "medium", "hard"])
-    
-    # Generate technical question
-    if st.button("🎯 Generate Technical Question"):
-        try:
-            question_response = requests.post("http://localhost:8000/api/code/question", 
-                json={"language": language, "difficulty": difficulty, "topic": "general"})
-            
-            if question_response.status_code == 200:
-                question_data = question_response.json()
-                st.session_state['technical_question'] = question_data
-            else:
-                st.error("Failed to generate technical question")
-        except requests.exceptions.RequestException as e:
-            st.error(f"Error generating question: {e}")
-    
-    # Display technical question
-    if 'technical_question' in st.session_state:
-        question = st.session_state['technical_question']
-        
-        st.subheader("📝 Technical Challenge")
-        st.write(f"**{question['title']}**")
-        st.write(question['description'])
-        
-        # Code editor
-        code_template = question.get('code_template', f'# Write your {language} code here')
-        user_code = st.text_area(
-            "Write your code here:",
-            value=code_template,
-            height=300,
-            key="code_editor"
-        )
-        
-        # Test cases display
-        test_cases = question.get('test_cases', [])
-        if test_cases:
-            st.subheader("🧪 Test Cases")
-            for i, test_case in enumerate(test_cases):
-                with st.expander(f"Test Case {i+1}"):
-                    st.write(f"**Input:** `{test_case['input']}`")
-                    st.write(f"**Expected Output:** `{test_case['expected_output']}`")
-        
-        # Execute code
-        col1, col2, col3 = st.columns([1, 1, 1])
-        
-        with col1:
-            if st.button("▶️ Run Code"):
-                if user_code.strip():
-                    try:
-                        execution_response = requests.post("http://localhost:8000/api/code/execute", 
-                            json={
-                                "code": user_code,
-                                "language": language,
-                                "test_cases": test_cases,
-                                "timeout": 10
-                            })
-                        
-                        if execution_response.status_code == 200:
-                            result = execution_response.json()
-                            st.session_state['execution_result'] = result
-                        else:
-                            st.error("Code execution failed")
-                    except requests.exceptions.RequestException as e:
-                        st.error(f"Execution error: {e}")
-                else:
-                    st.warning("Please write some code first")
-        
-        with col2:
-            if st.button("🔄 Reset Code"):
-                st.session_state['code_editor'] = code_template
-                if 'execution_result' in st.session_state:
-                    del st.session_state['execution_result']
-        
-        with col3:
-            if st.button("📋 Copy Code"):
-                st.code(user_code, language=language)
-        
-        # Display execution results
-        if 'execution_result' in st.session_state:
-            result = st.session_state['execution_result']
-            
-            st.subheader("📊 Execution Results")
-            
-            # Overall result
-            if result['success']:
-                st.success("✅ Code executed successfully!")
-            else:
-                st.error("❌ Code execution failed")
-            
-            # Execution details
-            col1, col2 = st.columns([1, 1])
-            
-            with col1:
-                st.metric("Execution Time", f"{result['execution_time']}s")
-            
-            with col2:
-                if result['test_results']:
-                    passed_tests = sum(1 for test in result['test_results'] if test['passed'])
-                    total_tests = len(result['test_results'])
-                    st.metric("Tests Passed", f"{passed_tests}/{total_tests}")
-            
-            # Output
-            if result['output']:
-                st.subheader("📤 Output")
-                st.code(result['output'])
-            
-            # Error
-            if result['error']:
-                st.subheader("❌ Error")
-                st.error(result['error'])
-            
-            # Test results
-            if result['test_results']:
-                st.subheader("🧪 Test Results")
-                for i, test_result in enumerate(result['test_results']):
-                    with st.expander(f"Test Case {i+1} - {'✅ PASSED' if test_result['passed'] else '❌ FAILED'}"):
-                        st.write(f"**Input:** `{test_result['input']}`")
-                        st.write(f"**Expected:** `{test_result['expected_output']}`")
-                        st.write(f"**Actual:** `{test_result['actual_output']}`")
-                        st.write(f"**Execution Time:** {test_result['execution_time']}s")
-                        if test_result['error']:
-                            st.error(f"Error: {test_result['error']}")
+        if st.button("🔄 Start New Interview", use_container_width=True):
+            # Reset session state
+            st.session_state.current_session_id = None
+            st.session_state.interview_messages = []
+            st.session_state.interview_completed = False
+            st.session_state.interview_terminated = False
+            st.session_state.first_question_added = False
+            st.rerun()
 
 if __name__ == "__main__":
     main()
