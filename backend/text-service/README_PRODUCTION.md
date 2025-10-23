@@ -31,7 +31,6 @@ SkillScreen is an enterprise-grade AI-powered interview platform that provides a
 ### Prerequisites
 
 - Docker and Docker Compose
-- Kubernetes cluster (for K8s deployment)
 - PostgreSQL 15+
 - Redis 7+
 - Python 3.11+
@@ -83,34 +82,6 @@ docker-compose exec api python -c "from database.database import db_manager; db_
 - API Docs: http://localhost:8000/api/docs
 - Grafana: http://localhost:3000 (admin/admin)
 - Prometheus: http://localhost:9090
-
-### Kubernetes Deployment
-
-1. **Create Namespace**
-```bash
-kubectl create namespace skillscreen
-```
-
-2. **Deploy Database**
-```bash
-kubectl apply -f k8s/database.yaml
-```
-
-3. **Deploy Application**
-```bash
-kubectl apply -f k8s/deployment.yaml
-```
-
-4. **Deploy Monitoring**
-```bash
-kubectl apply -f k8s/monitoring.yaml
-```
-
-5. **Verify Deployment**
-```bash
-kubectl get pods -n skillscreen
-kubectl get services -n skillscreen
-```
 
 ## API Documentation
 
@@ -211,7 +182,7 @@ All services include health check endpoints:
 ## Performance
 
 ### Scalability
-- Horizontal scaling with Kubernetes
+- Horizontal scaling with Docker Swarm
 - Database connection pooling
 - Redis caching
 - Async request processing
@@ -245,7 +216,6 @@ All services include health check endpoints:
 
 Access logs through:
 - Docker: `docker-compose logs -f api`
-- Kubernetes: `kubectl logs -f deployment/skillscreen-api -n skillscreen`
 
 ### Debugging
 
