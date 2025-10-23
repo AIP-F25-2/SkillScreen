@@ -176,6 +176,18 @@ def get_ai_summary(session_id: str) -> Optional[Dict]:
     """Get AI-generated summary"""
     return make_api_request("GET", f"/interviews/{session_id}/ai-summary")
 
+def _create_resume_data_dict(parsed_data: Dict) -> Dict:
+    """Create standardized resume data dictionary"""
+    return {
+        "name": parsed_data['name'],
+        "email": parsed_data['email'],
+        "experience_years": parsed_data['experience_years'],
+        "skills": parsed_data['skills'] if parsed_data['skills'] else ["General"],
+        "education": parsed_data['education'],
+        "work_experience": parsed_data['work_experience'],
+        "parsing_method": "OpenResume-based parser (Tang, 2024)"
+    }
+
 def parse_resume_file(resume_file, resume_text: str) -> Optional[Dict]:
     """Parse resume file or text with error handling"""
     try:
@@ -189,16 +201,7 @@ def parse_resume_file(resume_file, resume_text: str) -> Optional[Dict]:
         
         # Use OpenResume-based parser
         parsed_data = resume_parser.parse_resume(resume_text)
-        
-        return {
-            "name": parsed_data['name'],
-            "email": parsed_data['email'],
-            "experience_years": parsed_data['experience_years'],
-            "skills": parsed_data['skills'] if parsed_data['skills'] else ["General"],
-            "education": parsed_data['education'],
-            "work_experience": parsed_data['work_experience'],
-            "parsing_method": "OpenResume-based parser (Tang, 2024)"
-        }
+        return _create_resume_data_dict(parsed_data)
         
     except Exception as e:
         show_warning(f"OpenResume parser failed: {str(e)}")
@@ -216,16 +219,7 @@ def parse_resume_file(resume_file, resume_text: str) -> Optional[Dict]:
             
             # Use OpenResume-based parser
             parsed_data = resume_parser.parse_resume(resume_text)
-            
-            return {
-                "name": parsed_data['name'],
-                "email": parsed_data['email'],
-                "experience_years": parsed_data['experience_years'],
-                "skills": parsed_data['skills'] if parsed_data['skills'] else ["General"],
-                "education": parsed_data['education'],
-                "work_experience": parsed_data['work_experience'],
-                "parsing_method": "OpenResume-based parser (Tang, 2024)"
-            }
+            return _create_resume_data_dict(parsed_data)
             
         except Exception as e:
             show_api_error(f"Error reading PDF file: {str(e)}")
@@ -288,6 +282,32 @@ def parse_job_description(job_title: str, company_name: str, job_description: st
         "required_skills": required_skills if required_skills else ["General"],
         "experience_level": exp_level
     }
+
+def initialize_session_state():
+    """Initialize all session state variables"""
+    session_vars = {
+        'candidate_id': None,
+        'job_id': None,
+        'current_session_id': None,
+        'interview_messages': [],
+        'interview_completed': False,
+        'interview_terminated': False,
+        'parsed_resume': None,
+        'parsed_job': None,
+        'first_question_added': False
+    }
+    
+    for key, default_value in session_vars.items():
+        if key not in st.session_state:
+            st.session_state[key] = default_value
+
+def reset_interview_state():
+    """Reset interview-related session state"""
+    st.session_state.current_session_id = None
+    st.session_state.interview_messages = []
+    st.session_state.interview_completed = False
+    st.session_state.interview_terminated = False
+    st.session_state.first_question_added = False
 
 def show_status_indicators():
     """Show current status indicators"""
@@ -517,7 +537,7 @@ def code_editor_section():
                     
                     if result:
                         if result.get("success"):
-                            st.success("✅ Code executed successfully!")
+                            show_success("Code executed successfully!")
                             st.code(result.get("output", ""))
                         else:
                             show_api_error("Code execution failed")
@@ -531,7 +551,7 @@ def code_editor_section():
         if st.button("📝 Get Question"):
             question_result = make_api_request("GET", "/api/code/question")
             if question_result:
-                st.info("**Technical Question:**")
+                show_info("**Technical Question:**")
                 st.write(question_result.get("question", "No question available"))
 
 # ============================================================================
@@ -562,24 +582,7 @@ def main():
         return
     
     # Initialize session state
-    if 'candidate_id' not in st.session_state:
-        st.session_state.candidate_id = None
-    if 'job_id' not in st.session_state:
-        st.session_state.job_id = None
-    if 'current_session_id' not in st.session_state:
-        st.session_state.current_session_id = None
-    if 'interview_messages' not in st.session_state:
-        st.session_state.interview_messages = []
-    if 'interview_completed' not in st.session_state:
-        st.session_state.interview_completed = False
-    if 'interview_terminated' not in st.session_state:
-        st.session_state.interview_terminated = False
-    if 'parsed_resume' not in st.session_state:
-        st.session_state.parsed_resume = None
-    if 'parsed_job' not in st.session_state:
-        st.session_state.parsed_job = None
-    if 'first_question_added' not in st.session_state:
-        st.session_state.first_question_added = False
+    initialize_session_state()
     
     # Sidebar for input
     with st.sidebar:
@@ -774,12 +777,7 @@ def show_termination_summary():
     # Restart option
     st.markdown("---")
     if st.button("🔄 Start New Interview", type="primary"):
-        # Reset session state
-        st.session_state.current_session_id = None
-        st.session_state.interview_messages = []
-        st.session_state.interview_completed = False
-        st.session_state.interview_terminated = False
-        st.session_state.first_question_added = False
+        reset_interview_state()
         st.rerun()
 
 def show_interview_summary():
@@ -868,12 +866,7 @@ def show_interview_summary():
     
     with col3:
         if st.button("🔄 Start New Interview", use_container_width=True):
-            # Reset session state
-            st.session_state.current_session_id = None
-            st.session_state.interview_messages = []
-            st.session_state.interview_completed = False
-            st.session_state.interview_terminated = False
-            st.session_state.first_question_added = False
+            reset_interview_state()
             st.rerun()
 
 if __name__ == "__main__":
