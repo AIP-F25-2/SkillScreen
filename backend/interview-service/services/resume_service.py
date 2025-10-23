@@ -135,7 +135,7 @@ class ResumeService:
             
             # Handle ZIP files
             if validation["file_type"] == "zip":
-                return self._process_zip_file(file_result, upload_path, upload_id)
+                return self._process_zip_file(file_result, upload_path)
             
             # Process resume file
             return self._process_resume_file_sync(file_result, save_result["file_path"])
@@ -149,7 +149,7 @@ class ResumeService:
                 "size": len(file_content) if 'file_content' in locals() else 0
             }
     
-    def _process_zip_file(self, file_result: Dict[str, Any], upload_path: Path, upload_id: str) -> Dict[str, Any]:
+    def _process_zip_file(self, file_result: Dict[str, Any], upload_path: Path) -> Dict[str, Any]:
         """Process ZIP file and extract individual files"""
         try:
             zip_path = Path(file_result["url"].replace("/temp/resumes/", "temp/resumes/"))
@@ -176,7 +176,7 @@ class ResumeService:
             file_result["error"] = str(e)
             return file_result
     
-    async def _process_resume_file(self, file_result: Dict[str, Any], file_path: str) -> Dict[str, Any]:
+    def _process_resume_file(self, file_result: Dict[str, Any], file_path: str) -> Dict[str, Any]:
         """Process individual resume file and extract information"""
         try:
             # Extract text from file
