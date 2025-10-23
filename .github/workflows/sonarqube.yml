@@ -78,4 +78,7 @@ jobs:
           -Dsonar.python.coverage.reportPaths=backend/text-service/coverage.xml \
           -Dsonar.exclusions=**/node_modules/**,**/__pycache__/**,**/venv/**,**/env/**,**/.git/**,**/logs/**,**/k8s/**,**/docker-compose.yml,**/Dockerfile \
           -Dsonar.coverage.exclusions=**/test_*,**/tests/**,**/__pycache__/**,**/logs/** \
-          -Dsonar.qualitygate.wait=true
+          -Dsonar.qualitygate.wait=true \
+          -Dsonar.pullrequest.key=${{ github.event.number }} \
+          -Dsonar.pullrequest.branch=${{ github.head_ref }} \
+          -Dsonar.pullrequest.base=${{ github.base_ref }}
