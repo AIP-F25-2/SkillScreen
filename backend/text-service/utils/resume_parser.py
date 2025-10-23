@@ -14,6 +14,10 @@ from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
 import PyPDF2
 import pdfplumber
+from .common_utils import (
+    validate_email, validate_name, extract_year_from_date, 
+    clean_text, calculate_duration_years, sanitize_input
+)
 
 class ResumeParser:
     """Enhanced resume parser based on OpenResume project"""
@@ -121,7 +125,11 @@ class ResumeParser:
     def extract_email(self, text: str) -> Optional[str]:
         """Extract email address from resume text"""
         match = re.search(self.email_pattern, text)
-        return match.group(0) if match else None
+        if match:
+            email = match.group(0)
+            if validate_email(email):
+                return email.lower()
+        return None
 
     def extract_phone(self, text: str) -> Optional[str]:
         """Extract phone number from resume text"""

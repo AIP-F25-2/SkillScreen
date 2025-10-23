@@ -19,13 +19,26 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.9'
+        python-version: '3.11'
         
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r backend/text-service/requirements_production.txt
         pip install -r backend/text-service/requirements_test.txt
+        
+    - name: Run tests with coverage
+      run: |
+        cd backend/text-service
+        python -m pytest tests/ -v --cov=. --cov-report=xml --cov-report=html
+        
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: backend/text-service/coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
         
     - name: Cache SonarQube packages
       uses: actions/cache@v3
@@ -60,7 +73,8 @@ jobs:
           -Dsonar.projectKey=skillscreen \
           -Dsonar.organization=aip-f25-2 \
           -Dsonar.sources=backend/text-service,frontend/streamlit-app,shared \
-          -Dsonar.python.version=3.9 \
-          -Dsonar.python.coverage.reportPaths=coverage.xml \
+          -Dsonar.python.version=3.11 \
+          -Dsonar.python.coverage.reportPaths=backend/text-service/coverage.xml \
           -Dsonar.exclusions=**/node_modules/**,**/__pycache__/**,**/venv/**,**/env/**,**/.git/**,**/logs/**,**/k8s/**,**/docker-compose.yml,**/Dockerfile \
-          -Dsonar.coverage.exclusions=**/test_*,**/tests/**,**/__pycache__/**,**/logs/**
+          -Dsonar.coverage.exclusions=**/test_*,**/tests/**,**/__pycache__/**,**/logs/** \
+          -Dsonar.qualitygate.wait=true
