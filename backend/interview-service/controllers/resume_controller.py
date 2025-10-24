@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Request
+from fastapi import APIRouter, UploadFile, File, HTTPException, Request, Form
 from typing import List
 import logging
 from datetime import datetime, timezone
@@ -26,11 +26,11 @@ def create_response(data, success=True, error=None):
 
 @router.post("/upload", response_model=ResumeUploadResponse)
 async def upload_resumes(
-    request: Request,
-    files: List[UploadFile] = File(..., description="Resume files to upload (PDF, DOC, DOCX, ZIP)")
+    files: List[UploadFile] = File(..., description="Resume files to upload (PDF, DOC, DOCX, ZIP)"),
+    organization_id: str = Form(..., description="Organization ID for the candidates")
 ):
     """
-    Upload single or multiple resume files
+    Upload single or multiple resume files for a specific organization
     
     Supports:
     - PDF files (.pdf)
@@ -47,13 +47,15 @@ async def upload_resumes(
         if len(files) > 10:  # Limit to 10 files per upload
             raise HTTPException(status_code=400, detail="Maximum 10 files allowed per upload")
         
-        logger.info(f"Received {len(files)} files for upload")
+        # organization_id is now passed as a form parameter
+        
+        logger.info(f"Received {len(files)} files for upload for organization: {organization_id}")
         
         # Initialize resume service
         resume_service = ResumeService()
         
-        # Process files
-        result = await resume_service.process_resume_upload(files)
+        # Process files with organization_id
+        result = await resume_service.process_resume_upload(files, organization_id)
         
         if result["success"]:
             return create_response(result["data"])

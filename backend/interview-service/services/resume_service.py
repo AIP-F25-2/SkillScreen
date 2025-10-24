@@ -24,7 +24,7 @@ class ResumeService:
         self.candidate_service = CandidateService()
     
     
-    async def process_resume_upload(self, files: List[Any]) -> Dict[str, Any]:
+    async def process_resume_upload(self, files: List[Any], organization_id: str) -> Dict[str, Any]:
         """Process uploaded resume files"""
         try:
             # Generate upload ID and path
@@ -37,7 +37,7 @@ class ResumeService:
             processed_files = await self._process_all_files(files, upload_path, upload_id)
             
             # Save candidates to database
-            saved_candidates = self._save_candidates_to_database(processed_files)
+            saved_candidates = self._save_candidates_to_database(processed_files, organization_id)
             
             # Prepare response data
             response_data = self._prepare_response_data(upload_id, files, processed_files, saved_candidates)
@@ -66,14 +66,14 @@ class ResumeService:
         
         return processed_files
     
-    def _save_candidates_to_database(self, processed_files: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _save_candidates_to_database(self, processed_files: List[Dict[str, Any]], organization_id: str) -> List[Dict[str, Any]]:
         """Save candidates to database"""
         saved_candidates = []
         logger.info(f"Checking {len(processed_files)} files for candidate saving...")
         
         for file_result in processed_files:
             if self._should_save_candidate(file_result):
-                candidate_data = self._prepare_candidate_data(file_result)
+                candidate_data = self._prepare_candidate_data(file_result, organization_id)
                 save_result = self._save_single_candidate(candidate_data, file_result)
                 if save_result:
                     saved_candidates.append(save_result)
@@ -86,10 +86,10 @@ class ResumeService:
                 file_result.get('extracted_name') and 
                 file_result.get('extracted_emails'))
     
-    def _prepare_candidate_data(self, file_result: Dict[str, Any]) -> Dict[str, Any]:
+    def _prepare_candidate_data(self, file_result: Dict[str, Any], organization_id: str) -> Dict[str, Any]:
         """Prepare candidate data for database"""
         return {
-            'organization_id': '25cfc4a5-136f-4bd8-9ec1-5778c78cded2',  # Default organization ID
+            'organization_id': organization_id,  # Use organization_id from request
             'full_name': file_result['extracted_name'],
             'email': file_result['extracted_emails'][0],  # Use first email
             'resume_url': file_result.get('url'),

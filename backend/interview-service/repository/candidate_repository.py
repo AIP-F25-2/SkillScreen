@@ -15,7 +15,7 @@ class CandidateRepository:
     def create_candidate(self, candidate_data: Dict[str, Any]) -> Candidate:
         """Create a new candidate"""
         candidate = Candidate(
-            organization_id=uuid.UUID(candidate_data['organization_id']),
+            organization_id=candidate_data['organization_id'],
             full_name=candidate_data['full_name'],
             email=candidate_data['email'],
             phone=candidate_data.get('phone'),
@@ -44,7 +44,7 @@ class CandidateRepository:
         """Get candidate by email within organization"""
         return self.session.query(Candidate).filter(
             and_(
-                Candidate.organization_id == uuid.UUID(organization_id),
+                Candidate.organization_id == organization_id,
                 Candidate.email == email,
                 Candidate.deleted_at.is_(None)
             )
@@ -54,7 +54,7 @@ class CandidateRepository:
         """Get all candidates for an organization"""
         return self.session.query(Candidate).filter(
             and_(
-                Candidate.organization_id == uuid.UUID(organization_id),
+                Candidate.organization_id == organization_id,
                 Candidate.deleted_at.is_(None)
             )
         ).offset(offset).limit(limit).all()
@@ -89,7 +89,7 @@ class CandidateRepository:
         search_pattern = f"%{search_term}%"
         return self.session.query(Candidate).filter(
             and_(
-                Candidate.organization_id == uuid.UUID(organization_id),
+                Candidate.organization_id == organization_id,
                 Candidate.deleted_at.is_(None),
                 (Candidate.full_name.ilike(search_pattern) | 
                  Candidate.email.ilike(search_pattern))
