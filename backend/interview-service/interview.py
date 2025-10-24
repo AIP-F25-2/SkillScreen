@@ -1,8 +1,38 @@
 from fastapi import FastAPI, Request
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
+import logging
+import os
+import sys
+from dotenv import load_dotenv
+
+# Add common-service to Python path
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'common-service'))
+
+# Import local database setup
+from db import DBFactory
+
+# Import resume controller
+from controllers.resume_controller import router as resume_router
+
+# Load environment variables
+load_dotenv()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Initialize database connection
+try:
+    DBFactory.init()
+    logger.info("Database connection initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize database: {e}")
 
 app = FastAPI(title="Interview Service")
+
+# Include resume router
+app.include_router(resume_router)
 
 # In-memory storage for sessions
 sessions_db = {}
@@ -25,7 +55,11 @@ def health_check():
     return create_response({
         "message": "Interview Service is running",
         "status": "deployed",
-        "service": "interview-service"
+        "service": "interview-service",
+        "endpoints": {
+            "resume_upload": "/resumes/upload",
+            "health": "/health"
+        }
     })
 
 @app.get("/health")
@@ -34,7 +68,8 @@ def health():
     return create_response({
         "service": "interview-service",
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "features": ["resume_upload", "file_processing", "email_extraction"]
     })
 
 @app.post("/api/session/create")
