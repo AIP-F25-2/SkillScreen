@@ -30,7 +30,7 @@ def main():
     interval = getattr(settings, 'POLLING_INTERVAL_SECONDS', 3600)
     batch_size = getattr(settings, 'POLLING_BATCH_SIZE', 10)
     
-    logger.info(f"Configuration:")
+    logger.info("Configuration:")
     logger.info(f"  - Polling Interval: {interval}s ({interval/3600:.1f} hours)")
     logger.info(f"  - Batch Size: {batch_size} files")
     logger.info(f"  - Database: {settings.DATABASE_URL[:50]}...")

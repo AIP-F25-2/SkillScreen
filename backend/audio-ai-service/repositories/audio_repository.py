@@ -5,7 +5,7 @@ from repository.base_repository import BaseRepository
 from db import UnitOfWork
 from sqlalchemy import Table, Column, Text, Integer, String, Boolean, DateTime, MetaData, select, insert, update, text
 from sqlalchemy.dialects.postgresql import UUID, JSONB, NUMERIC
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Optional
 from config import logger
 import json
@@ -388,13 +388,9 @@ class AudioRepository(BaseRepository):
                 'version': str (model versions)
             }
         """
-        # Ensure raw_results is JSON string if it's a dict
-        if isinstance(data.get('raw_results'), dict):
-            data['raw_results'] = data['raw_results']  # JSONB handles dict directly
-        
         # Add created_at if not present
         if 'created_at' not in data:
-            data['created_at'] = datetime.utcnow()
+            data['created_at'] = datetime.now(timezone.utc)
         
         query = insert(ai_analysis_table).values(**data)
         result = self.session.execute(query)
@@ -420,9 +416,9 @@ class AudioRepository(BaseRepository):
         """
         # Add timestamps
         if 'created_at' not in data:
-            data['created_at'] = datetime.utcnow()
+            data['created_at'] = datetime.now(timezone.utc)
         if 'updated_at' not in data:
-            data['updated_at'] = datetime.utcnow()
+            data['updated_at'] = datetime.now(timezone.utc)
         
         query = insert(scores_table).values(**data)
         result = self.session.execute(query)
@@ -450,8 +446,8 @@ class AudioRepository(BaseRepository):
             }
         """
         if 'created_at' not in data:
-            data['created_at'] = datetime.utcnow()
-        
+            data['created_at'] = datetime.now(timezone.utc)
+
         query = insert(proctoring_events_table).values(**data)
         result = self.session.execute(query)
         self.session.commit()
@@ -475,8 +471,8 @@ class AudioRepository(BaseRepository):
             }
         """
         if 'created_at' not in data:
-            data['created_at'] = datetime.utcnow()
-        
+            data['created_at'] = datetime.now(timezone.utc)
+
         query = insert(evidence_clips_table).values(**data)
         result = self.session.execute(query)
         self.session.commit()
@@ -507,7 +503,7 @@ class AudioRepository(BaseRepository):
             'session_id': session_id,
             'responder_id': interview_id,  # Use interview_id as placeholder
             'response_text': 'Audio analysis response',
-            'created_at': datetime.utcnow()
+            'created_at': datetime.now(timezone.utc)
         }
         
         query = insert(responses_table).values(**response_data)
@@ -530,7 +526,7 @@ class AudioRepository(BaseRepository):
                 'error_message': error_message,
                 'status': 'failed'
             },
-            'created_at': datetime.utcnow()
+            'created_at': datetime.now(timezone.utc)
         }
         
         query = insert(ai_analysis_table).values(**error_data)

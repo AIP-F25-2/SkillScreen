@@ -241,55 +241,60 @@ class MediaDownloader:
             logger.error(error_msg, exc_info=True)
             return None, None, error_msg
     
+    def _find_extension_in_url(self, url_lower: str, extensions: list) -> Optional[str]:
+        """
+        Find matching extension in URL
+
+        Args:
+            url_lower: Lowercase URL
+            extensions: List of extensions to check
+
+        Returns:
+            Matching extension or None
+        """
+        for ext in extensions:
+            if url_lower.endswith(ext) or ext in url_lower:
+                return ext
+        return None
+
+    def _get_extension_for_media_type(self, url_lower: str, media_type: str) -> str:
+        """
+        Get file extension based on media type and URL
+
+        Args:
+            url_lower: Lowercase URL
+            media_type: 'audio', 'video', or 'unknown'
+
+        Returns:
+            File extension with dot
+        """
+        audio_exts = ['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac', '.wma']
+        video_exts = ['.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv', '.wmv']
+
+        if media_type == 'audio':
+            return self._find_extension_in_url(url_lower, audio_exts) or '.mp3'
+
+        if media_type == 'video':
+            return self._find_extension_in_url(url_lower, video_exts) or '.mp4'
+
+        # Unknown type: try audio first, then video
+        return (self._find_extension_in_url(url_lower, audio_exts) or
+                self._find_extension_in_url(url_lower, video_exts) or
+                '.mp3')
+
     def _determine_file_extension(self, url: str, media_type: str) -> str:
         """
         Determine appropriate file extension based on URL and media type
-        
+
         Args:
             url: Media URL
             media_type: Detected media type ('audio', 'video', or 'unknown')
-        
+
         Returns:
             File extension with dot (e.g., '.mp4', '.mp3')
         """
         url_lower = url.lower()
-        audio_exts = ['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac', '.wma']
-        video_exts = ['.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv', '.wmv']
-        
-        suffix = None
-        
-        if media_type == 'audio':
-            for ext in audio_exts:
-                if url_lower.endswith(ext) or ext in url_lower:
-                    suffix = ext
-                    break
-            if suffix is None:
-                suffix = '.mp3'  # safe audio default
-                
-        elif media_type == 'video':
-            for ext in video_exts:
-                if url_lower.endswith(ext) or ext in url_lower:
-                    suffix = ext
-                    break
-            if suffix is None:
-                suffix = '.mp4'  # safe video default
-                
-        else:
-            # Unknown: try to infer from URL, prefer audio
-            for ext in audio_exts:
-                if ext in url_lower:
-                    suffix = ext
-                    break
-            if suffix is None:
-                for ext in video_exts:
-                    if ext in url_lower:
-                        suffix = ext
-                        break
-            if suffix is None:
-                # Default to audio to avoid unnecessary video processing
-                suffix = '.mp3'
-        
-        return suffix
+        return self._get_extension_for_media_type(url_lower, media_type)
     
     def _copy_local_file(
         self, 
@@ -323,80 +328,158 @@ class MediaDownloader:
             logger.error(error_msg)
             return None, None, error_msg
     
+    def _perform_download(
+        self,
+        media_url: str,
+        media_path: str,
+        is_azure: bool,
+        log_prefix: str
+    ) -> bool:
+        """
+        Perform the actual download operation
+
+        Args:
+            media_url: URL to download from
+            media_path: Destination file path
+            is_azure: Whether this is an Azure Blob Storage download
+            log_prefix: Logging prefix
+
+        Returns:
+            True if download succeeded, False otherwise
+        """
+        if is_azure:
+            return self._download_from_azure_blob(media_url, media_path, log_prefix)
+        return download_media(media_url, media_path)
+
+    def _validate_downloaded_file(self, media_path: str) -> Tuple[bool, Optional[str]]:
+        """
+        Validate that downloaded file exists and has content
+
+        Args:
+            media_path: Path to downloaded file
+
+        Returns:
+            (is_valid, error_message)
+        """
+        if not os.path.exists(media_path) or os.path.getsize(media_path) == 0:
+            return False, "Downloaded file is empty or missing"
+        return True, None
+
+    def _handle_successful_download(
+        self,
+        media_path: str,
+        media_type: str,
+        log_prefix: str
+    ) -> Tuple[str, str, None]:
+        """
+        Handle successful download
+
+        Args:
+            media_path: Path to downloaded file
+            media_type: Detected media type
+            log_prefix: Logging prefix
+
+        Returns:
+            (filepath, media_type, None)
+        """
+        file_size = os.path.getsize(media_path)
+        self.downloaded_files.append(media_path)
+        size_mb = round(file_size / (1024 * 1024), 2)
+        logger.info(f"{log_prefix} Media downloaded successfully: {media_path} ({file_size} bytes / {size_mb} MB)")
+        return media_path, media_type, None
+
+    def _cleanup_failed_download(self, media_path: Optional[str]):
+        """Clean up file from failed download attempt"""
+        if media_path and os.path.exists(media_path):
+            cleanup_temp_file(media_path)
+
+    def _wait_before_retry(self, attempt: int, log_prefix: str):
+        """Wait before retrying with exponential backoff"""
+        delay = self.retry_delay * (2 ** (attempt - 1))
+        logger.info(f"{log_prefix} Retrying in {delay} seconds...")
+        time.sleep(delay)
+
+    def _attempt_download(
+        self,
+        attempt: int,
+        media_url: str,
+        suffix: str,
+        media_type: str,
+        log_prefix: str,
+        is_azure: bool
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
+        """
+        Attempt a single download with error handling
+
+        Args:
+            attempt: Current attempt number
+            media_url: URL to download from
+            suffix: File extension
+            media_type: Detected media type
+            log_prefix: Logging prefix
+            is_azure: Whether this is an Azure Blob Storage download
+
+        Returns:
+            (filepath, media_type, error_message, last_error)
+        """
+        media_path = None
+        try:
+            media_path = create_temp_file(suffix=suffix)
+            logger.info(f"{log_prefix} Attempt {attempt}/{self.max_retries} - Downloading to: {media_path}")
+
+            success = self._perform_download(media_url, media_path, is_azure, log_prefix)
+
+            if not success:
+                self._cleanup_failed_download(media_path)
+                return None, None, None, "Download function returned False"
+
+            is_valid, error = self._validate_downloaded_file(media_path)
+            if not is_valid:
+                self._cleanup_failed_download(media_path)
+                return None, None, None, error
+
+            return self._handle_successful_download(media_path, media_type, log_prefix) + (None,)
+
+        except Exception as e:
+            self._cleanup_failed_download(media_path)
+            error_msg = str(e)
+            logger.error(f"{log_prefix} Attempt {attempt} failed: {error_msg}")
+            return None, None, None, error_msg
+
     def _download_with_retry(
-        self, 
-        media_url: str, 
-        suffix: str, 
-        media_type: str, 
+        self,
+        media_url: str,
+        suffix: str,
+        media_type: str,
         log_prefix: str,
         is_azure: bool = False
     ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """
         Download media with exponential backoff retry logic
-        
+
         Args:
             media_url: URL to download from
             suffix: File extension
             media_type: Detected media type
             log_prefix: Logging prefix
             is_azure: Whether this is an Azure Blob Storage download
-        
+
         Returns:
             (filepath, media_type, error_message)
         """
-        media_path = None
         last_error = None
-        
+
         for attempt in range(1, self.max_retries + 1):
-            try:
-                # Create temp file
-                media_path = create_temp_file(suffix=suffix)
-                logger.info(f"{log_prefix} Attempt {attempt}/{self.max_retries} - Downloading to: {media_path}")
-                
-                # Download based on source type
-                if is_azure:
-                    success = self._download_from_azure_blob(media_url, media_path, log_prefix)
-                else:
-                    success = download_media(media_url, media_path)
-                
-                if success:
-                    # Verify file exists and has content
-                    if os.path.exists(media_path) and os.path.getsize(media_path) > 0:
-                        file_size = os.path.getsize(media_path)
-                        self.downloaded_files.append(media_path)
-                        logger.info(f"{log_prefix} Media downloaded successfully: {media_path} ({file_size} bytes / {round(file_size/(1024*1024), 2)} MB)")
-                        return media_path, media_type, None
-                    else:
-                        last_error = "Downloaded file is empty or missing"
-                        logger.warning(f"{log_prefix} {last_error}")
-                else:
-                    last_error = "Download function returned False"
-                    logger.warning(f"{log_prefix} {last_error}")
-                
-                # Clean up failed attempt
-                if media_path and os.path.exists(media_path):
-                    cleanup_temp_file(media_path)
-                
-                # Retry with exponential backoff (except on last attempt)
-                if attempt < self.max_retries:
-                    delay = self.retry_delay * (2 ** (attempt - 1))
-                    logger.info(f"{log_prefix} Retrying in {delay} seconds...")
-                    time.sleep(delay)
-                
-            except Exception as e:
-                last_error = str(e)
-                logger.error(f"{log_prefix} Attempt {attempt} failed: {last_error}")
-                
-                # Clean up on error
-                if media_path and os.path.exists(media_path):
-                    cleanup_temp_file(media_path)
-                
-                # Retry with exponential backoff (except on last attempt)
-                if attempt < self.max_retries:
-                    delay = self.retry_delay * (2 ** (attempt - 1))
-                    logger.info(f"{log_prefix} Retrying in {delay} seconds...")
-                    time.sleep(delay)
-        
+            filepath, ftype, _, last_error = self._attempt_download(
+                attempt, media_url, suffix, media_type, log_prefix, is_azure
+            )
+
+            if filepath:
+                return filepath, ftype, None
+
+            if attempt < self.max_retries:
+                self._wait_before_retry(attempt, log_prefix)
+
         # All retries exhausted
         error_msg = f"{log_prefix} Failed to download after {self.max_retries} attempts. Last error: {last_error}"
         logger.error(error_msg)

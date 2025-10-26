@@ -170,7 +170,7 @@ async def websocket_stream_transcribe(websocket: WebSocket):
                 "type": "error",
                 "message": str(e)
             })
-        except (WebSocketDisconnect, RuntimeError, Exception):
+        except (WebSocketDisconnect, RuntimeError):
             # WebSocket already closed, cannot send error message
             pass
 

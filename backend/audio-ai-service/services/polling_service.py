@@ -6,7 +6,7 @@ sys.path.append('/common-service')
 
 import asyncio
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
@@ -41,7 +41,7 @@ class PollingService:
         self.processing_timeout = processing_timeout_hours
         self.is_running = False
         
-        logger.info(f"🔧 Polling Service initialized:")
+        logger.info("🔧 Polling Service initialized:")
         logger.info(f"   - Interval: {polling_interval_seconds}s ({polling_interval_seconds/3600:.1f} hours)")
         logger.info(f"   - Batch size: {batch_size}")
         logger.info(f"   - Timeout: {processing_timeout_hours} hours")
@@ -60,7 +60,7 @@ class PollingService:
             cycle_start = time.time()
             
             logger.info(f"\n{'='*60}")
-            logger.info(f"🔄 Polling Cycle #{cycle_count} - {datetime.utcnow().isoformat()}")
+            logger.info(f"🔄 Polling Cycle #{cycle_count} - {datetime.now(timezone.utc).isoformat()}")
             logger.info(f"{'='*60}")
             
             try:
@@ -74,7 +74,7 @@ class PollingService:
                 logger.error(f"❌ Error in polling cycle #{cycle_count}: {e}", exc_info=True)
             
             # Sleep until next cycle
-            next_run = datetime.fromtimestamp(time.time() + self.polling_interval)
+            next_run = datetime.fromtimestamp(time.time() + self.polling_interval, tz=timezone.utc)
             logger.info(f"😴 Sleeping for {self.polling_interval}s. Next run at: {next_run.strftime('%Y-%m-%d %H:%M:%S')}\n")
             
             await asyncio.sleep(self.polling_interval)
@@ -104,24 +104,24 @@ class PollingService:
             for idx, media_file in enumerate(pending_files, 1):
                 try:
                     logger.info(f"\n--- File {idx}/{len(pending_files)} ---")
-                    success = await self.process_single_file(media_file)
+                    success = self.process_single_file(media_file)
                     
                     if success:
                         processed_count += 1
                         
-                except Exception as e:
+                except (KeyError, ValueError, RuntimeError) as e:
                     logger.error(f"❌ Failed to process file {media_file['id']}: {e}", exc_info=True)
                     # Mark as failed in database
                     self.mark_as_failed(media_file['id'], str(e))
-            
+
             logger.info(f"\n📊 Batch Summary: {processed_count}/{len(pending_files)} files processed successfully")
             return processed_count
-            
-        except Exception as e:
+
+        except (OSError, RuntimeError) as e:
             logger.error(f"❌ Error fetching pending files: {e}", exc_info=True)
             return 0
     
-    async def process_single_file(self, media_file: dict) -> bool:
+    def process_single_file(self, media_file: dict) -> bool:
         """
         Process a single media file through complete pipeline
         
@@ -143,15 +143,21 @@ class PollingService:
         logger.info(f"   - URI: {storage_uri[:80]}...")
         
         start_time = time.time()
-        
+
         try:
             # Step 1: Mark as processing
             with UnitOfWork() as uow:
                 repo = AudioRepository(uow)
                 repo.mark_processing_started(media_file_id)
-            
+
             logger.info("🔄 Marked as processing in database")
-            
+
+        except (OSError, RuntimeError) as e:
+            logger.error(f"❌ Error marking processing started for {media_file_id}: {e}", exc_info=True)
+            self.mark_as_failed(media_file_id, str(e), interview_id, session_id)
+            return False
+
+        try:
             # Step 2: Process with AI (it handles download internally)
             logger.info("🧠 Running AI processing...")
             processor = AudioProcessingService()
@@ -161,14 +167,24 @@ class PollingService:
                 candidate_id=interview_id,
                 include_analytics=True
             )
-            
+
             if not analysis_result or analysis_result.get('status') != 'success':
                 error_msg = analysis_result.get('error', 'Unknown error') if analysis_result else 'No result returned'
-                raise Exception(f"AI processing failed: {error_msg}")
-            
+                raise ValueError(f"AI processing failed: {error_msg}")
+
             processing_time = int(time.time() - start_time)
             logger.info(f"✅ AI processing completed in {processing_time}s")
-            
+
+        except ValueError as e:
+            logger.error(f"❌ AI processing error for {media_file_id}: {e}", exc_info=True)
+            self.mark_as_failed(media_file_id, str(e), interview_id, session_id)
+            return False
+        except (OSError, RuntimeError, TimeoutError) as e:
+            logger.error(f"❌ Processing service error for {media_file_id}: {e}", exc_info=True)
+            self.mark_as_failed(media_file_id, str(e), interview_id, session_id)
+            return False
+
+        try:
             # Step 3: Save results to database
             logger.info("💾 Saving results to database...")
             self.save_results(
@@ -178,24 +194,30 @@ class PollingService:
                 analysis_result=analysis_result,
                 processing_time=processing_time
             )
-            
+
+        except (KeyError, ValueError) as e:
+            logger.error(f"❌ Error saving results for {media_file_id}: {e}", exc_info=True)
+            self.mark_as_failed(media_file_id, str(e), interview_id, session_id)
+            return False
+        except (OSError, RuntimeError) as e:
+            logger.error(f"❌ Database error saving results for {media_file_id}: {e}", exc_info=True)
+            self.mark_as_failed(media_file_id, str(e), interview_id, session_id)
+            return False
+
+        try:
             # Step 4: Mark as completed with checksum
             # Use timestamp-based checksum since we don't have local file
             checksum = f"completed_{int(time.time())}"
             with UnitOfWork() as uow:
                 repo = AudioRepository(uow)
                 repo.mark_processing_completed(media_file_id, checksum)
-            
+
             logger.info(f"✅ Processing completed successfully (checksum: {checksum})")
-            
             return True
-            
-        except Exception as e:
-            logger.error(f"❌ Error processing {media_file_id}: {e}", exc_info=True)
-            
-            # Save error to database
+
+        except (OSError, RuntimeError) as e:
+            logger.error(f"❌ Error marking processing completed for {media_file_id}: {e}", exc_info=True)
             self.mark_as_failed(media_file_id, str(e), interview_id, session_id)
-            
             return False
     
     def save_results(
@@ -309,8 +331,8 @@ class PollingService:
                         },
                         'flagged_for_review': True
                     }
-                    
-                    proctoring_event_id = repo.save_proctoring_event(event_data)
+
+                    repo.save_proctoring_event(event_data)
                     logger.info(f"🚨 Saved proctoring event: {reason} (speakers: {num_speakers})")
                     
                     # ============================================
