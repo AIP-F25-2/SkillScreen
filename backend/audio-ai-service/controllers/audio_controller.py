@@ -10,13 +10,7 @@ router = APIRouter()
 
 
 
-# uow = UnitOfWork()
-# user_repo = UserRepository(uow)
 
-# @router.get("/user-test")
-# def get_users():
-#     users = user_repo.get_all_users()
-#     return ({"users": users})
 
 @router.post("/process-interview")
 async def process_interview(request: AudioProcessRequest):
