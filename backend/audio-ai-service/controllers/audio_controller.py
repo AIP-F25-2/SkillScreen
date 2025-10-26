@@ -3,8 +3,20 @@ from config import logger, settings
 from schemas.audio_schemas import AudioProcessRequest, AudioProcessResponse
 from services.audio_processing_service import AudioProcessingService
 
+from db import UnitOfWork
+
+
 router = APIRouter()
 
+
+
+# uow = UnitOfWork()
+# user_repo = UserRepository(uow)
+
+# @router.get("/user-test")
+# def get_users():
+#     users = user_repo.get_all_users()
+#     return ({"users": users})
 
 @router.post("/process-interview")
 async def process_interview(request: AudioProcessRequest):

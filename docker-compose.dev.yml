@@ -101,6 +101,9 @@ services:
     platform: linux/amd64
     ports:
       - "8000:8080"
+
+    env_file:
+    - ./backend/audio-ai-service/.env  
     environment:
       - PORT=8080
       - HOST=0.0.0.0
@@ -110,7 +113,7 @@ services:
       - LOG_LEVEL=INFO
       - WHISPER_MODEL_SIZE=base
       - WHISPER_DEVICE=cpu
-      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-db.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+      #- DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-db.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
       - PYTHONPATH=/app:/common-service
     volumes:
       - ./backend/audio-ai-service:/app

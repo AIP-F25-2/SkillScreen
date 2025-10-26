@@ -5,6 +5,11 @@ from services.tts_providers.edge_tts_provider import EdgeTTSProvider
 from services.tts_providers.base_tts import BaseTTSProvider
 
 
+class TTSProviderError(Exception):
+    """Exception raised when a TTS provider fails to synthesize speech"""
+    pass
+
+
 class TextToSpeechService:
     """TTS service with configurable provider and automatic fallback"""
     
@@ -35,30 +40,30 @@ class TextToSpeechService:
         try:
             logger.info(f"Attempting TTS with primary provider: {settings.TTS_PROVIDER}")
             audio_path, error = await self.primary_provider.synthesize(text, voice)
-            
+
             if audio_path:
                 logger.info(f"✅ Primary provider ({settings.TTS_PROVIDER}) succeeded")
                 return audio_path, None
             else:
                 logger.warning(f"⚠️ Primary provider ({settings.TTS_PROVIDER}) failed: {error}")
-                raise Exception(error)
-                
-        except Exception as e:
+                raise TTSProviderError(error)
+
+        except TTSProviderError as e:
             logger.error(f"❌ Primary provider ({settings.TTS_PROVIDER}) error: {str(e)}")
             logger.info("🔄 Falling back to gTTS...")
-            
+
             # Fallback to gTTS
             try:
                 audio_path, error = await self.fallback_provider.synthesize(text, voice)
-                
+
                 if audio_path:
                     logger.info("✅ Fallback provider (gTTS) succeeded")
                     return audio_path, None
                 else:
                     logger.error(f"❌ Fallback provider (gTTS) also failed: {error}")
                     return None, f"Both providers failed. Primary: {str(e)}, Fallback: {error}"
-                    
-            except Exception as fallback_error:
+
+            except TTSProviderError as fallback_error:
                 logger.error(f"❌ Fallback provider (gTTS) error: {str(fallback_error)}")
                 return None, f"Both providers failed. Primary: {str(e)}, Fallback: {str(fallback_error)}"
     

@@ -10,11 +10,97 @@ router = APIRouter()
 active_sessions = {}
 
 
+async def _handle_start_message(websocket: WebSocket, data: dict):
+    """Handle the 'start' message type"""
+    session_id = data.get("session_id", f"session_{id(websocket)}")
+    model = data.get("model", "base")
+
+    logger.info(f"Starting streaming session: {session_id}")
+
+    # Create transcriber
+    transcriber = StreamingTranscriber(model_size=model)
+    active_sessions[session_id] = transcriber
+
+    await websocket.send_json({
+        "type": "started",
+        "session_id": session_id,
+        "message": "Session started"
+    })
+
+    return session_id, transcriber
+
+
+async def _handle_audio_message(websocket: WebSocket, transcriber, data: dict):
+    """Handle the 'audio' message type"""
+    if not transcriber:
+        await websocket.send_json({
+            "type": "error",
+            "message": "Session not started. Send 'start' command first."
+        })
+        return
+
+    try:
+        # Decode audio
+        audio_data = data.get("data", "")
+        audio_bytes = base64.b64decode(audio_data)
+
+        # Process chunk
+        result = await transcriber.process_chunk(audio_bytes)
+
+        # Send result
+        await websocket.send_json({
+            "type": "transcription",
+            "text": result["text"],
+            "is_final": result["is_final"]
+        })
+
+    except Exception as e:
+        logger.error(f"Error processing audio: {str(e)}")
+        await websocket.send_json({
+            "type": "error",
+            "message": f"Audio processing error: {str(e)}"
+        })
+
+
+async def _handle_stop_message(websocket: WebSocket, session_id: str, transcriber):
+    """Handle the 'stop' message type"""
+    if transcriber:
+        logger.info(f"Stopping streaming session: {session_id}")
+
+        # Finalize session
+        final_result = await transcriber.finalize()
+
+        # Send final result
+        await websocket.send_json({
+            "type": "final",
+            "full_transcript": final_result["full_transcript"]
+        })
+
+        # Cleanup
+        if session_id in active_sessions:
+            del active_sessions[session_id]
+
+    await websocket.send_json({
+        "type": "stopped",
+        "message": "Session stopped"
+    })
+
+    return None  # Return None to clear transcriber
+
+
+async def _handle_unknown_message(websocket: WebSocket, msg_type: str):
+    """Handle unknown message types"""
+    await websocket.send_json({
+        "type": "error",
+        "message": f"Unknown message type: {msg_type}"
+    })
+
+
 @router.websocket("/ws/stream-transcribe")
 async def websocket_stream_transcribe(websocket: WebSocket):
     """
     WebSocket endpoint for real-time audio transcription
-    
+
     Client sends:
     {
         "type": "start",
@@ -28,7 +114,7 @@ async def websocket_stream_transcribe(websocket: WebSocket):
     {
         "type": "stop"
     }
-    
+
     Server sends:
     {
         "type": "transcription",
@@ -40,114 +126,43 @@ async def websocket_stream_transcribe(websocket: WebSocket):
         "full_transcript": "Complete text..."
     }
     """
-    
+
     session_id = None
     transcriber = None
-    
+
     try:
         # Accept connection
         await websocket.accept()
         logger.info("WebSocket connection established")
-        
+
         # Send connection confirmation
         await websocket.send_json({
             "type": "connected",
             "message": "WebSocket connected"
         })
-        
+
         while True:
             # Receive message
             message = await websocket.receive_text()
             data = json.loads(message)
-            
+
             msg_type = data.get("type")
-            
-            # Handle START command
+
+            # Dispatch to appropriate handler
             if msg_type == "start":
-                session_id = data.get("session_id", f"session_{id(websocket)}")
-                model = data.get("model", "base")
-                
-                logger.info(f"Starting streaming session: {session_id}")
-                
-                # Create transcriber
-                transcriber = StreamingTranscriber(model_size=model)
-                active_sessions[session_id] = transcriber
-                
-                await websocket.send_json({
-                    "type": "started",
-                    "session_id": session_id,
-                    "message": "Session started"
-                })
-            
-            # Handle AUDIO data
+                session_id, transcriber = await _handle_start_message(websocket, data)
             elif msg_type == "audio":
-                if not transcriber:
-                    await websocket.send_json({
-                        "type": "error",
-                        "message": "Session not started. Send 'start' command first."
-                    })
-                    continue
-                
-                try:
-                    # Decode audio
-                    audio_data = data.get("data", "")
-                    audio_bytes = base64.b64decode(audio_data)
-                    
-                    # Process chunk
-                    result = await transcriber.process_chunk(audio_bytes)
-                    
-                    # Send result
-                    await websocket.send_json({
-                        "type": "transcription",
-                        "text": result["text"],
-                        "is_final": result["is_final"]
-                    })
-                    
-                except Exception as e:
-                    logger.error(f"Error processing audio: {str(e)}")
-                    await websocket.send_json({
-                        "type": "error",
-                        "message": f"Audio processing error: {str(e)}"
-                    })
-            
-            # Handle STOP command
+                await _handle_audio_message(websocket, transcriber, data)
             elif msg_type == "stop":
-                if transcriber:
-                    logger.info(f"Stopping streaming session: {session_id}")
-                    
-                    # Finalize session
-                    final_result = await transcriber.finalize()
-                    
-                    # Send final result
-                    await websocket.send_json({
-                        "type": "final",
-                        "full_transcript": final_result["full_transcript"]
-                    })
-                    
-                    # Cleanup
-                    if session_id in active_sessions:
-                        del active_sessions[session_id]
-                    
-                    transcriber = None
-                
-                await websocket.send_json({
-                    "type": "stopped",
-                    "message": "Session stopped"
-                })
-            
+                transcriber = await _handle_stop_message(websocket, session_id, transcriber)
             else:
-                await websocket.send_json({
-                    "type": "error",
-                    "message": f"Unknown message type: {msg_type}"
-                })
-    
+                await _handle_unknown_message(websocket, msg_type)
+
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected: {session_id}")
-        
-        # Cleanup on disconnect
         if session_id and session_id in active_sessions:
             del active_sessions[session_id]
-    
+
     except Exception as e:
         logger.error(f"WebSocket error: {str(e)}")
         try:
@@ -155,7 +170,8 @@ async def websocket_stream_transcribe(websocket: WebSocket):
                 "type": "error",
                 "message": str(e)
             })
-        except:
+        except (WebSocketDisconnect, RuntimeError, Exception):
+            # WebSocket already closed, cannot send error message
             pass
 
 

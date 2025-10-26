@@ -3,6 +3,8 @@ from typing import Dict
 from faster_whisper import WhisperModel
 from config import logger
 import time
+import asyncio
+from functools import partial
 
 
 class StreamingTranscriber:
@@ -88,39 +90,50 @@ class StreamingTranscriber:
             logger.error(f"Error processing chunk: {str(e)}")
             return {"text": "", "is_final": False, "error": str(e)}
     
-    async def _transcribe_buffer(self, is_final: bool = False) -> Dict:
-        """Transcribe the current audio buffer"""
+    def _transcribe_sync(self, audio: np.ndarray, is_final: bool) -> Dict:
+        """Synchronous transcription - runs in executor"""
         try:
-            if not self.audio_buffer:
-                return {"text": "", "is_final": is_final}
-            
-            # Concatenate buffer
-            audio = np.concatenate(self.audio_buffer)
-            
             # Transcribe
-            segments, info = self.model.transcribe(
+            segments, _ = self.model.transcribe(
                 audio,
                 beam_size=1 if not is_final else 5,
                 language="en",
                 vad_filter=True
             )
-            
+
             # Extract text only
             text_parts = []
             for segment in segments:
                 text_parts.append(segment.text)
-            
+
             text = " ".join(text_parts).strip()
-            
+
             # Save to transcript buffer if final
             if is_final and text:
                 self.transcript_buffer.append(text)
-            
+
             return {"text": text, "is_final": is_final}
-            
+
         except Exception as e:
             logger.error(f"Transcription error: {str(e)}")
             return {"text": "", "is_final": is_final, "error": str(e)}
+
+    async def _transcribe_buffer(self, is_final: bool = False) -> Dict:
+        """Transcribe the current audio buffer"""
+        if not self.audio_buffer:
+            return {"text": "", "is_final": is_final}
+
+        # Concatenate buffer
+        audio = np.concatenate(self.audio_buffer)
+
+        # Run blocking transcription in executor to avoid blocking event loop
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            partial(self._transcribe_sync, audio, is_final)
+        )
+
+        return result
     
     def _is_silence(self, audio: np.ndarray) -> bool:
         """Check if audio chunk is silent"""

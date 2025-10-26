@@ -3,4 +3,4 @@ from .gtts_provider import GTTSProvider
 from .edge_tts_provider import EdgeTTSProvider
 
 
-__all__ = ["BaseTTSProvider", "GTTSProvider"," EdgeTTSProvider"]
+__all__ = ["BaseTTSProvider", "GTTSProvider","EdgeTTSProvider"]
