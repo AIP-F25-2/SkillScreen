@@ -74,8 +74,23 @@ export async function mockLogin(usernameOrEmail: string, password: string): Prom
 }
 
 export async function mockRegister(userData: { fullName: string; email: string; password: string; userType: UserType }): Promise<AuthToken> {
+  // Use crypto instead of Math.random for identifier generation
+  let id = '';
+  if (typeof crypto !== 'undefined' && 'getRandomValues' in crypto) {
+    id = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+      .map(b => b.toString(16).padStart(2, '0')).join('');
+  } else {
+    // Fallback for environments without Web Crypto
+    try {
+      const { randomUUID } = await import('crypto');
+      id = randomUUID();
+    } catch {
+      id = Date.now().toString(36);
+    }
+  }
+
   const user: User = {
-    id: Math.random().toString(36).slice(2),
+    id,
     name: userData.fullName,
     email: userData.email,
     userType: userData.userType,
