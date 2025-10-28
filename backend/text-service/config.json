@@ -1,0 +1,48 @@
+{
+  "debug": false,
+  "environment": "development",
+  "version": "1.0.0",
+  "interview": {
+    "max_questions": 15,
+    "min_questions": 10,
+    "target_duration_minutes": 12,
+    "general_questions": 4,
+    "technical_questions": 6,
+    "theoretical_questions": 5,
+    "off_topic_threshold": 0.3,
+    "max_off_topic_responses": 3,
+    "default_interview_type": "mixed",
+    "default_difficulty": "medium",
+    "context_window": 5
+  },
+  "llm": {
+    "api_key": "",
+    "model_name": "models/gemini-2.5-flash",
+    "temperature": 1.0,
+    "max_tokens": 200,
+    "timeout": 30
+  },
+  "ui": {
+    "server_port": 8501,
+    "server_address": "0.0.0.0",
+    "theme": "light",
+    "page_title": "SkillScreen - AI Interview Assistant",
+    "page_icon": "🎯"
+  },
+  "logging": {
+    "level": "INFO",
+    "file_path": "logs/skillscreen.log",
+    "max_file_size": "10MB",
+    "backup_count": 5,
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "date_format": "%Y-%m-%d %H:%M:%S"
+  },
+  "security": {
+    "secret_key": "",
+    "session_timeout": 3600,
+    "max_sessions": 100,
+    "enable_encryption": true
+  },
+  "last_updated": "2024-01-01T00:00:00"
+}
+
