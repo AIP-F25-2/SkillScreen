@@ -21,6 +21,7 @@ services:
       - CODING_SERVICE_URL=http://coding-service:8080
       - MEDIA_SERVICE_URL=http://media-service:8080
       - AI_LOGIC_SERVICE_URL=http://ai-logic-service:8080
+      - TEXT_SERVICE_URL=http://text-service:8080
       - AUDIO_AI_SERVICE_URL=http://audio-ai-service:8080
       - VIDEO_AI_SERVICE_URL=http://video-ai-service:8080
       - TEXT_AI_SERVICE_URL=http://text-ai-service:8080
@@ -34,6 +35,7 @@ services:
       - sso-service
       - assessment-service
       - coding-service
+      - text-service
     networks:
       - skill-screen-network
 
@@ -80,22 +82,23 @@ services:
       - skill-screen-network
 
   # AI Services
-  ai-logic-service:
+
+  text-service:
     build:
-      context: ./backend/ai-logic-service
+      context: ./backend/text-service
       dockerfile: Dockerfile.dev
-    container_name: ai-logic-service
+    container_name: text-service
     ports:
       - "8001:8080"
     environment:
       - PORT=8080
       - HOST=0.0.0.0
-      - APP_NAME=ai-logic-service
+      - APP_NAME=text-service
       - ENVIRONMENT=development
       - DEBUG=True
       - LOG_LEVEL=INFO
     volumes:
-      - ./backend/ai-logic-service:/app
+      - ./backend/text-service:/app
     networks:
       - skill-screen-network
 
