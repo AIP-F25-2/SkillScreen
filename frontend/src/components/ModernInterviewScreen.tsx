@@ -414,7 +414,8 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
   };
 
   const stopRecording = async () => {
-    if (!user) {
+    // For token-based interviews, we don't need user authentication
+    if (!fromToken && !user) {
       alert('User not authenticated');
       return;
     }
