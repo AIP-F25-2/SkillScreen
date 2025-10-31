@@ -31,7 +31,7 @@ RBAC_RULES = {
     "/auth": ["admin", "user"],  # both admin and user can access auth service
     "/assessment": ["admin", "user"],  # both admin and user can access assessment
     "/coding": ["user"],  # only normal users can access coding
-    "/ai-logic": ["admin", "user"],  # both admin and user can access AI logic
+    "/text-service": ["admin", "user"],  # both admin and user can access text service
     "/audio-ai": ["admin", "user"],  # both admin and user can access audio AI
     "/video-ai": ["admin", "user"],  # both admin and user can access video AI
     "/text-ai": ["admin", "user"],  # both admin and user can access text AI
@@ -50,11 +50,11 @@ SERVICE_MAP = {
     "auth": os.getenv("AUTH_SERVICE_URL", "http://sso-service:8080"),
     "assessment": os.getenv("ASSESSMENT_SERVICE_URL", "http://assessment-service:8080"),
     "coding": os.getenv("CODING_SERVICE_URL", "http://coding-service:8080"),
-    "ai-logic": os.getenv("AI_LOGIC_SERVICE_URL", "http://ai-logic-service:8080"),
+    "text-service": os.getenv("TEXT_SERVICE_URL", "http://text-service:8080"),
     "audio-ai": os.getenv("AUDIO_AI_SERVICE_URL", "http://audio-ai-service:8080"),
     "video-ai": os.getenv("VIDEO_AI_SERVICE_URL", "http://video-ai-service:8080"),
     "text-ai": os.getenv("TEXT_AI_SERVICE_URL", "http://text-ai-service:8080"),
-    "interview": os.getenv("INTERVIEW_SERVICE_URL", "http://interview-service:8080"),
+    "interview": os.getenv("INTERVIEW_SERVICE_URL", "http://localhost:8003"),
     "media": os.getenv("MEDIA_SERVICE_URL", "http://media-service:8080"),
     "notification": os.getenv("NOTIFICATION_SERVICE_URL", "http://notification-service:8080"),
     "logger": os.getenv("LOGGER_SERVICE_URL", "http://logger-service:8080"),
@@ -83,9 +83,10 @@ async def verify_jwt(request: Request, call_next):
         if request.url.path.startswith("/media/"):
             return await call_next(request)
         
-        # TEMP: allow interview routes during development/testing without auth
-        if request.url.path.startswith("/interview/"):
+        # TEMP: allow text-service routes during development/testing without auth
+        if request.url.path.startswith("/text-service/"):
             return await call_next(request)
+        
 
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):

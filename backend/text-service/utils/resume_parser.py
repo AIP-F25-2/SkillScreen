@@ -88,8 +88,12 @@ class ResumeParser:
             
         try:
             # Method 2: Fallback to PyPDF2
-            pdf_file.seek(0)
-            pdf_reader = PyPDF2.PdfReader(pdf_file)
+            if hasattr(pdf_file, 'read'):
+                pdf_file.seek(0)
+                pdf_reader = PyPDF2.PdfReader(pdf_file)
+            else:
+                pdf_reader = PyPDF2.PdfReader(io.BytesIO(pdf_bytes))
+            
             text = ""
             for page in pdf_reader.pages:
                 text += page.extract_text() + "\n"

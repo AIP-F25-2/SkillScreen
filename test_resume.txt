@@ -1,0 +1,5 @@
+John Smith
+john.smith@email.com
++1-555-1234
+Software Engineer with 5 years experience
+Skills: Python, JavaScript, React, Node.js

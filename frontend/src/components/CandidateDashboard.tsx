@@ -75,7 +75,7 @@ const mockPracticeInterviews: InterviewAnalysis[] = [
   },
   {
     id: '2',
-    company: 'Onlyfans',
+    company: 'OnlyPans',
     position: 'Full Stack Developer',
     date: '2024-01-10',
     duration: '60 minutes',
