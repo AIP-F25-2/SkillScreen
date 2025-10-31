@@ -167,8 +167,10 @@ services:
       - PORT=8080
       - HOST=0.0.0.0
       - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-db.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+      - PYTHONPATH=/app:/common-service
     volumes:
       - ./backend/interview-service:/app
+      - ./backend/common-service:/common-service
     networks:
       - skill-screen-network
 

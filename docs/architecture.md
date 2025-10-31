@@ -327,7 +327,7 @@ Each service follows consistent patterns:
 - **Calendar Integration**: Google Calendar, Outlook APIs
 - **Email Services**: SendGrid, AWS SES
 - **ATS Providers**: Greenhouse, Lever, Workable
-- **Container Orchestration**: Kubernetes (for secure code execution)
+- **Container Orchestration**: Docker Swarm (for secure code execution)
 - **Monitoring**: Grafana, Elasticsearch, Logstash, Kibana
 
 ### **Inter-Service Communication**

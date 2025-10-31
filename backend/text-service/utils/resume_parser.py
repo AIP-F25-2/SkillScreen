@@ -72,16 +72,10 @@ class ResumeParser:
     def extract_text_from_pdf(self, pdf_file) -> str:
         """Extract text from PDF file using multiple methods"""
         try:
-            # Handle both file objects and bytes
-            if hasattr(pdf_file, 'read'):
-                # It's a file-like object
-                pdf_bytes = pdf_file.read()
-                pdf_file.seek(0)  # Reset file pointer
-            else:
-                # It's already bytes
-                pdf_bytes = pdf_file
-            
             # Method 1: Try pdfplumber first (better for complex layouts)
+            pdf_bytes = pdf_file.read()
+            pdf_file.seek(0)  # Reset file pointer
+            
             with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
                 text = ""
                 for page in pdf.pages:

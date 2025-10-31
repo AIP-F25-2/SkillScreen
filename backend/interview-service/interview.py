@@ -1,35 +1,40 @@
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from datetime import datetime, timedelta
+from fastapi import FastAPI, Request
+from datetime import datetime, timezone
 import uuid
 import logging
 import os
+import sys
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
+# Add common-service to Python path
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'common-service'))
+
+# Import local database setup
+from db import DBFactory
+
+# Import resume controller
+from controllers.resume_controller import router as resume_router
+
+# Load environment variables
 load_dotenv()
-
-# Import email service
-import sys
-sys.path.append(os.path.dirname(__file__))
-from services.email_service import email_service
-
-app = FastAPI(title="Interview Service")
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for development
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
-)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# In-memory storage for sessions and tokens
+# Initialize database connection
+try:
+    DBFactory.init()
+    logger.info("Database connection initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize database: {e}")
+
+app = FastAPI(title="Interview Service")
+
+# Include resume router
+app.include_router(resume_router)
+
+# In-memory storage for sessions
 sessions_db = {}
 token_store = {}
 
@@ -51,7 +56,11 @@ def health_check():
     return create_response({
         "message": "Interview Service is running",
         "status": "deployed",
-        "service": "interview-service"
+        "service": "interview-service",
+        "endpoints": {
+            "resume_upload": "/resumes/upload",
+            "health": "/health"
+        }
     })
 
 @app.get("/health")
@@ -60,7 +69,8 @@ def health():
     return create_response({
         "service": "interview-service",
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "features": ["resume_upload", "file_processing", "email_extraction"]
     })
 
 @app.post("/api/session/create")

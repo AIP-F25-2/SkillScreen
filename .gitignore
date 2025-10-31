@@ -315,4 +315,20 @@ build/
 *.bak
 *.backup
 
+# Configuration files with sensitive data
+.config
+*.config
+config.ini
+config.json
+secrets.json
+.secrets
+
+# API Keys and sensitive data
+api_keys.txt
+credentials.json
+.secrets
+secrets/
+credentials/
+
+# SonarQube
 .sonar

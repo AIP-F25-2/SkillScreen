@@ -30,13 +30,13 @@ class DatabaseManager:
                     database_url,
                     poolclass=StaticPool,
                     connect_args={"check_same_thread": False},
-                    echo=config.is_debug()
+                    echo=config.debug
                 )
             else:
                 # For PostgreSQL, MySQL, etc.
                 self.engine = create_engine(
                     database_url,
-                    echo=config.is_debug(),
+                    echo=config.debug,
                     pool_pre_ping=True,
                     pool_recycle=300
                 )

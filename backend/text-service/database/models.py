@@ -208,7 +208,7 @@ class AuditLog(Base):
     request_id = Column(String(100))
     
     # Additional data
-    meta_data = Column(JSON)
+    metadata = Column(JSON)
     details = Column(Text)
     
     # Timing
