@@ -434,6 +434,175 @@ async def get_interview_summary(
         "generated_at": summary.generated_at.isoformat()
     }
 
+# Create candidate endpoint (for frontend compatibility)
+@app.post("/candidates")
+async def create_candidate_endpoint(
+    candidate_data: dict,
+    db: Session = Depends(get_db)
+):
+    """Create a new candidate record"""
+    try:
+        log_info(f"Creating candidate: {candidate_data.get('candidate_name', 'Unknown')}")
+        
+        # Create candidate using existing service
+        from services.candidate_service import CandidateService
+        candidate_service = CandidateService(db)
+        
+        candidate = candidate_service.create_candidate(
+            candidate_name=candidate_data.get('candidate_name', 'Unknown Candidate'),
+            candidate_email=candidate_data.get('candidate_email', 'candidate@example.com'),
+            resume_text=candidate_data.get('resume_text', ''),
+            skills=candidate_data.get('skills', [])
+        )
+        
+        log_info(f"Candidate created successfully: {candidate.candidate_id}")
+        
+        return {
+            "success": True,
+            "data": {
+                "candidate_id": candidate.candidate_id,
+                "status": "created",
+                "created_at": candidate.created_at.isoformat()
+            },
+            "message": "Candidate created successfully"
+        }
+        
+    except Exception as e:
+        log_error(f"Error creating candidate: {e}")
+        raise HTTPException(status_code=500, detail=f"Error creating candidate: {str(e)}")
+
+# Create job endpoint (for frontend compatibility)
+@app.post("/jobs")
+async def create_job_endpoint(
+    job_data: dict,
+    db: Session = Depends(get_db)
+):
+    """Create a new job posting"""
+    try:
+        log_info(f"Creating job: {job_data.get('title', 'Unknown')}")
+        
+        # Create job using existing service
+        from services.job_service import JobService
+        job_service = JobService(db)
+        
+        job = job_service.create_job(
+            title=job_data.get('title', 'Software Engineer'),
+            company=job_data.get('company', 'Tech Company'),
+            description=job_data.get('description', ''),
+            required_skills=job_data.get('required_skills', []),
+            experience_level=job_data.get('experience_level', 'mid')
+        )
+        
+        log_info(f"Job created successfully: {job.job_id}")
+        
+        return {
+            "success": True,
+            "data": {
+                "job_id": job.job_id,
+                "status": "created",
+                "created_at": job.created_at.isoformat()
+            },
+            "message": "Job created successfully"
+        }
+        
+    except Exception as e:
+        log_error(f"Error creating job: {e}")
+        raise HTTPException(status_code=500, detail=f"Error creating job: {str(e)}")
+
+# Start interview endpoint (for frontend compatibility)
+@app.post("/interviews/start")
+async def start_interview_endpoint(
+    interview_data: dict,
+    db: Session = Depends(get_db)
+):
+    """Start a new interview session"""
+    try:
+        log_info(f"Starting interview for job: {interview_data.get('job_id', 'Unknown')}")
+        
+        # Start interview using existing service
+        from services.interview_service import InterviewService
+        interview_service = InterviewService(db)
+        
+        interview = interview_service.start_interview(
+            candidate_id=interview_data.get('candidate_id'),
+            job_id=interview_data.get('job_id'),
+            interview_type=interview_data.get('interview_type', 'mixed'),
+            difficulty=interview_data.get('difficulty', 'medium'),
+            max_questions=interview_data.get('max_questions', 10)
+        )
+        
+        log_info(f"Interview started successfully: {interview.session_id}")
+        
+        return {
+            "success": True,
+            "data": {
+                "session_id": interview.session_id,
+                "interview_id": interview.interview_id,
+                "status": "started",
+                "created_at": interview.created_at.isoformat()
+            },
+            "message": "Interview started successfully"
+        }
+        
+    except Exception as e:
+        log_error(f"Error starting interview: {e}")
+        raise HTTPException(status_code=500, detail=f"Error starting interview: {str(e)}")
+
+# Get interview questions endpoint (for frontend compatibility)
+@app.get("/interviews/{session_id}/questions")
+async def get_interview_questions_endpoint(
+    session_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get interview questions for a session"""
+    try:
+        log_info(f"Getting questions for session: {session_id}")
+        
+        # Get questions using existing service
+        from services.interview_service import InterviewService
+        interview_service = InterviewService(db)
+        
+        questions = interview_service.get_interview_questions(session_id)
+        
+        log_info(f"Retrieved {len(questions)} questions for session: {session_id}")
+        
+        return {
+            "success": True,
+            "data": questions,
+            "message": f"Retrieved {len(questions)} questions"
+        }
+        
+    except Exception as e:
+        log_error(f"Error getting questions: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting questions: {str(e)}")
+
+# Resume parsing endpoint (for frontend compatibility)
+@app.post("/resumes/parse")
+async def parse_resume(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """Parse resume file and extract candidate information"""
+    try:
+        log_info(f"Processing resume: {file.filename}")
+        
+        # Parse resume using existing parser
+        from utils.resume_parser import ResumeParser
+        parser = ResumeParser()
+        parsed_data = parser.parse_resume_from_pdf(file)
+        
+        log_info(f"Resume parsed successfully: {file.filename}")
+        
+        return {
+            "success": True,
+            "data": parsed_data,
+            "message": "Resume parsed successfully"
+        }
+        
+    except Exception as e:
+        log_error(f"Error parsing resume: {e}")
+        raise HTTPException(status_code=500, detail=f"Error parsing resume: {str(e)}")
+
 # File upload endpoints
 @app.post("/api/upload/resume")
 async def upload_resume(
@@ -451,9 +620,9 @@ async def upload_resume(
             await buffer.write(content)
         
         # Parse resume using existing parser
-        from app_dynamic import SimpleResumeParser
-        parser = SimpleResumeParser()
-        parsed_data = parser.parse_file(file)
+        from utils.resume_parser import ResumeParser
+        parser = ResumeParser()
+        parsed_data = parser.parse_resume_from_pdf(file)
         
         return {
             "filename": file.filename,
