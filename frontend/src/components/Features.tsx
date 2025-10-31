@@ -76,7 +76,7 @@ export default function Features() {
   ];
 
   return (
-    <section className="py-24 px-6 mt-24 md:mt-32 rounded-xl" style={{ backgroundColor: '#252525' }}>
+    <section className="py-24 px-6 mt-24 md:mt-32 rounded-2xl glass-dark backdrop-blur-xl shadow-xl border border-white/10">
       <div className="relative z-10 max-w-7xl mx-auto">
         {/* Header */}
         <div className="text-center mb-16">

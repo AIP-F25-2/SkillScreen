@@ -10,7 +10,7 @@ ENV PYTHONPATH=/app
 WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
     software-properties-common \
@@ -26,8 +26,13 @@ RUN apt-get update && apt-get install -y \
 COPY requirements_production.txt .
 RUN pip install --no-cache-dir -r requirements_production.txt
 
-# Copy application code
-COPY . .
+# Copy only necessary application code
+COPY fastapi_app.py simple_fastapi_app.py ./
+COPY services ./services
+COPY utils ./utils
+COPY database ./database
+COPY schemas ./schemas
+COPY README_PRODUCTION.md CONFIG_SETUP.md DEPLOYMENT_SECURITY.md ./
 
 # Create necessary directories
 RUN mkdir -p logs uploads reports static

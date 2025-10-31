@@ -1,16 +1,12 @@
 // Interview token management for email-based candidate access
 import { API_BASE_URL } from './config';
 
-// Use direct interview service URL for token validation
-const INTERVIEW_SERVICE_URL = 'http://localhost:8003';
-
 export interface InterviewToken {
   token: string;
   candidateId: string;
   candidateName: string;
   candidateEmail: string;
   sessionId: string;
-  interviewId: string;  // Add interview ID for proper integration
   expiresAt: string;
   usedAt?: string;
 }
@@ -88,7 +84,7 @@ export async function validateInterviewToken(token: string): Promise<{
   error?: string;
 }> {
   try {
-    const response = await fetch(`${INTERVIEW_SERVICE_URL}/api/token/validate`, {
+    const response = await fetch(`${API_BASE_URL}/interview/api/token/validate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

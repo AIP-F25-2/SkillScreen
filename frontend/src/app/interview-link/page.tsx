@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { CheckCircle, XCircle, Loader, Mail } from 'lucide-react';
@@ -12,16 +12,9 @@ export default function InterviewLinkPage() {
   const [status, setStatus] = useState<'loading' | 'valid' | 'invalid' | 'expired'>('loading');
   const [candidateName, setCandidateName] = useState('');
   const [error, setError] = useState('');
-  const hasValidated = useRef(false); // Prevent multiple validations
 
   useEffect(() => {
     const verifyToken = async () => {
-      // Prevent multiple validations
-      if (hasValidated.current) {
-        console.log('🔄 Token validation already completed, skipping...');
-        return;
-      }
-
       const token = searchParams?.get('token');
 
       if (!token) {
@@ -30,35 +23,25 @@ export default function InterviewLinkPage() {
         return;
       }
 
-      hasValidated.current = true;
-      console.log('🔍 Starting token validation for:', token.substring(0, 10) + '...');
+      // Validate token with backend
+      const validation = await validateInterviewToken(token);
 
-      try {
-        // Validate token with backend
-        const validation = await validateInterviewToken(token);
-
-        if (!validation.valid) {
-          setStatus('expired');
-          setError(validation.error || 'This interview link is no longer valid.');
-          return;
-        }
-
-        // Store token data
-        if (validation.data) {
-          console.log('✅ Token validation successful, storing data:', validation.data);
-          storeInterviewToken(validation.data);
-          setCandidateName(validation.data.candidateName);
-          setStatus('valid');
-
-          // Auto-redirect to interview setup after 2 seconds
-          setTimeout(() => {
-            router.push('/interview-setup?fromToken=true');
-          }, 2000);
-        }
-      } catch (error) {
-        console.error('❌ Token validation failed:', error);
+      if (!validation.valid) {
         setStatus('expired');
-        setError('Failed to validate interview link. Please try again.');
+        setError(validation.error || 'This interview link is no longer valid.');
+        return;
+      }
+
+      // Store token data
+      if (validation.data) {
+        storeInterviewToken(validation.data);
+        setCandidateName(validation.data.candidateName);
+        setStatus('valid');
+
+        // Auto-redirect to interview setup after 2 seconds
+        setTimeout(() => {
+          router.push('/interview-setup?fromToken=true');
+        }, 2000);
       }
     };
 

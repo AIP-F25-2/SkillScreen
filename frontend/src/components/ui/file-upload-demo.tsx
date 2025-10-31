@@ -202,70 +202,36 @@ export function FileUploadDemo() {
 
     setIsProcessing(true);
     try {
-      // Step 1: Schedule the candidate (creates interview record)
       const response = await apiClient.scheduleCandidate(uploadedCandidate.candidate_id);
-      if (!response.success) {
-        throw new Error("Failed to schedule candidate");
-      }
-      
-      console.log("Interview scheduled:", response.data);
-      
-      // Step 2: Send email invitation with parsed data
-      const candidateEmail = parsedEmail || uploadedCandidate.candidate_email || "candidate@example.com";
-      const candidateName = parsedName || uploadedCandidate.candidate_name || "Candidate";
-      
-      // Only send email if we have a valid email address
-      if (candidateEmail && candidateEmail !== "candidate@example.com") {
-        console.log("Sending interview invitation to:", candidateEmail);
+      if (response.success) {
+        setProcessSuccess(true);
+        console.log("Interview scheduled:", response.data);
         
-        const emailResponse = await fetch('http://localhost:8003/api/email/send-invitation', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            candidate_email: candidateEmail,
-            candidate_name: candidateName,
-            candidate_id: uploadedCandidate.candidate_id,
-            session_id: response.data.session_id,
-            recruiter_name: "Hiring Team",
-            company_name: "SkillScreen"
-          })
-        });
+        // Show success message
+        alert(`Interview scheduled for ${response.data.candidate_name}!\n\nInterview link sent to user: ${response.data.assigned_user}\nSession ID: ${response.data.session_id}`);
         
-        if (emailResponse.ok) {
-          const emailData = await emailResponse.json();
-          console.log("Email invitation sent:", emailData);
-          alert(`Interview scheduled for ${candidateName}!\n\nInterview invitation sent to: ${candidateEmail}\nSession ID: ${response.data.session_id}`);
-        } else {
-          console.warn("Failed to send email invitation, but interview is scheduled");
-          alert(`Interview scheduled for ${candidateName}!\n\nNote: Email invitation failed to send.\nSession ID: ${response.data.session_id}`);
-        }
+        // Reset form after delay
+        setTimeout(() => {
+          remove();
+          setUploadedFile(null);
+          setUploadedCandidate(null);
+          setUploadSuccess(false);
+          setProcessSuccess(false);
+          setCandidateName("");
+          setParsedName("");
+          setParsedEmail("");
+          setParsedPhone("");
+          setParsedSkills([]);
+          setParsedExperience(0);
+          setShowParsedData(false);
+        }, 2000);
       } else {
-        console.warn("No valid email address found, skipping email invitation");
-        alert(`Interview scheduled for ${candidateName}!\n\nNote: No valid email address found, no invitation sent.\nSession ID: ${response.data.session_id}`);
+        console.error("Scheduling failed:", response);
+        alert("Scheduling failed. Please try again.");
       }
-      
-      setProcessSuccess(true);
-      
-      // Reset form after delay
-      setTimeout(() => {
-        remove();
-        setUploadedFile(null);
-        setUploadedCandidate(null);
-        setUploadSuccess(false);
-        setProcessSuccess(false);
-        setCandidateName("");
-        setParsedName("");
-        setParsedEmail("");
-        setParsedPhone("");
-        setParsedSkills([]);
-        setParsedExperience(0);
-        setShowParsedData(false);
-      }, 2000);
     } catch (error) {
-      console.error("Process error:", error);
-      alert("Failed to process candidate. Please try again.");
+      console.error("Scheduling error:", error);
+      alert("Scheduling failed. Please try again.");
     } finally {
       setIsProcessing(false);
     }

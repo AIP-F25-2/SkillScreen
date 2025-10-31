@@ -144,10 +144,12 @@ class AntiCheatingService:
                     duplicate_count += 1
                     max_similarity = max(max_similarity, similarity)
             
-            # Check for exact duplicates
-            response_hash = hashlib.md5(normalized_response.encode()).hexdigest()
-            exact_duplicates = sum(1 for resp in previous_responses 
-                                 if hashlib.md5(self._normalize_text(resp.response_text).encode()).hexdigest() == response_hash)
+        # Check for exact duplicates (use sha256 to avoid weak hash warnings)
+        response_hash = hashlib.sha256(normalized_response.encode()).hexdigest()
+        exact_duplicates = sum(
+            1 for resp in previous_responses
+            if hashlib.sha256(self._normalize_text(resp.response_text).encode()).hexdigest() == response_hash
+        )
             
             is_duplicate = duplicate_count > 0 or exact_duplicates > 0
             

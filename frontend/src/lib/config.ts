@@ -49,11 +49,11 @@ export const API_ENDPOINTS = {
   AUDIO_AI_RESULTS: '/audio-ai/api/v1/audio/results',
   
   // AI Logic
-  TEXT_SERVICE_RESUMES_PARSE: '/text-service/resumes/parse',
-  TEXT_SERVICE_CANDIDATES: '/text-service/candidates',
-  TEXT_SERVICE_JOBS: '/text-service/jobs',
-  TEXT_SERVICE_INTERVIEWS_START: '/text-service/interviews/start',
-  TEXT_SERVICE_INTERVIEWS_QUESTIONS: '/text-service/interviews',
+  AI_LOGIC_RESUMES_PARSE: '/ai-logic/resumes/parse',
+  AI_LOGIC_CANDIDATES: '/ai-logic/candidates',
+  AI_LOGIC_JOBS: '/ai-logic/jobs',
+  AI_LOGIC_INTERVIEWS_START: '/ai-logic/interviews/start',
+  AI_LOGIC_INTERVIEWS_QUESTIONS: '/ai-logic/interviews',
   
   // Assessment
   ASSESSMENT_QUESTIONS: '/assessment/questions',

@@ -1,5 +1,4 @@
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timedelta
 import uuid
 import logging
@@ -15,15 +14,6 @@ sys.path.append(os.path.dirname(__file__))
 from services.email_service import email_service
 
 app = FastAPI(title="Interview Service")
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for development
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
-)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -129,7 +119,7 @@ async def save_session_transcript(session_id: str, request: Request):
 
 @app.post("/api/token/validate")
 async def validate_token(request: Request):
-    """Validate an interview access token and create interview record"""
+    """Validate an interview access token"""
     try:
         data = await request.json()
         token = data.get('token')
@@ -155,32 +145,10 @@ async def validate_token(request: Request):
             logger.warning(f"Token already used: {token[:10]}...")
             raise HTTPException(status_code=410, detail="This interview link has already been used")
         
-        # Create interview record in media service
-        interview_id = f"interview_{datetime.now().strftime('%Y%m%d%H%M%S')}"
-        
-        # Create interview data matching media service format
-        interview_data = {
-            "interview_id": interview_id,
-            "session_id": interview_id,  # Keep for backwards compatibility
-            "candidate_id": token_data['candidate_id'],
-            "candidate_name": token_data['candidate_name'],
-            "candidate_email": token_data['candidate_email'],
-            "assigned_user": "system",  # Token-based interviews are system-assigned
-            "user_id": "system",  # Add this for backwards compatibility
-            "status": "in_progress",  # Interview is starting
-            "token": token,  # Store token for reference
-            "created_at": datetime.utcnow().isoformat(),
-            "scheduled_at": datetime.utcnow().isoformat()
-        }
-        
-        # Store interview in our local database (in production, this would call media service)
-        sessions_db[interview_id] = interview_data
-        
         # Mark token as used
         token_data['used_at'] = datetime.utcnow().isoformat()
-        token_data['interview_id'] = interview_id  # Link token to interview
         
-        logger.info(f"Token validated and interview created: {token[:10]}... -> {interview_id} for {token_data['candidate_email']}")
+        logger.info(f"Token validated successfully: {token[:10]}... for {token_data['candidate_email']}")
         
         return {
             "valid": True,
@@ -189,8 +157,7 @@ async def validate_token(request: Request):
                 "candidateId": token_data['candidate_id'],
                 "candidateName": token_data['candidate_name'],
                 "candidateEmail": token_data['candidate_email'],
-                "sessionId": interview_id,  # Use interview_id as session_id
-                "interviewId": interview_id,  # Add explicit interview_id
+                "sessionId": token_data['session_id'],
                 "expiresAt": token_data['expires_at'],
                 "usedAt": token_data.get('used_at')
             }

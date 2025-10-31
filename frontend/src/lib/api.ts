@@ -318,7 +318,7 @@ class ApiClient {
     const formData = new FormData();
     formData.append('file', file);
 
-    const url = `${this.baseUrl}/text-service/resumes/parse`;
+    const url = `${this.baseUrl}/ai-logic/resumes/parse`;
     const token = this.getToken();
     const headers: Record<string, string> = {};
     if (token) {
@@ -343,7 +343,7 @@ class ApiClient {
     experience_years: number;
     education?: any[];
   }): Promise<ApiResponse<any>> {
-    const url = `${this.baseUrl}/text-service/candidates`;
+    const url = `${this.baseUrl}/ai-logic/candidates`;
     const token = this.getToken();
     
     const response = await fetch(url, {
@@ -365,7 +365,7 @@ class ApiClient {
     required_skills: string[];
     experience_level: string;
   }): Promise<ApiResponse<any>> {
-    const url = `${this.baseUrl}/text-service/jobs`;
+    const url = `${this.baseUrl}/ai-logic/jobs`;
     const token = this.getToken();
     
     const response = await fetch(url, {
@@ -387,7 +387,7 @@ class ApiClient {
     difficulty?: string;
     max_questions?: number;
   }): Promise<ApiResponse<any>> {
-    const url = `${this.baseUrl}/text-service/interviews/start`;
+    const url = `${this.baseUrl}/ai-logic/interviews/start`;
     const token = this.getToken();
     
     const response = await fetch(url, {
@@ -410,7 +410,7 @@ class ApiClient {
   }
 
   async getInterviewQuestions(sessionId: string): Promise<ApiResponse<any>> {
-    const url = `${this.baseUrl}/text-service/interviews/${sessionId}/questions`;
+    const url = `${this.baseUrl}/ai-logic/interviews/${sessionId}/questions`;
     const token = this.getToken();
     
     const response = await fetch(url, {

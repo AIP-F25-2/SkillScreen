@@ -4,10 +4,9 @@ import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Download, Clock, FileText, CheckCircle, ShieldAlert, UserCheck } from 'lucide-react';
+import { ArrowLeft, Download, Clock, FileText, CheckCircle, ShieldAlert } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { API_BASE_URL } from '@/lib/config';
-import { getInterviewToken } from '@/lib/interviewToken';
 
 export default function InterviewSummaryPage() {
   const searchParams = useSearchParams();
@@ -21,40 +20,20 @@ export default function InterviewSummaryPage() {
   const [error, setError] = useState<string | null>(null);
   const [showInitialProcessing, setShowInitialProcessing] = useState(isProcessingParam);
   const [accessDenied, setAccessDenied] = useState(false);
-  const [isCandidateCompletion, setIsCandidateCompletion] = useState(false);
-  const [candidateName, setCandidateName] = useState('');
 
   useEffect(() => {
-    // Debug authentication state
-    console.log('🔍 DEBUG: Interview Summary Auth State:', {
-      authLoading,
-      user,
-      userType: user?.userType,
-      interviewId,
-      isProcessingParam
-    });
+    // Check if user is authenticated and is a recruiter
+    if (!authLoading && !user) {
+      setAccessDenied(true);
+      setLoading(false);
+      return;
+    }
 
-    // Check if this is a candidate completion flow (no user but has interview token)
-    const tokenData = getInterviewToken();
-    if (!authLoading && !user && tokenData && interviewId) {
-      console.log('🎯 Candidate completion flow detected');
-      setIsCandidateCompletion(true);
-      setCandidateName(tokenData.candidateName);
-      // Allow candidate to see their completion message
-    } else if (!authLoading && !user) {
-      // No user and no token - access denied
-      console.log('❌ No user found, setting access denied');
+    // Check user role - only recruiters can access
+    if (!authLoading && user && user.role !== 'recruiter') {
       setAccessDenied(true);
       setLoading(false);
       return;
-    } else if (!authLoading && user && user.userType !== 'recruiter') {
-      // User is not a recruiter - access denied
-      console.log('❌ User is not a recruiter:', user.userType);
-      setAccessDenied(true);
-      setLoading(false);
-      return;
-    } else if (!authLoading && user && user.userType === 'recruiter') {
-      console.log('✅ Recruiter access granted');
     }
 
     const fetchInterview = async () => {
@@ -68,8 +47,6 @@ export default function InterviewSummaryPage() {
         const response = await apiClient.getInterviewDetails(interviewId);
         if (response.success) {
           setInterview(response.data);
-          console.log('📊 Interview data loaded:', response.data);
-          console.log('📝 Transcript data:', response.data.transcript);
           // Hide initial processing screen once we have data
           if (response.data.status === 'completed' || response.data.transcript) {
             setShowInitialProcessing(false);
@@ -85,8 +62,8 @@ export default function InterviewSummaryPage() {
       }
     };
 
-    if (!authLoading && (user?.userType === 'recruiter' || isCandidateCompletion)) {
-    fetchInterview();
+    if (!authLoading && user && user.role === 'recruiter') {
+      fetchInterview();
     }
 
     // Poll for updates if processing
@@ -110,66 +87,7 @@ export default function InterviewSummaryPage() {
     }, 10000); // Poll every 10 seconds
 
     return () => clearInterval(pollInterval);
-  }, [interviewId, isProcessingParam, user, authLoading, isCandidateCompletion]);
-
-  // Show candidate completion screen
-  if (isCandidateCompletion && !loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-[#0A0A0A] via-[#1E1E1E] to-[#0A0A0A] flex items-center justify-center p-6">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="text-center max-w-2xl px-6"
-        >
-          <UserCheck className="w-24 h-24 text-green-400 mx-auto mb-6" />
-          <h1 className="text-white text-4xl font-bold mb-4">Thank You, {candidateName}!</h1>
-          <p className="text-white/70 text-xl mb-8">
-            Your interview has been completed successfully.
-          </p>
-          
-          <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-6 mb-8">
-            <h2 className="text-green-300 text-lg font-semibold mb-3">What happens next?</h2>
-            <div className="text-white/80 text-left space-y-2">
-              <p>• Our team will review your interview recording and responses</p>
-              <p>• We'll analyze your technical skills and communication</p>
-              <p>• You'll be contacted within 2-3 business days with next steps</p>
-              <p>• If selected, we'll schedule the next round of interviews</p>
-            </div>
-          </div>
-
-          <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-6 mb-8">
-            <h3 className="text-blue-300 text-lg font-semibold mb-3">Interview Details</h3>
-            <div className="text-white/80 text-left space-y-2">
-              <p><strong>Interview ID:</strong> {interviewId}</p>
-              <p><strong>Status:</strong> Completed</p>
-              <p><strong>Duration:</strong> {interview?.duration || 'Processing...'}</p>
-              <p><strong>Questions Answered:</strong> {interview?.questions?.length || 'Processing...'}</p>
-            </div>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button
-              onClick={() => window.close()}
-              className="px-8 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
-            >
-              Close Window
-            </button>
-            <button
-              onClick={() => router.push('/')}
-              className="px-8 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
-            >
-              Return to Home
-            </button>
-          </div>
-
-          <div className="mt-8 text-white/50 text-sm">
-            <p>This interview session has been securely recorded and stored.</p>
-            <p>Only authorized recruiters can access the full interview details.</p>
-          </div>
-        </motion.div>
-      </div>
-    );
-  }
+  }, [interviewId, isProcessingParam, user, authLoading]);
 
   // Show access denied screen
   if (accessDenied) {

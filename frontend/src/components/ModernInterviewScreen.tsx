@@ -10,7 +10,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/lib/api';
 import { getDemoInterviewQuestions } from '@/lib/demoHelpers';
 import { API_BASE_URL } from '@/lib/config';
-import { getInterviewToken } from '@/lib/interviewToken';
 
 interface ModernInterviewScreenProps {
   participantName: string;
@@ -28,7 +27,6 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isQuestionModalOpen, setIsQuestionModalOpen] = useState(false);
   const [sessionId, setSessionId] = useState<string>('');
-  const [interviewId, setInterviewId] = useState<string>('');  // Add interview ID state
   const [showProcessingModal, setShowProcessingModal] = useState(false);
   const [interviewQuestions, setInterviewQuestions] = useState<any[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -167,34 +165,6 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
     let isActive = true;
     
     const createSessionAndStart = async () => {
-      // Handle token-based interviews
-      if (fromToken) {
-        const tokenData = getInterviewToken();
-        console.log('🔍 DEBUG: Token-based interview detected');
-        console.log('🔍 DEBUG: Token data retrieved:', tokenData);
-        console.log('🔍 DEBUG: Session storage contents:', sessionStorage.getItem('interview_token_data'));
-        
-        if (tokenData && isActive) {
-          console.log('✅ Using token-based session:', tokenData.sessionId, 'interview:', tokenData.interviewId);
-          setSessionId(tokenData.sessionId);
-          setInterviewId(tokenData.interviewId);
-          
-          // Auto-start recording after session is set
-          setTimeout(() => {
-            if (isActive) {
-              console.log('🎬 Starting recording for token-based interview...');
-              startRecording();
-            }
-          }, 500);
-        } else {
-          console.error('❌ No valid token data found for token-based interview');
-          console.error('❌ Token data:', tokenData);
-          console.error('❌ Is active:', isActive);
-        }
-        return;
-      }
-      
-      // Handle regular authenticated interviews
       if (!user || !isActive) return;
       
       // Don't create a new session if we already have one
@@ -240,7 +210,7 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
       console.log('Component unmounting, cleaning up recording...');
       cleanupRecording();
     };
-  }, [user, participantName, fromToken]);
+  }, [user, participantName]);
 
   const startRecording = async () => {
     // Prevent starting if already recording
@@ -249,77 +219,63 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
       return;
     }
 
-    console.log('🎬 Starting recording...');
+    console.log('Starting recording...');
     
     try {
       // Get user media
-      console.log('📹 Requesting camera and microphone access...');
       const stream = await navigator.mediaDevices.getUserMedia({
         video: true,
         audio: true
       });
 
-      console.log('✅ Media stream obtained:', stream);
       streamRef.current = stream;
       recordedChunksRef.current = [];
 
       // Attach stream to video element
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
-        console.log('📺 Stream attached to video element');
       }
 
       // Reset chunks on server and wait for confirmation
-      const userId = user?.id || sessionId; // Use sessionId for token-based interviews
-      console.log('🔄 Resetting chunks for user:', userId);
-      
-      if (userId) {
-        try {
-          const resetResponse = await fetch(`${API_BASE_URL}/media/reset_chunks`, {
-            method: 'POST',
-            headers: user ? getAuthHeaders() : { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_id: userId })
-          });
-          
-          if (!resetResponse.ok) {
-            console.warn('⚠️ Failed to reset chunks, continuing anyway:', resetResponse.status);
-          } else {
-            console.log('✅ Chunks reset successfully');
-          }
-          
-          // Wait a bit to ensure filesystem is synced
-          await new Promise(resolve => setTimeout(resolve, 100));
-        } catch (resetError) {
-          console.warn('⚠️ Chunk reset failed, continuing anyway:', resetError);
+      if (user) {
+        const resetResponse = await fetch(`${API_BASE_URL}/media/reset_chunks`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ user_id: user.id })
+        });
+        
+        if (!resetResponse.ok) {
+          throw new Error('Failed to reset chunks');
         }
+        
+        // Wait a bit to ensure filesystem is synced
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
 
       // Check MediaRecorder support and find best mimeType
-      console.log('🔍 Checking MediaRecorder support...');
       let mimeType = 'video/webm; codecs=vp8,opus';
       if (!MediaRecorder.isTypeSupported(mimeType)) {
-        console.warn(`⚠️ MimeType ${mimeType} not supported, trying alternatives...`);
+        console.warn(`MimeType ${mimeType} not supported, trying alternatives...`);
         if (MediaRecorder.isTypeSupported('video/webm')) {
           mimeType = 'video/webm';
-          console.log('✅ Using video/webm');
+          console.log('Using video/webm');
         } else if (MediaRecorder.isTypeSupported('video/mp4')) {
           mimeType = 'video/mp4';
-          console.log('✅ Using video/mp4');
+          console.log('Using video/mp4');
         } else {
-          console.error('❌ No supported video mimeType found!');
+          console.error('No supported video mimeType found!');
           throw new Error('Browser does not support video recording');
         }
       } else {
-        console.log(`✅ Using mimeType: ${mimeType}`);
+        console.log(`Using mimeType: ${mimeType}`);
       }
 
       // Create media recorder
-      console.log('🎥 Creating MediaRecorder...');
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType: mimeType
       });
 
-      console.log('✅ MediaRecorder created, state:', mediaRecorder.state);
+      console.log('MediaRecorder created, state:', mediaRecorder.state);
 
       mediaRecorder.ondataavailable = (event) => {
         console.log(`ondataavailable fired, data size: ${event.data.size}`);
@@ -348,27 +304,8 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
         await apiClient.updateSessionStatus(sessionId, 'recording');
       }
     } catch (error) {
-      console.error('❌ Failed to start recording:', error);
-      
-      // More specific error messages
-      let errorMessage = 'Failed to start recording. ';
-      if (error instanceof Error) {
-        if (error.message.includes('Permission denied') || error.message.includes('NotAllowedError')) {
-          errorMessage += 'Please allow camera and microphone access.';
-        } else if (error.message.includes('NotFoundError')) {
-          errorMessage += 'No camera or microphone found.';
-        } else if (error.message.includes('NotReadableError')) {
-          errorMessage += 'Camera or microphone is already in use.';
-        } else if (error.message.includes('MediaRecorder')) {
-          errorMessage += 'Browser does not support video recording.';
-        } else {
-          errorMessage += `Error: ${error.message}`;
-        }
-      } else {
-        errorMessage += 'Please check camera/microphone permissions.';
-      }
-      
-      alert(errorMessage);
+      console.error('Failed to start recording:', error);
+      alert('Failed to start recording. Please check camera/microphone permissions.');
     }
   };
 
@@ -414,8 +351,7 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
   };
 
   const stopRecording = async () => {
-    // For token-based interviews, we don't need user authentication
-    if (!fromToken && !user) {
+    if (!user) {
       alert('User not authenticated');
       return;
     }
@@ -478,7 +414,7 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
       // Upload all chunks sequentially
       console.log(`Uploading ${recordedChunksRef.current.length} chunks...`);
       
-      const headers: Record<string, string> = user ? { ...getAuthHeaders() } : {};
+      const headers: Record<string, string> = { ...getAuthHeaders() };
       delete headers['Content-Type'];
 
       for (let i = 0; i < recordedChunksRef.current.length; i++) {
@@ -487,7 +423,7 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
         
         const formData = new FormData();
         formData.append('file', new Blob([chunk], { type: 'video/webm' }), chunkFilename);
-        formData.append('user_id', user?.id || sessionId); // Use sessionId for token-based interviews
+        formData.append('user_id', user.id);
         
         try {
           const response = await fetch(`${API_BASE_URL}/media/upload_chunk`, {
@@ -508,9 +444,8 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
       }
 
       console.log('All chunks uploaded, finalizing...');
-      const userId = user?.id || sessionId; // Use sessionId for token-based interviews
       console.log('Finalize request data:', {
-        user_id: userId,
+        user_id: user.id,
         session_id: sessionId,
         candidate_id: participantName
       });
@@ -518,9 +453,9 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
       // Finalize upload on media service
       const finalizeResponse = await fetch(`${API_BASE_URL}/media/finalize_upload`, {
         method: 'POST',
-        headers: user ? getAuthHeaders() : { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
-          user_id: userId,
+          user_id: user.id,
           session_id: sessionId,
           candidate_id: participantName
         })
@@ -530,13 +465,12 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
       console.log('Finalize response:', finalizeData);
       
       if (finalizeData.status === 'done') {
-        // Use existing interview ID for token-based interviews, or get new one from media service
-        const finalInterviewId = fromToken ? interviewId : finalizeData.interview_id;
+        const interviewId = finalizeData.interview_id;
         const videoPath = finalizeData.file;
-        console.log('Final Interview ID:', finalInterviewId, 'Video Path:', videoPath);
+        console.log('Interview ID:', interviewId, 'Video Path:', videoPath);
         
-        if (!finalInterviewId) {
-          console.error('No interview_id available for completion');
+        if (!interviewId) {
+          console.error('No interview_id returned from finalize_upload');
           alert('Failed to create interview record. Please try again.');
           return;
         }
@@ -566,29 +500,14 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
           // Update interview with transcript
           if (transcriptResponse?.status === 'success' || transcriptResponse?.data) {
             const data = transcriptResponse.data || transcriptResponse;
-            console.log('📝 Updating interview transcript:', {
-              interviewId: finalInterviewId,
-              transcriptData: {
-                text: data.transcript,
-                word_count: data.word_count,
-                duration_seconds: data.duration_seconds,
-                language: data.language
-              }
-            });
-            
-            await apiClient.updateInterviewTranscript(finalInterviewId, {
+            await apiClient.updateInterviewTranscript(interviewId, {
               text: data.transcript,
               word_count: data.word_count,
               duration_seconds: data.duration_seconds,
               language: data.language
             });
-            
-            console.log('✅ Transcript updated successfully');
             // Update status to completed after transcript is saved
-            await apiClient.updateInterviewStatus(finalInterviewId, 'completed');
-            console.log('✅ Interview status updated to completed');
-          } else {
-            console.warn('⚠️ No transcript data available:', transcriptResponse);
+            await apiClient.updateInterviewStatus(interviewId, 'completed');
           }
         }).catch(err => {
           console.error('Transcription failed:', err);
@@ -597,20 +516,9 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
         // Clear recorded chunks to free memory
         recordedChunksRef.current = [];
         
-        // For token-based interviews, clear the token after completion
-        if (fromToken) {
-          console.log('🧹 Clearing interview token after completion');
-          const { clearInterviewToken } = await import('@/lib/interviewToken');
-          clearInterviewToken();
-          
-          // Redirect candidates to thank you page instead of interview summary
-          console.log('Redirecting candidate to thank you page...');
-          router.push(`/interview-thank-you?id=${finalInterviewId}`);
-        } else {
-          // Redirect recruiters to interview summary page with processing state
-          console.log('Redirecting to interview summary...');
-          router.push(`/interview-summary?id=${finalInterviewId}&processing=true`);
-        }
+        // Redirect to interview summary page with processing state
+        console.log('Redirecting to interview summary...');
+        router.push(`/interview-summary?id=${interviewId}&processing=true`);
       } else if (finalizeData.error) {
         // Handle error from media service
         console.error('Finalize error:', finalizeData.error);
