@@ -34,3 +34,8 @@ class UserListResponse(BaseModel):
     limit: int
     has_next: bool
     has_prev: bool
+
+
+class AuthRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=6)

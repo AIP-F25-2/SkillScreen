@@ -10,11 +10,17 @@ class DBFactory:
     def init(cls):
         db_url = os.getenv("DATABASE_URL")
         if not db_url:
-                raise ValueError("DATABASE_URL is not set")
+            # Default to local SQLite if not configured to avoid startup failure
+            db_url = "sqlite:///./user_service.db"
         try:
-                cls._engine = create_engine(db_url, echo=True)
-                cls._SessionFactory = sessionmaker(bind=cls._engine)
-                print(f"Connected to database: {db_url}")
+            is_sqlite = db_url.startswith("sqlite")
+            engine_kwargs = {"echo": True}
+            if is_sqlite:
+                # SQLite needs this for multithreaded FastAPI
+                engine_kwargs["connect_args"] = {"check_same_thread": False}
+            cls._engine = create_engine(db_url, **engine_kwargs)
+            cls._SessionFactory = sessionmaker(bind=cls._engine)
+            print(f"Connected to database: {db_url}")
         except Exception as e:
             raise RuntimeError(f"Failed to connect to database at {db_url}: {e}")
 
@@ -23,6 +29,12 @@ class DBFactory:
         if cls._SessionFactory is None:
             cls.init()
         return cls._SessionFactory()
+
+    @classmethod
+    def get_engine(cls):
+        if cls._engine is None:
+            cls.init()
+        return cls._engine
 
 class UnitOfWork:
     def __init__(self):
