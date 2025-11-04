@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from datetime import datetime, timezone
 import uuid
 import logging
@@ -14,6 +14,9 @@ from db import DBFactory
 
 # Import resume controller
 from controllers.resume_controller import router as resume_router
+
+# Import email service
+from services.email_service import email_service
 
 # Load environment variables
 load_dotenv()
