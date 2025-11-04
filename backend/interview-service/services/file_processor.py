@@ -40,15 +40,20 @@ class FileProcessor:
             "file_type": None
         }
         
-        # Check file size
-        if file_size > self.MAX_FILE_SIZE:
+        # Check file extension first to determine size limit
+        file_ext = Path(filename).suffix.lower()
+        is_zip = file_ext == '.zip'
+        
+        # Check file size - ZIP files have larger limit
+        max_size = self.MAX_ZIP_SIZE if is_zip else self.MAX_FILE_SIZE
+        if file_size > max_size:
             result["valid"] = False
-            result["error"] = f"File size {file_size} exceeds maximum allowed size {self.MAX_FILE_SIZE}"
+            size_limit_name = "ZIP" if is_zip else "file"
+            result["error"] = f"{size_limit_name} size {file_size} exceeds maximum allowed size {max_size}"
             return result
         
-        # Check file extension
-        file_ext = Path(filename).suffix.lower()
-        if file_ext == '.zip':
+        # Determine file type
+        if is_zip:
             result["file_type"] = "zip"
         elif file_ext in self.SUPPORTED_EXTENSIONS:
             result["file_type"] = "resume"
