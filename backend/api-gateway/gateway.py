@@ -57,7 +57,6 @@ SERVICE_MAP = {
     "interview": os.getenv("INTERVIEW_SERVICE_URL", "http://localhost:8003"),
     "media": os.getenv("MEDIA_SERVICE_URL", "http://media-service:8080"),
     "notification": os.getenv("NOTIFICATION_SERVICE_URL", "http://notification-service:8080"),
-    "logger": os.getenv("LOGGER_SERVICE_URL", "http://logger-service:8080"),
     "sso": os.getenv("SSO_SERVICE_URL", "http://sso-service:8080")
 }
 

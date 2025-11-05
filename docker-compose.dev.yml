@@ -1,5 +1,5 @@
 # SkillScreen Platform - Development Environment (Azure Postgres)
-version: '3.8'
+version: "3.8"
 
 services:
   # Core Infrastructure Services (5000-5009)
@@ -49,9 +49,20 @@ services:
       - HOST=0.0.0.0
       - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-db.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
       - PYTHONPATH=/app:/common-service
+      # logging
+      - ENV=dev
+      - LOG_LEVEL=DEBUG
+      - LOG_TO_FILE=true
+      - LOG_DIR=/var/log/app
+      - LOG_FILE=user-service.log
+      - ENABLE_SEQ=true
+      - SEQ_URL=http://seq:5341
     volumes:
       - ./backend/user-service:/app
       - ./backend/common-service:/common-service
+      - ./_logs:/var/log/app
+    depends_on:
+      - seq
     networks:
       - skill-screen-network
 
@@ -206,20 +217,6 @@ services:
     networks:
       - skill-screen-network
 
-  logger-service:
-    build:
-      context: ./backend/logger-service
-      dockerfile: Dockerfile
-    container_name: logger-service
-    environment:
-      - PORT=8080
-      - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-db.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
-    volumes:
-      - ./backend/logger-service:/app
-    networks:
-      - skill-screen-network
-
   sso-service:
     build:
       context: ./backend/sso-service
@@ -247,9 +244,37 @@ services:
       - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-db.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
     volumes:
       - ./backend/common-service:/app
+      # logging
+      - ENV=dev
+      - LOG_LEVEL=DEBUG
+      - LOG_TO_FILE=true
+      - LOG_DIR=/var/log/app
+      - LOG_FILE=user-service.log
+      - ENABLE_SEQ=true
+      - SEQ_URL=http://seq:5341
+    volumes:
+      - ./_logs:/var/log/app
+    depends_on:
+      - seq
+    networks:
+      - skill-screen-network
+
+  seq:
+    image: datalust/seq:2024.3
+    container_name: seq
+    environment:
+      - ACCEPT_EULA=Y
+    ports:
+      - "5341:5341" # ingestion endpoint
+      - "8081:80" # web UI -> http://localhost:8081
+    volumes:
+      - seq-data:/data
     networks:
       - skill-screen-network
 
 networks:
   skill-screen-network:
     driver: bridge
+
+volumes:
+  seq-data: {}
