@@ -54,7 +54,7 @@ SERVICE_MAP = {
     "audio-ai": os.getenv("AUDIO_AI_SERVICE_URL", "http://audio-ai-service:8080"),
     "video-ai": os.getenv("VIDEO_AI_SERVICE_URL", "http://video-ai-service:8080"),
     "text-ai": os.getenv("TEXT_AI_SERVICE_URL", "http://text-ai-service:8080"),
-    "interview": os.getenv("INTERVIEW_SERVICE_URL", "http://localhost:8003"),
+    "interview": os.getenv("INTERVIEW_SERVICE_URL", "http://interview-service:8080"),
     "media": os.getenv("MEDIA_SERVICE_URL", "http://media-service:8080"),
     "notification": os.getenv("NOTIFICATION_SERVICE_URL", "http://notification-service:8080"),
     "logger": os.getenv("LOGGER_SERVICE_URL", "http://logger-service:8080"),

@@ -25,6 +25,12 @@ export function FileUploadDemo() {
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [processSuccess, setProcessSuccess] = useState(false);
   const [candidateName, setCandidateName] = useState("");
+  const [selectedJob, setSelectedJob] = useState<string>("");
+  const [jobOptions] = useState<string[]>([
+    'Senior Software Engineer',
+    'Product Manager',
+    'UX Designer'
+  ]);
   
   // Parsed data states (editable by recruiter)
   const [parsedName, setParsedName] = useState("");
@@ -101,15 +107,24 @@ export function FileUploadDemo() {
 
       console.log("Resume uploaded to media service:", uploadResponse.data);
 
-      // Step 2: Parse resume using AI logic service
-      console.log("Parsing resume with AI service...");
+      // Step 2: Parse resume using Interview Service (resume upload)
+      console.log("Parsing resume via interview-service...");
       try {
-        const parseResponse = await apiClient.parseResumeWithAI(uploadedFile);
-        console.log("AI parse response:", parseResponse);
+        const parseResponse = await apiClient.uploadResumeForParsing(uploadedFile);
+        console.log("Interview-service parse response:", parseResponse);
 
-        // Extract parsed data
-        const parsedData = parseResponse.data || parseResponse;
-        const resumeSkills = parsedData.skills || [];
+        // Extract parsed data from interview-service response
+        const firstFile = parseResponse?.data?.files?.[0];
+        const parsedData = {
+          name: firstFile?.extracted_name || uploadResponse.data.candidate_name || candidateName || "Unknown Candidate",
+          email: firstFile?.extracted_emails?.[0] || "candidate@example.com",
+          phone: "",
+          raw_text: "",
+          skills: [],
+          experience_years: 0,
+          education: []
+        };
+        const resumeSkills: string[] = [];
 
         // Step 3: Create candidate in AI service
         const candidateData = {
@@ -128,6 +143,10 @@ export function FileUploadDemo() {
 
         // Step 4: Create demo job based on skills
         const demoJob = getDemoJobDescription(resumeSkills);
+        // Use selected job title from dropdown if provided
+        if (selectedJob) {
+          demoJob.title = selectedJob;
+        }
         console.log("Creating demo job:", demoJob);
         const aiJobResponse = await apiClient.createAIJob(demoJob);
         console.log("AI job created:", aiJobResponse);
@@ -347,17 +366,18 @@ export function FileUploadDemo() {
                 </Button>
               </div>
             )}
-            <div className="flex items-center gap-1 text-xs text-green-400 mt-1">
-            <Select>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Theme" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="light">Video Interview</SelectItem>
-                <SelectItem value="dark">Audio</SelectItem>
-                <SelectItem value="system">System</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-white/70">Job:</label>
+              <Select onValueChange={setSelectedJob}>
+                <SelectTrigger className="w-[220px]">
+                  <SelectValue placeholder="Select job from Active Listings" />
+                </SelectTrigger>
+                <SelectContent>
+                  {jobOptions.map((opt) => (
+                    <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 

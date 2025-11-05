@@ -334,6 +334,27 @@ class ApiClient {
     return response.json();
   }
 
+  // Use interview-service resume upload/parsing instead of text-service
+  async uploadResumeForParsing(file: File): Promise<ApiResponse<any>> {
+    const formData = new FormData();
+    formData.append('files', file);
+
+    const url = `${this.baseUrl}/interview/resumes/upload`;
+    const token = this.getToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    return response.json();
+  }
+
   async createAICandidate(candidateData: {
     name: string;
     email: string;

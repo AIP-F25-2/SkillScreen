@@ -14,7 +14,8 @@ from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
 import PyPDF2
 import pdfplumber
-from .common_utils import (
+# Import as a top-level module because this file is imported without package context inside the container
+from common_utils import (
     validate_email, validate_name, extract_year_from_date, 
     clean_text, calculate_duration_years, sanitize_input
 )
