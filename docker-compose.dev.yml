@@ -252,7 +252,6 @@ services:
       - LOG_FILE=user-service.log
       - ENABLE_SEQ=true
       - SEQ_URL=http://seq:5341
-    volumes:
       - ./_logs:/var/log/app
     depends_on:
       - seq
