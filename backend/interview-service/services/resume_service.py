@@ -62,7 +62,11 @@ class ResumeService:
         for file in files:
             file_result = await self._process_single_file(file, upload_path, upload_id)
             if file_result:
-                processed_files.append(file_result)
+                # Handle ZIP files that return a list of processed files
+                if isinstance(file_result, list):
+                    processed_files.extend(file_result)
+                else:
+                    processed_files.append(file_result)
         
         return processed_files
     
@@ -174,9 +178,11 @@ class ResumeService:
                 "status": "processed"
             }
             
-            # Handle ZIP files
+            # Handle ZIP files - extract and process all files inside
             if validation["file_type"] == "zip":
-                return self._process_zip_file(file_result, upload_path)
+                zip_processed_files = self._process_zip_file(file_result, save_result["file_path"], upload_path)
+                # Return list of processed files from ZIP (don't include ZIP file itself)
+                return zip_processed_files if zip_processed_files else []
             
             # Process resume file
             return self._process_resume_file_sync(file_result, save_result["file_path"])
@@ -190,32 +196,86 @@ class ResumeService:
                 "size": len(file_content) if 'file_content' in locals() else 0
             }
     
-    def _process_zip_file(self, file_result: Dict[str, Any], upload_path: Path) -> Dict[str, Any]:
-        """Process ZIP file and extract individual files"""
+    def _process_zip_file(self, zip_file_result: Dict[str, Any], zip_file_path: str, upload_path: Path) -> List[Dict[str, Any]]:
+        """Process ZIP file and extract individual files, returning list of processed resume files"""
+        processed_files = []
+        
         try:
-            zip_path = Path(file_result["url"].replace("/temp/resumes/", "temp/resumes/"))
+            zip_path = Path(zip_file_path)
+            logger.info(f"Extracting ZIP file: {zip_path}")
             
             # Extract files from ZIP
             extracted_files = self.file_processor.extract_zip_files(zip_path, upload_path)
+            logger.info(f"Extracted {len(extracted_files)} files from ZIP")
             
-            # Process each extracted file
-            processed_files = []
-            
+            # Process each extracted file as a resume
             for extracted_file in extracted_files:
-                if self.text_extractor.is_text_extractable(extracted_file["file_path"]):
-                    processed_file = self._process_resume_file_sync(extracted_file, extracted_file["file_path"])
+                try:
+                    # Check if file is a supported resume type
+                    file_ext = Path(extracted_file["filename"]).suffix.lower()
+                    if file_ext not in self.file_processor.SUPPORTED_EXTENSIONS:
+                        logger.warning(f"Skipping unsupported file from ZIP: {extracted_file['filename']}")
+                        # Include unsupported files in response with failed status
+                        processed_files.append({
+                            "filename": extracted_file["filename"],
+                            "url": extracted_file["url"],
+                            "size": extracted_file["size"],
+                            "status": "failed",
+                            "error": f"Unsupported file type: {file_ext}. Supported types: PDF, DOC, DOCX",
+                            "source": "zip"
+                        })
+                        continue
+                    
+                    # Process the extracted resume file
+                    processed_file = self._process_resume_file_sync(
+                        {
+                            "filename": extracted_file["filename"],
+                            "url": extracted_file["url"],
+                            "size": extracted_file["size"],
+                            "status": "processed",
+                            "source": "zip"
+                        },
+                        extracted_file["file_path"]
+                    )
+                    
                     if processed_file:
                         processed_files.append(processed_file)
+                        if processed_file.get("status") == "processed":
+                            logger.info(f"Successfully processed file from ZIP: {extracted_file['filename']}")
+                        else:
+                            logger.warning(f"Failed to process file from ZIP: {extracted_file['filename']}")
+                    else:
+                        # Include failed files in response
+                        processed_files.append({
+                            "filename": extracted_file["filename"],
+                            "url": extracted_file["url"],
+                            "size": extracted_file["size"],
+                            "status": "failed",
+                            "error": "Failed to process file",
+                            "source": "zip"
+                        })
+                        
+                except Exception as e:
+                    logger.error(f"Error processing extracted file {extracted_file['filename']}: {str(e)}")
+                    # Include error in response
+                    processed_files.append({
+                        "filename": extracted_file.get("filename", "unknown"),
+                        "url": extracted_file.get("url", ""),
+                        "size": extracted_file.get("size", 0),
+                        "status": "failed",
+                        "error": str(e),
+                        "source": "zip"
+                    })
+                    # Continue processing other files even if one fails
+                    continue
             
-            # ZIP files are processed, no additional fields needed
-            
-            return file_result
+            logger.info(f"ZIP file processed: {len(processed_files)} files successfully extracted and processed")
+            return processed_files
             
         except Exception as e:
-            logger.error(f"Error processing ZIP file: {str(e)}")
-            file_result["status"] = "failed"
-            file_result["error"] = str(e)
-            return file_result
+            logger.error(f"Error processing ZIP file {zip_file_result.get('filename')}: {str(e)}")
+            # Return empty list if ZIP processing fails completely
+            return []
     
     def _process_resume_file_sync(self, file_result: Dict[str, Any], file_path: str) -> Dict[str, Any]:
         """Process individual resume file and extract information"""
