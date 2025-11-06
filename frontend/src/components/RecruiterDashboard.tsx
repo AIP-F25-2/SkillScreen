@@ -215,10 +215,6 @@ export default function RecruiterDashboard() {
           <h1 className="text-4xl font-bold text-white mb-2">Recruiter Dashboard</h1>
           <p className="text-primary-100">Manage candidates, interviews, and hiring pipeline</p>
         </div>
-        {/* Document Upload */}
-        <div className="mb-8">
-          <FileUploadDemo />
-        </div>
         {/* Stats Overview */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <div className="bg-primary-200/20 backdrop-blur-sm rounded-xl p-6 border border-primary-200/30">
@@ -268,7 +264,12 @@ export default function RecruiterDashboard() {
         {/* Interviews Tab */}
         {activeTab === 'interviews' && (
           <div className="bg-primary-200/20 backdrop-blur-sm rounded-xl p-6 border border-primary-200/30">
+            {/* Document Upload */}
+            <div className="mb-8">
+              <FileUploadDemo />
+            </div>
             <div className="flex justify-between items-center mb-6">
+              
               <h2 className="text-2xl font-semibold text-white flex items-center gap-2">
                 <FileText className="w-6 h-6" />
                 All Interviews
