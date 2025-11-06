@@ -1,10 +1,18 @@
 # app/controllers/admin_controller.py
-import os
-from flask import Blueprint, request, jsonify, current_app, redirect
+import mimetypes
+from flask import Blueprint, request, jsonify, redirect, current_app
 from ..services.storage_service import StorageService
 from ..utils.filename import secure_part
+from urllib.parse import urlsplit, urlunsplit, quote
 
 admin_bp = Blueprint("admin", __name__)
+
+def _build_blob_url(container_url: str, blob_name: str) -> str:
+    u = urlsplit(container_url)
+    parts = [p for p in blob_name.split("/") if p]
+    encoded_path = "/".join(quote(p, safe="~()*!.'") for p in parts)
+    new_path = (u.path.rstrip("/") + "/" + encoded_path).replace("//", "/")
+    return urlunsplit((u.scheme, u.netloc, new_path, u.query, u.fragment))
 
 @admin_bp.route("/videos", methods=["GET"])
 def get_all_videos():
@@ -17,8 +25,9 @@ def get_all_videos():
 
 @admin_bp.route("/videos/<user_id>", methods=["GET"])
 def get_user_videos(user_id):
+    user_id = secure_part(user_id)
     vids = StorageService.list_files(user_id, include_exts=[".mp4"]) or []
-    return jsonify({"user": secure_part(user_id), "videos": vids}), 200
+    return jsonify({"user": user_id, "videos": vids}), 200
 
 @admin_bp.route("/video/<user_id>/<filename>", methods=["DELETE"])
 def delete_video(user_id, filename):
@@ -41,7 +50,10 @@ def delete_all_videos():
 
 @admin_bp.route("/video/<user_id>/preview/<filename>", methods=["GET"])
 def admin_preview_video(user_id, filename):
-    return redirect(f"/video/{secure_part(user_id)}/{secure_part(filename)}", code=302)
+    user_id = secure_part(user_id); filename = secure_part(filename)
+    container_url = current_app.config.get("AZURE_BLOB_CONTAINER_URL")
+    blob_url = _build_blob_url(container_url, f"{user_id}/{filename}")
+    return redirect(blob_url, code=302)
 
 @admin_bp.route("/search/users", methods=["GET"])
 def search_users():
@@ -70,8 +82,9 @@ def get_all_files():
 
 @admin_bp.route("/files/<user_id>", methods=["GET"])
 def get_user_files(user_id):
+    user_id = secure_part(user_id)
     files = StorageService.list_files(user_id, exclude_exts=[".mp4", ".webm"]) or []
-    return jsonify({"user": secure_part(user_id), "files": files}), 200
+    return jsonify({"user": user_id, "files": files}), 200
 
 @admin_bp.route("/file/<user_id>/<filename>", methods=["DELETE"])
 def delete_user_file(user_id, filename):
@@ -92,7 +105,6 @@ def delete_all_general_files():
         out[u] = StorageService.delete_all(u, exclude_exts=[".mp4", ".webm"])
     return jsonify({"status": "deleted all general files", "deleted_files": out}), 200
 
-# 🔎 NEW: search general files across all users
 @admin_bp.route("/search/files", methods=["GET"])
 def search_files():
     q = (request.args.get("q") or "").lower()
@@ -106,10 +118,12 @@ def search_files():
             out[u] = files
     return jsonify({"query": q, "matched_files": out}), 200
 
-# 👀 NEW: preview any general file (redirects to /file/<user_id>/<filename>)
 @admin_bp.route("/file/<user_id>/preview/<filename>", methods=["GET"])
 def admin_preview_file(user_id, filename):
-    return redirect(f"/file/{secure_part(user_id)}/{secure_part(filename)}", code=302)
+    user_id = secure_part(user_id); filename = secure_part(filename)
+    container_url = current_app.config.get("AZURE_BLOB_CONTAINER_URL")
+    blob_url = _build_blob_url(container_url, f"{user_id}/{filename}")
+    return redirect(blob_url, code=302)
 
 @admin_bp.route("/user", methods=["POST"])
 def create_user():
@@ -129,12 +143,17 @@ def get_all_users():
 
 @admin_bp.route("/user/<user_id>", methods=["GET"])
 def get_user(user_id):
-    from os.path import isdir
-    folder = StorageService.user_folder(user_id)
-    if isdir(folder):
-        vids = StorageService.list_files(user_id, include_exts=[".mp4"]) or []
-        return jsonify({"user_id": secure_part(user_id), "videos": vids}), 200
-    return jsonify({"error": "user not found"}), 404
+    user_id = secure_part(user_id)
+    users = set(StorageService.list_users())
+    if user_id not in users:
+        files = StorageService.list_files(user_id) or []
+        if not files:
+            return jsonify({"error": "user not found"}), 404
+        vids = [f for f in files if f.lower().endswith(".mp4")]
+        return jsonify({"user_id": user_id, "videos": vids}), 200
+
+    vids = StorageService.list_files(user_id, include_exts=[".mp4"]) or []
+    return jsonify({"user_id": user_id, "videos": vids}), 200
 
 @admin_bp.route("/user/<user_id>", methods=["PUT"])
 def update_user(user_id):
@@ -143,23 +162,41 @@ def update_user(user_id):
     if not new_user_id:
         return jsonify({"error": "Missing new_user_id"}), 400
 
-    base = current_app.config["UPLOAD_FOLDER"]
-    old_folder = os.path.join(base, secure_part(user_id))
-    new_folder = os.path.join(base, secure_part(new_user_id))
+    old_user = secure_part(user_id)
+    new_user = secure_part(new_user_id)
 
-    if not os.path.exists(old_folder):
-        return jsonify({"error": "user not found"}), 404
-    if os.path.exists(new_folder):
+    if new_user in set(StorageService.list_users()):
         return jsonify({"error": "new user_id already exists"}), 400
 
-    os.rename(old_folder, new_folder)
+    files = StorageService.list_files(old_user) or []
+    if not files:
+        return jsonify({"error": "user not found or no files"}), 404
+
+    moved, failed = [], []
+    for fname in files:
+        try:
+            tmp_path = StorageService.download_to_temp(old_user, fname)
+            ctype = mimetypes.guess_type(fname)[0] or "application/octet-stream"
+            StorageService.upload_from_path(new_user, tmp_path, fname, content_type=ctype)
+            StorageService.delete_file(old_user, fname)
+            moved.append(fname)
+        except Exception as e:
+            failed.append({"file": fname, "error": str(e)})
+
+    if moved and not failed:
+        try:
+            StorageService.delete_user(old_user)
+        except Exception:
+            pass
+
     return jsonify({
         "status": "user renamed",
-        "old_user_id": secure_part(user_id),
-        "new_user_id": secure_part(new_user_id)
+        "old_user_id": old_user,
+        "new_user_id": new_user,
+        "moved_files": moved,
+        "failed": failed
     }), 200
 
-# 🗑️ NEW: delete a single user and ALL their data
 @admin_bp.route("/user/<user_id>", methods=["DELETE"])
 def delete_user(user_id):
     ok = StorageService.delete_user(user_id)
@@ -167,7 +204,6 @@ def delete_user(user_id):
         return jsonify({"status": "user deleted", "user_id": secure_part(user_id)}), 200
     return jsonify({"error": "user not found"}), 404
 
-# 🗑️ NEW: delete ALL users and ALL their data
 @admin_bp.route("/users", methods=["DELETE"])
 def delete_all_users():
     deleted = StorageService.delete_all_users()

@@ -17,30 +17,16 @@
     button.delete { background: #dc3545; }
     button.preview { background: #17a2b8; }
     .flex-row { display: flex; align-items: center; margin-bottom: 10px; gap: 5px; flex-wrap: wrap; }
-    input[type=text], input[type=file], input[type=password] { padding: 5px; border: 1px solid #ccc; border-radius: 4px; }
+    input[type=text], input[type=file] { padding: 5px; border: 1px solid #ccc; border-radius: 4px; }
     .section { padding: 20px; background: #fff; border-radius: 6px; margin-bottom: 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
     .recording-section video { max-width: 400px; border: 1px solid #ccc; margin-top: 10px; border-radius: 4px; }
     .hint { font-size: 12px; color: #666; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    #loginResponse { background: #f8f9fa; border: 1px solid #ddd; padding: 10px; border-radius: 4px; white-space: pre-wrap; font-size: 13px; }
   </style>
 </head>
 <body>
 <div class="container">
   <h1>Admin Video Dashboard</h1>
-
-  <!-- 🔐 LOGIN SECTION -->
-  <div class="section">
-    <h2>Login</h2>
-    <div class="flex-row">
-      <input type="text" id="loginUsername" placeholder="Username">
-      <input type="password" id="loginPassword" placeholder="Password">
-      <button onclick="login()">Login</button>
-      <input type="text" id="tokenInput" placeholder="Token (auto-filled)" style="flex:1;">
-      <button onclick="setManualToken()">Set Token</button>
-    </div>
-    <div id="loginResponse"></div>
-  </div>
 
   <!-- Recording Section -->
   <div class="section recording-section">
@@ -104,131 +90,53 @@
 </div>
 
 <script>
-/* ==========================
-   🔐 TOKEN & LOGIN HANDLING
-   ========================== */
-
-let API_TOKEN = "";
-
-// Monkey-patch fetch to include Authorization header automatically
-const originalFetch = window.fetch;
-window.fetch = async (url, options = {}) => {
-  options.headers = options.headers || {};
-  if (API_TOKEN) {
-    if (!(options.headers instanceof Headers)) {
-      options.headers['Authorization'] = `Bearer ${API_TOKEN}`;
-    } else {
-      options.headers.append('Authorization', `Bearer ${API_TOKEN}`);
-    }
-  }
-  return originalFetch(url, options);
-};
-
-// Unified JSON fetch helper
-async function fetchJSON(url, options = {}) {
-  options.headers = options.headers || {};
-  if (API_TOKEN) options.headers['Authorization'] = `Bearer ${API_TOKEN}`;
+async function fetchJSON(url, options) {
   const res = await fetch(url, options);
   const text = await res.text();
   let data;
   try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
   if (!res.ok) {
-    const msg = (data.error || data.message) ? (data.error || data.message) : `HTTP ${res.status}`;
+    const msg = (data && (data.error || data.message)) ? (data.error || data.message) : `HTTP ${res.status}`;
     throw new Error(msg);
   }
   return data;
 }
 
-// Login function
-async function login() {
-  const username = document.getElementById("loginUsername").value.trim();
-  const password = document.getElementById("loginPassword").value.trim();
-  const responseBox = document.getElementById("loginResponse");
-  responseBox.textContent = "Logging in...";
-
-  try {
-    const res = await fetch("http://localhost:8080/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
-    });
-    const data = await res.json();
-    responseBox.textContent = JSON.stringify(data, null, 2);
-
-    if (res.ok && data.token) {
-      API_TOKEN = data.token;
-      document.getElementById("tokenInput").value = API_TOKEN;
-      alert("✅ Login successful! Token set automatically.");
-    } else {
-      alert("Login failed — check response below.");
-    }
-  } catch (err) {
-    responseBox.textContent = `Error: ${err.message}`;
-  }
-}
-
-// Allow manual token entry
-function setManualToken() {
-  const val = document.getElementById("tokenInput").value.trim();
-  if (!val) return alert("Enter a token first!");
-  API_TOKEN = val;
-  alert("✅ Token updated manually!");
-}
-
-/* ==========================
-   🎥 RECORDING & DASHBOARD
-   ========================== */
-
+// ---------------------- Recording (forced chunking) ----------------------
 let mediaRecorder, liveStream;
 let chunkIndex = 0;
 let requestTimer = null;
-let sessionId = null;
+let sessionId = null;   // helps uniqueness if multiple sessions
 
-const CHUNK_MS = 1000;
+const CHUNK_MS = 1000; // 1s chunks; adjust as you like
 
 function chunkName(idx) {
   const n = (idx + 1).toString().padStart(5, "0");
-  return `chunk-${n}.webm`;
+  return `chunk-${n}.webm`; // server sorts on numeric part
 }
 
 document.getElementById('startRecBtn').addEventListener('click', async () => {
   const userId = document.getElementById('recordUserId').value.trim();
   if (!userId) return alert('Enter User ID');
 
-  // Create a session ID once per recording
-  sessionId = Date.now().toString(36);
-
-  // Tell backend to reset using THIS session id
-  await fetchJSON('/media/reset_chunks', {
+  // reset any previous chunks on server
+  await fetchJSON('/reset_chunks', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ user_id: userId, session_id: sessionId })
+    body: JSON.stringify({ user_id: userId })
   });
 
-  try {
-    // Ask permissions
-    liveStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-  } catch (err) {
-    alert('Camera/Mic permission denied or unavailable. Please allow access and try again.');
-    return;
-  }
-
+  // start stream
+  liveStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
   const preview = document.getElementById('livePreview');
   preview.srcObject = liveStream;
   preview.style.display = 'block';
 
   chunkIndex = 0;
+  sessionId = Date.now().toString(36);
 
-  // Pick a supported mimeType (fallback if needed)
-  let mime = 'video/webm;codecs=vp8,opus';
-  if (!MediaRecorder.isTypeSupported(mime)) {
-    mime = 'video/webm;codecs=vp9,opus';
-  }
-  if (!MediaRecorder.isTypeSupported(mime)) {
-    mime = 'video/webm';
-  }
-
-  mediaRecorder = new MediaRecorder(liveStream, { mimeType: mime });
+  // Don’t rely on timeslice (inconsistent across browsers). Start and pull data every CHUNK_MS.
+  mediaRecorder = new MediaRecorder(liveStream, { mimeType: 'video/webm;codecs=vp8,opus' });
 
   mediaRecorder.ondataavailable = async (e) => {
     if (!e.data || e.data.size === 0) return;
@@ -238,20 +146,22 @@ document.getElementById('startRecBtn').addEventListener('click', async () => {
     const form = new FormData();
     form.append('file', new Blob([e.data], { type: 'video/webm' }), filename);
     form.append('user_id', userId);
-    form.append('chunk_index', String(idx));
-    form.append('session_id', sessionId);
+    form.append('chunk_index', String(idx));       // backend can track
+    form.append('session_id', sessionId);          // optional for your own audit
+    // we’ll give the final total at stop via /chunks/status just before finalize
 
     try {
-      await fetch('/media/upload_chunk', { method: 'POST', body: form });
+      await fetch('/upload_chunk', { method: 'POST', body: form });
     } catch (err) {
       console.error('Chunk upload failed:', err);
     }
   };
 
-  mediaRecorder.start();
+  mediaRecorder.start(); // no timeslice
+  // Force periodic chunks across browsers
   requestTimer = setInterval(() => {
     if (mediaRecorder && mediaRecorder.state === 'recording') {
-      try { mediaRecorder.requestData(); } catch (e) {}
+      try { mediaRecorder.requestData(); } catch (e) { /* ignore */ }
     }
   }, CHUNK_MS);
 
@@ -266,19 +176,26 @@ document.getElementById('stopRecBtn').addEventListener('click', async () => {
   try { clearInterval(requestTimer); } catch(e) {}
   requestTimer = null;
 
-  try { mediaRecorder && mediaRecorder.requestData(); } catch(e) {}
-  try { mediaRecorder && mediaRecorder.stop(); } catch (e) {}
-  try { liveStream && liveStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+  // Stop recorder & stream
+  try { mediaRecorder.requestData(); } catch(e) {}
+  try { mediaRecorder.stop(); } catch (e) {}
+  try { liveStream.getTracks().forEach(t => t.stop()); } catch (e) {}
   document.getElementById('livePreview').style.display = 'none';
   document.getElementById('startRecBtn').disabled = false;
   document.getElementById('stopRecBtn').disabled = true;
 
-  // tiny drain time
+  // small delay to ensure final ondataavailable fires & uploads
   await new Promise(r => setTimeout(r, 400));
 
-  // Check missing with SAME session
+  // Ask backend what it has; if missing chunks, we can retry those (client keeps no cache here,
+  // but you could store blobs in memory to re-send if you want).
+  let status;
   try {
-    const stat = await fetchJSON(`/media/chunks/status?user_id=${encodeURIComponent(userId)}&session_id=${encodeURIComponent(sessionId)}`);
+    status = await fetchJSON(`/admin/search/users?q=${encodeURIComponent('')}`); // noop to warm server
+  } catch (e) {}
+
+  try {
+    const stat = await fetchJSON(`/chunks/status?user_id=${encodeURIComponent(userId)}`);
     if (stat.missing && stat.missing.length) {
       alert(`Server is missing ${stat.missing.length} chunks: [${stat.missing.join(', ')}]. Cannot merge.`);
       return;
@@ -287,12 +204,12 @@ document.getElementById('stopRecBtn').addEventListener('click', async () => {
     console.warn('Status check failed (continuing to finalize):', e.message);
   }
 
-  // Finalize with SAME session
+  // Merge
   try {
-    const data = await fetchJSON('/media/finalize_upload', {
+    const data = await fetchJSON('/finalize_upload', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ user_id: userId, session_id: sessionId })
+      body: JSON.stringify({ user_id: userId })
     });
     alert(`Recording finalized: ${data.file}`);
     loadUserVideos(userId);
@@ -301,12 +218,9 @@ document.getElementById('stopRecBtn').addEventListener('click', async () => {
   }
 });
 
-/* ==========================
-   👥 USERS / FILES / VIDEOS
-   ========================== */
-
+// ---------------------- Users ----------------------
 async function loadUsers() {
-  const data = await fetchJSON('/media/admin/users');
+  const data = await fetchJSON('/admin/users');
   const tbody = document.querySelector('#usersTable tbody');
   tbody.innerHTML = '';
   (data.users || []).forEach(user => {
@@ -327,7 +241,7 @@ async function loadUsers() {
 async function createUser() {
   const userId = document.getElementById('newUserId').value.trim();
   if (!userId) return alert('Enter User ID');
-  await fetchJSON('/media/admin/user', {
+  await fetchJSON('/admin/user', {
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({user_id: userId})
@@ -338,7 +252,7 @@ async function createUser() {
 async function renameUser(oldId) {
   const newId = prompt('New User ID for ' + oldId);
   if (!newId) return;
-  await fetchJSON(`/media/admin/user/${oldId}`, {
+  await fetchJSON(`/admin/user/${oldId}`, {
     method:'PUT',
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({new_user_id: newId})
@@ -348,19 +262,20 @@ async function renameUser(oldId) {
 
 async function deleteUser(userId) {
   if (!confirm(`Delete user ${userId}?`)) return;
-  await fetchJSON(`/media/admin/user/${userId}`, { method:'DELETE' });
+  await fetchJSON(`/admin/user/${userId}`, { method:'DELETE' });
   loadUsers();
 }
 
 async function deleteAllUsers() {
   if (!confirm('Delete ALL users?')) return;
-  await fetchJSON('/media/admin/users', { method:'DELETE' });
+  await fetchJSON('/admin/users', { method:'DELETE' });
   loadUsers();
 }
 
+// ---------------------- Videos ----------------------
 async function loadUserVideos(userId) {
   const div = document.getElementById(`videos-${userId}`);
-  const data = await fetchJSON(`/media/admin/videos/${userId}`);
+  const data = await fetchJSON(`/admin/videos/${userId}`);
   if (!data.videos || data.videos.length === 0) {
     div.innerHTML = 'No videos';
     return;
@@ -377,18 +292,18 @@ async function loadUserVideos(userId) {
 
 async function deleteVideo(userId, filename) {
   if (!confirm(`Delete video ${filename}?`)) return;
-  await fetchJSON(`/media/admin/video/${userId}/${filename}`, { method:'DELETE' });
+  await fetchJSON(`/admin/video/${userId}/${filename}`, { method:'DELETE' });
   loadUserVideos(userId);
 }
 
 function previewVideo(userId, filename) {
-  const win = window.open(`/media/admin/video/${userId}/preview/${filename}`, '_blank');
+  const win = window.open(`/admin/video/${userId}/preview/${filename}`, '_blank');
   if (!win) alert('Popup blocked, enable popups to preview');
 }
 
 async function searchVideos() {
   const query = document.getElementById('videoQuery').value.trim();
-  const data = await fetchJSON(`/media/admin/search/videos?q=${encodeURIComponent(query)}`);
+  const data = await fetchJSON(`/admin/search/videos?q=${encodeURIComponent(query)}`);
   const tbody = document.querySelector('#videosTable tbody');
   tbody.innerHTML = '';
   for (let user in data.matched_videos) {
@@ -405,6 +320,7 @@ async function searchVideos() {
   }
 }
 
+// ---------------------- Files ----------------------
 async function uploadGeneralFile() {
   const userId = document.getElementById('fileUserId').value.trim();
   const fileInput = document.getElementById('generalFile');
@@ -414,7 +330,7 @@ async function uploadGeneralFile() {
   formData.append('user_id', userId);
   formData.append('file', fileInput.files[0]);
 
-  const res = await fetch('/media/files/upload', { method:'POST', body:formData });
+  const res = await fetch('/upload_general_file', { method:'POST', body:formData });
   const data = await res.json();
 
   if (!res.ok) {
@@ -427,7 +343,7 @@ async function uploadGeneralFile() {
 
 async function loadUserFiles(userId) {
   const div = document.getElementById(`files-${userId}`);
-  const data = await fetchJSON(`/media/admin/files/${userId}`);
+  const data = await fetchJSON(`/admin/files/${userId}`);
   if (!data.files || data.files.length === 0) {
     div.innerHTML = 'No files';
     return;
@@ -444,31 +360,34 @@ async function loadUserFiles(userId) {
 
 async function deleteFile(userId, filename) {
   if (!confirm(`Delete file ${filename}?`)) return;
-  await fetchJSON(`/media/admin/file/${userId}/${filename}`, { method:'DELETE' });
+  await fetchJSON(`/admin/file/${userId}/${filename}`, { method:'DELETE' });
   loadUserFiles(userId);
 }
 
 function previewFile(userId, filename) {
-  window.open(`/media/file/${userId}/${filename}`, '_blank');
+  window.open(`/file/${userId}/${filename}`, '_blank');
 }
 
 async function searchFiles() {
   const query = document.getElementById('fileQuery').value.trim();
-  const data = await fetchJSON(`/media/admin/search/files?q=${encodeURIComponent(query)}`);
+  const data = await fetchJSON(`/admin/search/files?q=${encodeURIComponent(query)}`);
   const tbody = document.querySelector('#filesTable tbody');
   tbody.innerHTML = '';
   for (let user in data.matched_files) {
     data.matched_files[user].forEach(file => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${user}</td><td>${file}</td>
-        <td><button class="preview" onclick="previewFile('${user}','${file}')">Open</button>
-        <button class="delete" onclick="deleteFile('${user}','${file}')">Delete</button></td>`;
+      tr.innerHTML = `<td>${user}</td>
+        <td>${file}</td>
+        <td>
+          <button class="preview" onclick="previewFile('${user}','${file}')">Open</button>
+          <button class="delete" onclick="deleteFile('${user}','${file}')">Delete</button>
+        </td>`;
       tbody.appendChild(tr);
     });
   }
 }
 
-// Auto-load users on page load
+// Initial load
 loadUsers();
 </script>
 </body>
