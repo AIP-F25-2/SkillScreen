@@ -34,6 +34,23 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_ZIP_SIZE = 50 * 1024 * 1024; // 50MB
 const SUPPORTED_TYPES = ['.pdf', '.doc', '.docx', '.zip'];
 
+// Cryptographically secure random string generator
+// Uses Web Crypto API for secure random number generation
+const generateSecureRandomString = (length: number = 9): string => {
+  if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
+    const array = new Uint8Array(length * 2); // Generate extra to ensure we have enough after filtering
+    window.crypto.getRandomValues(array);
+    // Convert to base36 and filter out non-alphanumeric, then take the required length
+    return Array.from(array, byte => byte.toString(36))
+      .join('')
+      .replace(/[^a-z0-9]/g, '')
+      .substring(0, length)
+      .padStart(length, '0'); // Pad if we don't have enough characters
+  }
+  // Fallback (shouldn't happen in browser, but TypeScript requires it)
+  throw new Error('Cryptographically secure random number generator not available');
+};
+
 export function FileUploadDemo() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -182,11 +199,11 @@ export function FileUploadDemo() {
       
       for (const candidate of processedCandidates) {
         try {
-          // Use database ID if available, otherwise generate a temporary one
-          const candidateId = candidate.id || `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          // Use database ID if available, otherwise generate a temporary one using cryptographically secure random
+          const candidateId = candidate.id || `temp_${Date.now()}_${generateSecureRandomString(9)}`;
           
-          // Generate unique session_id for the interview
-          const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}_${candidateId}`;
+          // Generate unique session_id for the interview using cryptographically secure random
+          const sessionId = `session_${Date.now()}_${generateSecureRandomString(9)}_${candidateId}`;
           
           console.log(`📧 Sending invitation email to ${candidate.extracted_emails[0]} for candidate ${candidateId}...`);
           
