@@ -211,6 +211,17 @@ class ResumeService:
             # Process each extracted file as a resume
             for extracted_file in extracted_files:
                 try:
+                    # Ignore macOS metadata files and folders (e.g., __MACOSX/, files starting with ._)
+                    filename_lower = str(extracted_file.get("filename", "")).lower()
+                    file_url_lower = str(extracted_file.get("url", "")).lower()
+                    if (
+                        filename_lower.startswith("._")
+                        or "/__macosx/" in file_url_lower
+                        or filename_lower.startswith("__macosx/")
+                        or extracted_file.get("size", 0) == 0
+                    ):
+                        logger.info(f"Skipping macOS metadata/empty file from ZIP: {extracted_file.get('filename')}")
+                        continue
                     # Check if file is a supported resume type
                     file_ext = Path(extracted_file["filename"]).suffix.lower()
                     if file_ext not in self.file_processor.SUPPORTED_EXTENSIONS:

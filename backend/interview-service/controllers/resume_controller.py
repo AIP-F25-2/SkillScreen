@@ -27,7 +27,7 @@ def create_response(data, success=True, error=None):
 @router.post("/upload", response_model=ResumeUploadResponse)
 async def upload_resumes(
     files: List[UploadFile] = File(..., description="Resume files to upload (PDF, DOC, DOCX, ZIP)"),
-    organization_id: str = Form(..., description="Organization ID for the candidates")
+    organization_id: str = Form(default="00000000-0000-0000-0000-000000000001", description="Organization ID for the candidates")
 ):
     """
     Upload single or multiple resume files for a specific organization

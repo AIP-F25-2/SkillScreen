@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Request, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timezone
 import uuid
 import logging
@@ -33,6 +34,15 @@ except Exception as e:
     logger.error(f"Failed to initialize database: {e}")
 
 app = FastAPI(title="Interview Service")
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for development
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Include resume router
 app.include_router(resume_router)
@@ -108,6 +118,22 @@ async def get_session(session_id: str):
         return create_response({"error": "Session not found"}, success=False)
     
     return create_response(sessions_db[session_id])
+
+# ========================================
+# Interview Listing (for dashboard)
+# ========================================
+
+@app.get("/api/interviews")
+async def list_interviews():
+    """Return all known interviews from the interview-service in-memory store.
+    This augments media-service data so the UI can show scheduled/in-progress items
+    created via token/email flows even if media-service persistence isn't available.
+    """
+    interviews = list(sessions_db.values())
+    return create_response({
+        "interviews": interviews,
+        "count": len(interviews)
+    })
 
 @app.patch("/api/session/{session_id}/status")
 async def update_session_status(session_id: str, request: Request):

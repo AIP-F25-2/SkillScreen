@@ -87,6 +87,9 @@ async def verify_jwt(request: Request, call_next):
         if request.url.path.startswith("/text-service/"):
             return await call_next(request)
         
+        # TEMP: allow interview routes during development/testing without auth
+        if request.url.path.startswith("/interview/"):
+            return await call_next(request)
 
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):

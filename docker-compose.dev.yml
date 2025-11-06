@@ -167,6 +167,8 @@ services:
     container_name: interview-service
     ports:
       - "8003:8080"
+    env_file:
+      - ./backend/interview-service/.env
     environment:
       - PORT=8080
       - HOST=0.0.0.0
