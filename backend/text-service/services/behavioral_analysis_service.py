@@ -6,7 +6,7 @@ Uses machine learning models to analyze candidate behavior patterns during inter
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional, Tuple, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from collections import deque
 import logging
 from sklearn.ensemble import IsolationForest
@@ -58,7 +58,6 @@ class BehavioralAnalysisService:
         self,
         response_text: str,
         interview_id: str,
-        previous_responses: List[InterviewResponse],
         response_time_seconds: Optional[float] = None,
         question_number: int = 0
     ) -> Dict:
@@ -105,7 +104,7 @@ class BehavioralAnalysisService:
             
             if len(profile['response_lengths']) >= 3:
                 # ML-based analysis
-                ml_results = await self._ml_behavioral_analysis(profile)
+                ml_results = self._ml_behavioral_analysis(profile)
                 analysis_results.update(ml_results)
             
             # Pattern-based analysis (fallback and supplement)
@@ -178,7 +177,7 @@ class BehavioralAnalysisService:
                 'response_time': 0.0
             }
     
-    async def _ml_behavioral_analysis(self, profile: Dict) -> Dict:
+    def _ml_behavioral_analysis(self, profile: Dict) -> Dict:
         """Perform ML-based behavioral analysis"""
         try:
             if not self.isolation_forest or len(profile['features']) < 3:
@@ -299,7 +298,7 @@ class BehavioralAnalysisService:
             avg_sentence_length = len(words) / max(1, len(sentences))
             
             # Vocabulary diversity
-            unique_words = len(set(word.lower() for word in words))
+            unique_words = len({word.lower() for word in words})
             vocabulary_diversity = unique_words / len(words)
             
             # Combine metrics
@@ -462,7 +461,7 @@ class BehavioralAnalysisService:
                 'message': str(e)
             }
     
-    def cleanup_old_profiles(self, max_age_hours: int = 24):
+    def cleanup_old_profiles(self):
         """Clean up old behavior profiles"""
         try:
             # In production, this would check timestamps

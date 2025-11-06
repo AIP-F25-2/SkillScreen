@@ -6,11 +6,12 @@ Uses machine learning models (XGBoost, LightGBM) to predict response quality sco
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional, Tuple, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 import pickle
 import os
 from pathlib import Path
+import aiofiles
 
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.preprocessing import StandardScaler
@@ -45,7 +46,7 @@ class QualityPredictionService:
         self.model_trained = False
         self.model_path = Path(__file__).parent.parent / 'models' / 'quality_predictor.pkl'
         self._initialize_models()
-        self._load_or_train_model()
+        # Note: _load_or_train_model is async, call it separately if needed
     
     def _initialize_models(self):
         """Initialize ML models for quality prediction"""
@@ -80,6 +81,8 @@ class QualityPredictionService:
             self.models['random_forest'] = RandomForestRegressor(
                 n_estimators=100,
                 max_depth=10,
+                min_samples_leaf=1,
+                max_features='sqrt',
                 random_state=42
             )
             
@@ -96,12 +99,12 @@ class QualityPredictionService:
             log_error(f"❌ Failed to initialize quality prediction models: {e}")
             self.models = {}
     
-    def _load_or_train_model(self):
+    async def _load_or_train_model(self):
         """Load trained model or train a new one"""
         try:
             if self.model_path.exists():
-                with open(self.model_path, 'rb') as f:
-                    model_data = pickle.load(f)
+                async with aiofiles.open(self.model_path, 'rb') as f:
+                    model_data = pickle.loads(await f.read())
                     self.models['primary'] = model_data['model']
                     self.scaler = model_data['scaler']
                     self.feature_names = model_data['feature_names']
@@ -124,87 +127,87 @@ class QualityPredictionService:
     ) -> Dict:
         """Predict response quality score using ML models"""
         try:
-            # Extract features
             features = self._extract_features(question, response, candidate_context, job_context)
+            feature_array_scaled = self._prepare_features_for_prediction(features)
+            predictions, confidence_scores = self._get_model_predictions(feature_array_scaled)
             
-            # Convert to numpy array
-            feature_array = np.array([list(features.values())])
-            self.feature_names = list(features.keys())
-            
-            # Scale features
-            if self.model_trained and hasattr(self.scaler, 'mean_'):
-                feature_array_scaled = self.scaler.transform(feature_array)
-            else:
-                # If model not trained, use basic scaling
-                feature_array_scaled = feature_array
-            
-            # Predict using primary model or best available
-            predictions = {}
-            confidence_scores = {}
-            
-            # Try primary model first
-            if self.model_trained and 'primary' in self.models:
-                model = self.models['primary']
-                prediction = model.predict(feature_array_scaled)[0]
-                predictions['primary'] = float(prediction)
-                confidence_scores['primary'] = self._calculate_confidence(model, feature_array_scaled)
-            
-            # Try other models for ensemble
-            for model_name, model in self.models.items():
-                if model_name == 'primary':
-                    continue
-                try:
-                    if hasattr(model, 'predict'):
-                        pred = model.predict(feature_array_scaled)[0]
-                        predictions[model_name] = float(pred)
-                        confidence_scores[model_name] = self._calculate_confidence(model, feature_array_scaled)
-                except Exception as e:
-                    log_warning(f"Error predicting with {model_name}: {e}")
-            
-            # Ensemble prediction (weighted average)
             if predictions:
-                # Weight models by availability and performance
-                weights = {
-                    'primary': 0.4,
-                    'xgboost': 0.25,
-                    'lightgbm': 0.25,
-                    'gradient_boosting': 0.05,
-                    'random_forest': 0.05
-                }
-                
-                ensemble_score = sum(
-                    predictions.get(name, 0) * weights.get(name, 0.1)
-                    for name in weights.keys()
-                    if name in predictions
-                )
-                
-                # Normalize weights
-                total_weight = sum(weights.get(name, 0) for name in predictions.keys())
-                if total_weight > 0:
-                    ensemble_score = ensemble_score / total_weight * sum(weights.values())
-                
-                # Calculate overall confidence
-                avg_confidence = np.mean(list(confidence_scores.values())) if confidence_scores else 0.7
-                
-                # Get feature importance if available
-                feature_importance = self._get_feature_importance()
-                
-                return {
-                    'predicted_score': round(float(ensemble_score), 2),
-                    'score_range': (0.0, 10.0),
-                    'confidence': round(float(avg_confidence), 2),
-                    'model_predictions': predictions,
-                    'feature_importance': feature_importance,
-                    'features_used': len(self.feature_names),
-                    'prediction_timestamp': datetime.utcnow().isoformat()
-                }
+                return self._build_prediction_result(predictions, confidence_scores, features)
             else:
-                # Fallback to rule-based prediction
                 return self._fallback_prediction(features)
                 
         except Exception as e:
             log_error(f"Error predicting quality score: {e}")
             return self._fallback_prediction({})
+    
+    def _prepare_features_for_prediction(self, features: Dict) -> np.ndarray:
+        """Prepare and scale features for prediction"""
+        feature_array = np.array([list(features.values())])
+        self.feature_names = list(features.keys())
+        
+        if self.model_trained and hasattr(self.scaler, 'mean_'):
+            return self.scaler.transform(feature_array)
+        else:
+            return feature_array
+    
+    def _get_model_predictions(self, feature_array_scaled: np.ndarray) -> Tuple[Dict, Dict]:
+        """Get predictions from all available models"""
+        predictions = {}
+        confidence_scores = {}
+        
+        # Try primary model first
+        if self.model_trained and 'primary' in self.models:
+            model = self.models['primary']
+            prediction = model.predict(feature_array_scaled)[0]
+            predictions['primary'] = float(prediction)
+            confidence_scores['primary'] = self._calculate_confidence(feature_array_scaled)
+        
+        # Try other models for ensemble
+        for model_name, model in self.models.items():
+            if model_name == 'primary':
+                continue
+            try:
+                if hasattr(model, 'predict'):
+                    pred = model.predict(feature_array_scaled)[0]
+                    predictions[model_name] = float(pred)
+                    confidence_scores[model_name] = self._calculate_confidence(feature_array_scaled)
+            except Exception as e:
+                log_warning(f"Error predicting with {model_name}: {e}")
+        
+        return predictions, confidence_scores
+    
+    def _build_prediction_result(self, predictions: Dict, confidence_scores: Dict, features: Dict) -> Dict:
+        """Build final prediction result from model predictions"""
+        weights = {
+            'primary': 0.4,
+            'xgboost': 0.25,
+            'lightgbm': 0.25,
+            'gradient_boosting': 0.05,
+            'random_forest': 0.05
+        }
+        
+        ensemble_score = sum(
+            predictions.get(name, 0) * weights.get(name, 0.1)
+            for name in weights.keys()
+            if name in predictions
+        )
+        
+        total_weight = sum(weights.get(name, 0) for name in predictions.keys())
+        if total_weight > 0:
+            ensemble_score = ensemble_score / total_weight * sum(weights.values())
+        
+        avg_confidence = np.mean(list(confidence_scores.values())) if confidence_scores else 0.7
+        feature_importance = self._get_feature_importance()
+        
+        return {
+            'predicted_score': round(float(ensemble_score), 2),
+            'score_range': (0.0, 10.0),
+            'confidence': round(float(avg_confidence), 2),
+            'model_predictions': predictions,
+            'feature_importance': feature_importance,
+            'features_used': len(self.feature_names),
+            'prediction_timestamp': datetime.now(timezone.utc).isoformat()
+        }
     
     def _extract_features(
         self,
@@ -227,7 +230,7 @@ class QualityPredictionService:
             features['avg_word_length'] = sum(len(w) for w in words) / max(1, len(words))
             
             # Vocabulary features
-            unique_words = len(set(word.lower() for word in words))
+            unique_words = len({word.lower() for word in words})
             features['vocabulary_diversity'] = unique_words / max(1, len(words))
             
             # Question-response alignment
@@ -302,7 +305,7 @@ class QualityPredictionService:
             avg_sentence_length = len(words) / max(1, len(sentences))
             
             # Vocabulary diversity
-            unique_words = len(set(word.lower() for word in words))
+            unique_words = len({word.lower() for word in words})
             vocabulary_diversity = unique_words / len(words)
             
             # Combine
@@ -318,14 +321,13 @@ class QualityPredictionService:
             log_warning(f"Error calculating complexity: {e}")
             return 5.0
     
-    def _calculate_confidence(self, model, features: np.ndarray) -> float:
+    def _calculate_confidence(self, features: np.ndarray) -> float:
         """Calculate prediction confidence"""
         try:
             # For tree-based models, we can use prediction variance
             # For now, use a simple heuristic based on feature values
             
             # Check if features are in reasonable range
-            feature_mean = np.mean(features)
             feature_std = np.std(features)
             
             # Higher confidence if features are well-distributed
@@ -343,36 +345,47 @@ class QualityPredictionService:
     def _get_feature_importance(self) -> Dict[str, float]:
         """Get feature importance from models"""
         try:
-            importance = {}
+            importance = self._extract_importance_from_primary_model()
             
-            # Try to get importance from primary model
-            if 'primary' in self.models:
-                model = self.models['primary']
-                if hasattr(model, 'feature_importances_'):
-                    importances = model.feature_importances_
-                    if len(importances) == len(self.feature_names):
-                        importance = dict(zip(self.feature_names, importances.tolist()))
-            
-            # If not available, try other models
             if not importance:
-                for model_name, model in self.models.items():
-                    if hasattr(model, 'feature_importances_'):
-                        importances = model.feature_importances_
-                        if len(importances) == len(self.feature_names):
-                            importance = dict(zip(self.feature_names, importances.tolist()))
-                            break
+                importance = self._extract_importance_from_other_models()
             
-            # Normalize importance
-            if importance:
-                total = sum(importance.values())
-                if total > 0:
-                    importance = {k: v/total for k, v in importance.items()}
-            
-            return importance
+            return self._normalize_importance(importance)
             
         except Exception as e:
             log_warning(f"Error getting feature importance: {e}")
             return {}
+    
+    def _extract_importance_from_primary_model(self) -> Dict[str, float]:
+        """Extract feature importance from primary model"""
+        if 'primary' in self.models:
+            model = self.models['primary']
+            return self._get_importance_from_model(model)
+        return {}
+    
+    def _extract_importance_from_other_models(self) -> Dict[str, float]:
+        """Extract feature importance from other models"""
+        for model_name, model in self.models.items():
+            importance = self._get_importance_from_model(model)
+            if importance:
+                return importance
+        return {}
+    
+    def _get_importance_from_model(self, model: Any) -> Dict[str, float]:
+        """Get importance from a single model"""
+        if hasattr(model, 'feature_importances_'):
+            importances = model.feature_importances_
+            if len(importances) == len(self.feature_names):
+                return dict(zip(self.feature_names, importances.tolist()))
+        return {}
+    
+    def _normalize_importance(self, importance: Dict[str, float]) -> Dict[str, float]:
+        """Normalize importance values"""
+        if importance:
+            total = sum(importance.values())
+            if total > 0:
+                return {k: v/total for k, v in importance.items()}
+        return importance
     
     def _fallback_prediction(self, features: Dict) -> Dict:
         """Fallback rule-based prediction"""
@@ -406,7 +419,7 @@ class QualityPredictionService:
                 'model_predictions': {'fallback': score},
                 'feature_importance': {},
                 'features_used': len(features),
-                'prediction_timestamp': datetime.utcnow().isoformat(),
+                'prediction_timestamp': datetime.now(timezone.utc).isoformat(),
                 'note': 'Using fallback rule-based prediction'
             }
             
@@ -430,112 +443,16 @@ class QualityPredictionService:
             
             log_info(f"Training quality prediction model on {len(training_data)} samples...")
             
-            # Prepare features and labels
-            X = []
-            y = []
-            
-            for sample in training_data:
-                features = self._extract_features(
-                    sample.get('question', ''),
-                    sample.get('response', ''),
-                    sample.get('candidate_context'),
-                    sample.get('job_context')
-                )
-                
-                if features:
-                    X.append(list(features.values()))
-                    y.append(sample.get('actual_score', 5.0))
-            
+            X, y = self._prepare_training_data(training_data)
             if len(X) < 10:
                 return {
                     'success': False,
                     'message': 'Insufficient valid training samples'
                 }
             
-            X = np.array(X)
-            y = np.array(y)
-            
-            # Store feature names
-            self.feature_names = list(features.keys())
-            
-            # Split data
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y, test_size=0.2, random_state=42
-            )
-            
-            # Scale features
-            X_train_scaled = self.scaler.fit_transform(X_train)
-            X_test_scaled = self.scaler.transform(X_test)
-            
-            # Train models
-            results = {}
-            
-            for model_name, model in self.models.items():
-                if model_name == 'primary':
-                    continue
-                
-                try:
-                    model.fit(X_train_scaled, y_train)
-                    
-                    # Evaluate
-                    y_pred = model.predict(X_test_scaled)
-                    mse = mean_squared_error(y_test, y_pred)
-                    mae = mean_absolute_error(y_test, y_pred)
-                    r2 = r2_score(y_test, y_pred)
-                    
-                    results[model_name] = {
-                        'mse': float(mse),
-                        'mae': float(mae),
-                        'r2': float(r2),
-                        'trained': True
-                    }
-                    
-                    log_info(f"✅ {model_name} trained - MSE: {mse:.3f}, MAE: {mae:.3f}, R²: {r2:.3f}")
-                    
-                except Exception as e:
-                    log_warning(f"Error training {model_name}: {e}")
-                    results[model_name] = {'trained': False, 'error': str(e)}
-            
-            # Select best model as primary
-            best_model_name = None
-            best_r2 = -float('inf')
-            
-            for model_name, result in results.items():
-                if result.get('trained', False) and result.get('r2', -1) > best_r2:
-                    best_r2 = result['r2']
-                    best_model_name = model_name
-            
-            if best_model_name:
-                self.models['primary'] = self.models[best_model_name]
-                self.model_trained = True
-                
-                # Save model
-                model_data = {
-                    'model': self.models['primary'],
-                    'scaler': self.scaler,
-                    'feature_names': self.feature_names,
-                    'training_date': datetime.utcnow().isoformat(),
-                    'performance': results[best_model_name]
-                }
-                
-                with open(self.model_path, 'wb') as f:
-                    pickle.dump(model_data, f)
-                
-                log_info(f"✅ Model trained and saved. Best model: {best_model_name} (R²: {best_r2:.3f})")
-                
-                return {
-                    'success': True,
-                    'best_model': best_model_name,
-                    'performance': results[best_model_name],
-                    'all_results': results,
-                    'training_samples': len(X_train),
-                    'test_samples': len(X_test)
-                }
-            else:
-                return {
-                    'success': False,
-                    'message': 'No models could be trained successfully'
-                }
+            X_train, X_test, y_train, y_test, x_train_scaled, x_test_scaled = self._split_and_scale_data(X, y)
+            results = self._train_all_models(x_train_scaled, y_train, x_test_scaled, y_test)
+            return await self._select_and_save_best_model(results, X_train, X_test)
                 
         except Exception as e:
             log_error(f"Error training model: {e}")
@@ -543,6 +460,110 @@ class QualityPredictionService:
                 'success': False,
                 'error': str(e)
             }
+    
+    def _prepare_training_data(self, training_data: List[Dict]) -> Tuple[List, List]:
+        """Prepare features and labels from training data"""
+        X = []
+        y = []
+        
+        for sample in training_data:
+            features = self._extract_features(
+                sample.get('question', ''),
+                sample.get('response', ''),
+                sample.get('candidate_context'),
+                sample.get('job_context')
+            )
+            
+            if features:
+                X.append(list(features.values()))
+                y.append(sample.get('actual_score', 5.0))
+                self.feature_names = list(features.keys())
+        
+        return X, y
+    
+    def _split_and_scale_data(self, X: List, y: List) -> Tuple:
+        """Split and scale training data"""
+        X_array = np.array(X)
+        y_array = np.array(y)
+        
+        X_train, X_test, y_train, y_test = train_test_split(
+            X_array, y_array, test_size=0.2, random_state=42
+        )
+        
+        x_train_scaled = self.scaler.fit_transform(X_train)
+        x_test_scaled = self.scaler.transform(X_test)
+        
+        return X_train, X_test, y_train, y_test, x_train_scaled, x_test_scaled
+    
+    def _train_all_models(self, x_train_scaled: np.ndarray, y_train: np.ndarray,
+                         x_test_scaled: np.ndarray, y_test: np.ndarray) -> Dict:
+        """Train all models and return results"""
+        results = {}
+        
+        for model_name, model in self.models.items():
+            if model_name == 'primary':
+                continue
+            
+            try:
+                model.fit(x_train_scaled, y_train)
+                y_pred = model.predict(x_test_scaled)
+                
+                results[model_name] = {
+                    'mse': float(mean_squared_error(y_test, y_pred)),
+                    'mae': float(mean_absolute_error(y_test, y_pred)),
+                    'r2': float(r2_score(y_test, y_pred)),
+                    'trained': True
+                }
+                
+                log_info(f"✅ {model_name} trained - MSE: {results[model_name]['mse']:.3f}, "
+                        f"MAE: {results[model_name]['mae']:.3f}, R²: {results[model_name]['r2']:.3f}")
+                
+            except Exception as e:
+                log_warning(f"Error training {model_name}: {e}")
+                results[model_name] = {'trained': False, 'error': str(e)}
+        
+        return results
+    
+    async def _select_and_save_best_model(self, results: Dict, X_train: np.ndarray, X_test: np.ndarray) -> Dict:
+        """Select best model and save it"""
+        best_model_name = None
+        best_r2 = -float('inf')
+        
+        for model_name, result in results.items():
+            if result.get('trained', False) and result.get('r2', -1) > best_r2:
+                best_r2 = result['r2']
+                best_model_name = model_name
+        
+        if not best_model_name:
+            return {
+                'success': False,
+                'message': 'No models could be trained successfully'
+            }
+        
+        self.models['primary'] = self.models[best_model_name]
+        self.model_trained = True
+        
+        model_data = {
+            'model': self.models['primary'],
+            'scaler': self.scaler,
+            'feature_names': self.feature_names,
+            'training_date': datetime.now(timezone.utc).isoformat(),
+            'performance': results[best_model_name]
+        }
+        
+        async with aiofiles.open(self.model_path, 'wb') as f:
+            await f.write(pickle.dumps(model_data))
+        
+        log_info(f"✅ Model trained and saved. Best model: {best_model_name} (R²: {best_r2:.3f})")
+        
+        return {
+            'success': True,
+            'best_model': best_model_name,
+            'performance': results[best_model_name],
+            'all_results': results,
+            'training_samples': len(X_train),
+            'test_samples': len(X_test)
+        }
 
 # Global instance
 quality_prediction_service = QualityPredictionService()

@@ -11,7 +11,7 @@ from database.models import (
     InterviewSession, Response, Score, Assessment, UserRole, InterviewStatus, InterviewMode
 )
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 class InterviewDataService:
     """Service for managing interview data in the database"""
@@ -128,7 +128,7 @@ class InterviewDataService:
         interview = self.db.query(Interview).filter(Interview.id == interview_id).first()
         if interview:
             interview.status = InterviewStatus.IN_PROGRESS
-            interview.started_at = datetime.utcnow()
+            interview.started_at = datetime.now(timezone.utc)
             self.db.commit()
             self.db.refresh(interview)
         return interview
@@ -138,7 +138,7 @@ class InterviewDataService:
         interview = self.db.query(Interview).filter(Interview.id == interview_id).first()
         if interview:
             interview.status = InterviewStatus.COMPLETED
-            interview.completed_at = datetime.utcnow()
+            interview.completed_at = datetime.now(timezone.utc)
             self.db.commit()
             self.db.refresh(interview)
         return interview
@@ -160,7 +160,7 @@ class InterviewDataService:
             question_id=question_id,
             question_text=question_text,
             question_type=question_type,
-            started_at=datetime.utcnow()
+            started_at=datetime.now(timezone.utc)
         )
         self.db.add(session)
         self.db.commit()
@@ -174,7 +174,7 @@ class InterviewDataService:
         if session:
             session.candidate_response = candidate_response
             session.response_duration = response_duration
-            session.completed_at = datetime.utcnow()
+            session.completed_at = datetime.now(timezone.utc)
             self.db.commit()
             self.db.refresh(session)
         return session
@@ -196,8 +196,8 @@ class InterviewDataService:
             response_json=response_json,
             latency_ms=latency_ms,
             duration_ms=duration_ms,
-            started_at=datetime.utcnow(),
-            completed_at=datetime.utcnow()
+            started_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(timezone.utc)
         )
         self.db.add(response)
         self.db.commit()

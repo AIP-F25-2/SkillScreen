@@ -17,6 +17,12 @@ from enum import Enum as PyEnum
 
 Base = declarative_base()
 
+# Constants for foreign key table names
+FK_ORGANIZATIONS_ID = "organizations.id"
+FK_USERS_ID = "users.id"
+FK_INTERVIEWS_ID = "interviews.id"
+FK_INTERVIEW_SESSIONS_ID = "interview_sessions.id"
+
 # Enums
 class UserRole(PyEnum):
     ADMIN = "admin"
@@ -90,7 +96,7 @@ class User(Base, TimestampMixin):
     __tablename__ = "users"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey(FK_ORGANIZATIONS_ID), nullable=False)
     email = Column(String(255), nullable=False, unique=True)
     password_hash = Column(String(255), nullable=True)
     first_name = Column(String(100), nullable=True)
@@ -117,13 +123,13 @@ class JobPosition(Base, TimestampMixin):
     __tablename__ = "job_positions"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey(FK_ORGANIZATIONS_ID), nullable=False)
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     required_skills = Column(JSONB, nullable=True)
     department = Column(String(100), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
-    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    created_by = Column(UUID(as_uuid=True), ForeignKey(FK_USERS_ID), nullable=True)
     
     # Relationships
     organization = relationship("Organization", back_populates="job_positions")
@@ -134,12 +140,12 @@ class InterviewTemplate(Base, TimestampMixin):
     __tablename__ = "interview_templates"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey(FK_ORGANIZATIONS_ID), nullable=False)
     name = Column(String(255), nullable=False)
     type = Column(String(100), nullable=True)
     questions = Column(JSONB, nullable=True)
     settings = Column(JSONB, nullable=True)
-    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    created_by = Column(UUID(as_uuid=True), ForeignKey(FK_USERS_ID), nullable=True)
     
     # Relationships
     organization = relationship("Organization", back_populates="interview_templates")
@@ -150,10 +156,10 @@ class Interview(Base, TimestampMixin):
     __tablename__ = "interviews"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey(FK_ORGANIZATIONS_ID), nullable=False)
     job_position_id = Column(UUID(as_uuid=True), ForeignKey("job_positions.id"), nullable=False)
-    candidate_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
-    interviewer_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    candidate_id = Column(UUID(as_uuid=True), ForeignKey(FK_USERS_ID), nullable=True)
+    interviewer_id = Column(UUID(as_uuid=True), ForeignKey(FK_USERS_ID), nullable=True)
     template_id = Column(UUID(as_uuid=True), ForeignKey("interview_templates.id"), nullable=False)
     status = Column(Enum(InterviewStatus), nullable=False)
     mode = Column(Enum(InterviewMode), nullable=False)
@@ -183,7 +189,7 @@ class InterviewSession(Base):
     __tablename__ = "interview_sessions"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    interview_id = Column(UUID(as_uuid=True), ForeignKey("interviews.id"), nullable=False)
+    interview_id = Column(UUID(as_uuid=True), ForeignKey(FK_INTERVIEWS_ID), nullable=False)
     question_id = Column(String(255), nullable=True)
     question_text = Column(Text, nullable=True)
     question_type = Column(String(100), nullable=True)
@@ -207,8 +213,8 @@ class Response(Base):
     __tablename__ = "responses"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    interview_id = Column(UUID(as_uuid=True), ForeignKey("interviews.id"), nullable=False)
-    session_id = Column(UUID(as_uuid=True), ForeignKey("interview_sessions.id"), nullable=False)
+    interview_id = Column(UUID(as_uuid=True), ForeignKey(FK_INTERVIEWS_ID), nullable=False)
+    session_id = Column(UUID(as_uuid=True), ForeignKey(FK_INTERVIEW_SESSIONS_ID), nullable=False)
     responder_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     response_text = Column(Text, nullable=True)
     response_json = Column(JSONB, nullable=True)
@@ -228,7 +234,7 @@ class Score(Base, TimestampMixin):
     __tablename__ = "scores"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    interview_id = Column(UUID(as_uuid=True), ForeignKey("interviews.id"), nullable=False)
+    interview_id = Column(UUID(as_uuid=True), ForeignKey(FK_INTERVIEWS_ID), nullable=False)
     response_id = Column(UUID(as_uuid=True), ForeignKey("responses.id"), nullable=False)
     dimension = Column(Enum(ScoreDimension), nullable=False)
     auto_score = Column(Numeric(5, 2), nullable=True)
@@ -236,7 +242,7 @@ class Score(Base, TimestampMixin):
     rubric = Column(JSONB, nullable=True)
     evidence_refs = Column(JSONB, nullable=True)
     notes = Column(Text, nullable=True)
-    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    created_by = Column(UUID(as_uuid=True), ForeignKey(FK_USERS_ID), nullable=True)
     
     # Relationships
     interview = relationship("Interview")
@@ -247,7 +253,7 @@ class MediaFile(Base, TimestampMixin):
     __tablename__ = "media_files"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    interview_id = Column(UUID(as_uuid=True), ForeignKey("interviews.id"), nullable=False)
+    interview_id = Column(UUID(as_uuid=True), ForeignKey(FK_INTERVIEWS_ID), nullable=False)
     session_id = Column(UUID(as_uuid=True), ForeignKey("interview_sessions.id"), nullable=True)
     file_type = Column(String(50), nullable=True)
     file_path = Column(String(500), nullable=True)
@@ -267,7 +273,7 @@ class CodingQuestion(Base, TimestampMixin):
     __tablename__ = "coding_questions"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey(FK_ORGANIZATIONS_ID), nullable=False)
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     difficulty = Column(Enum(DifficultyLevel), nullable=True)
@@ -276,7 +282,7 @@ class CodingQuestion(Base, TimestampMixin):
     starter_code = Column(JSONB, nullable=True)
     solution = Column(JSONB, nullable=True)
     tags = Column(JSONB, nullable=True)
-    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    created_by = Column(UUID(as_uuid=True), ForeignKey(FK_USERS_ID), nullable=True)
     
     # Relationships
     organization = relationship("Organization", back_populates="coding_questions")
@@ -287,7 +293,7 @@ class CodingSession(Base):
     __tablename__ = "coding_sessions"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    interview_id = Column(UUID(as_uuid=True), ForeignKey("interviews.id"), nullable=False)
+    interview_id = Column(UUID(as_uuid=True), ForeignKey(FK_INTERVIEWS_ID), nullable=False)
     question_id = Column(UUID(as_uuid=True), ForeignKey("coding_questions.id"), nullable=False)
     language = Column(String(50), nullable=True)
     code = Column(Text, nullable=True)
@@ -307,7 +313,7 @@ class Transcript(Base):
     __tablename__ = "transcripts"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    interview_id = Column(UUID(as_uuid=True), ForeignKey("interviews.id"), nullable=False)
+    interview_id = Column(UUID(as_uuid=True), ForeignKey(FK_INTERVIEWS_ID), nullable=False)
     session_id = Column(UUID(as_uuid=True), ForeignKey("interview_sessions.id"), nullable=True)
     speaker = Column(String(100), nullable=True)
     text = Column(Text, nullable=True)
@@ -326,13 +332,13 @@ class EvidenceClip(Base, TimestampMixin):
     __tablename__ = "evidence_clips"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    interview_id = Column(UUID(as_uuid=True), ForeignKey("interviews.id"), nullable=False)
+    interview_id = Column(UUID(as_uuid=True), ForeignKey(FK_INTERVIEWS_ID), nullable=False)
     session_id = Column(UUID(as_uuid=True), ForeignKey("interview_sessions.id"), nullable=True)
     media_file_id = Column(UUID(as_uuid=True), ForeignKey("media_files.id"), nullable=False)
     start_ms = Column(Integer, nullable=False)
     end_ms = Column(Integer, nullable=False)
     label = Column(String(255), nullable=True)
-    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    created_by = Column(UUID(as_uuid=True), ForeignKey(FK_USERS_ID), nullable=True)
     
     # Relationships
     interview = relationship("Interview", back_populates="evidence_clips")
@@ -344,7 +350,7 @@ class AIAnalysis(Base):
     __tablename__ = "ai_analysis"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    interview_id = Column(UUID(as_uuid=True), ForeignKey("interviews.id"), nullable=False)
+    interview_id = Column(UUID(as_uuid=True), ForeignKey(FK_INTERVIEWS_ID), nullable=False)
     session_id = Column(UUID(as_uuid=True), ForeignKey("interview_sessions.id"), nullable=True)
     analysis_type = Column(String(100), nullable=True)
     service_name = Column(String(100), nullable=True)
@@ -362,7 +368,7 @@ class Assessment(Base, TimestampMixin):
     __tablename__ = "assessments"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    interview_id = Column(UUID(as_uuid=True), ForeignKey("interviews.id"), nullable=False)
+    interview_id = Column(UUID(as_uuid=True), ForeignKey(FK_INTERVIEWS_ID), nullable=False)
     overall_score = Column(Numeric(5, 2), nullable=True)
     hard_skills_score = Column(Numeric(5, 2), nullable=True)
     soft_skills_score = Column(Numeric(5, 2), nullable=True)
@@ -384,7 +390,7 @@ class Webhook(Base, TimestampMixin):
     __tablename__ = "webhooks"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey(FK_ORGANIZATIONS_ID), nullable=False)
     event_type = Column(String(100), nullable=True)
     url = Column(String(500), nullable=True)
     secret = Column(String(255), nullable=True)
@@ -398,7 +404,7 @@ class ProctoringEvent(Base):
     __tablename__ = "proctoring_events"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    interview_id = Column(UUID(as_uuid=True), ForeignKey("interviews.id"), nullable=False)
+    interview_id = Column(UUID(as_uuid=True), ForeignKey(FK_INTERVIEWS_ID), nullable=False)
     session_id = Column(UUID(as_uuid=True), ForeignKey("interview_sessions.id"), nullable=True)
     event_type = Column(String(100), nullable=True)
     severity = Column(String(50), nullable=True)
@@ -420,7 +426,7 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey(FK_ORGANIZATIONS_ID), nullable=False)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     action = Column(String(100), nullable=True)
     resource_type = Column(String(100), nullable=True)
@@ -438,7 +444,7 @@ class Report(Base):
     __tablename__ = "reports"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    interview_id = Column(UUID(as_uuid=True), ForeignKey("interviews.id"), nullable=False)
+    interview_id = Column(UUID(as_uuid=True), ForeignKey(FK_INTERVIEWS_ID), nullable=False)
     report_type = Column(String(100), nullable=True)
     format = Column(String(50), nullable=True)
     file_path = Column(String(500), nullable=True)

@@ -227,6 +227,9 @@ def generate_funny_analysis(violations):
         }
     }
 
+# Constants
+DEFAULT_INTRO_QUESTION = "Tell me about yourself and your experience with this role."
+
 # Counter for IDs
 candidate_counter = 0
 job_counter = 0
@@ -448,7 +451,7 @@ async def start_interview(request: InterviewStart):
                     organization_id=str(org.id),
                     name=f"Template for {job['title']}",
                     template_type="technical",
-                    questions=[{"question": "Tell me about yourself and your experience with this role.", "type": "behavioral"}],
+                    questions=[{"question": DEFAULT_INTRO_QUESTION, "type": "behavioral"}],
                     created_by=str(user.id)
                 )
                 
@@ -467,7 +470,7 @@ async def start_interview(request: InterviewStart):
                 # Create first session
                 session = db_service.create_interview_session(
                     interview_id=str(interview.id),
-                    question_text="Tell me about yourself and your experience with this role.",
+                    question_text=DEFAULT_INTRO_QUESTION,
                     question_type="behavioral"
                 )
                 
@@ -482,7 +485,7 @@ async def start_interview(request: InterviewStart):
                     "start_time": datetime.now().isoformat(),
                     "questions_asked": 0,
                     "responses_received": 0,
-                    "current_question": "Tell me about yourself and your experience with this role.",
+                    "current_question": DEFAULT_INTRO_QUESTION,
                     "question_history": [],
                     "response_history": [],
                     "total_score": 0.0,
@@ -535,7 +538,7 @@ async def start_interview(request: InterviewStart):
     return {
         "session_id": session_id,
         "message": f"Interview started for {candidate['name']}",
-        "first_question": "Tell me about yourself and your experience with this role.",
+        "first_question": DEFAULT_INTRO_QUESTION,
         "status": "started"
     }
 
@@ -924,7 +927,7 @@ def generate_template_question(question_number, candidate, job, resume_text, job
     
     # Question 1: Always introduction
     if question_number == 0:
-        return "Tell me about yourself and your experience with this role."
+        return DEFAULT_INTRO_QUESTION
     
     # Question 2: Based on resume experience
     if question_number == 1:
