@@ -78,28 +78,91 @@ def health():
 
 @app.post("/api/session/create")
 async def create_session(request: Request):
-    """Create a new interview session"""
-    body = await request.json()
-    user_id = body.get("user_id")
-    candidate_id = body.get("candidate_id")
+    """Create one or more interview sessions
     
-    # Generate session ID
-    session_id = f"session_{datetime.now().strftime('%Y%m%d%H%M%S')}"
-    
-    # Create session data
-    session_data = {
-        "session_id": session_id,
-        "user_id": user_id,
-        "candidate_id": candidate_id,
-        "status": "created",
-        "created_at": datetime.utcnow().isoformat(),
-        "updated_at": datetime.utcnow().isoformat()
-    }
-    
-    # Store session
-    sessions_db[session_id] = session_data
-    
-    return create_response(session_data)
+    Accepts either:
+    - Single candidate_id (backwards compatible)
+    - Array of candidate_ids (for bulk creation)
+    """
+    try:
+        body = await request.json()
+        user_id = body.get("user_id")
+        candidate_id = body.get("candidate_id")
+        candidate_ids = body.get("candidate_ids")  # Array of candidate IDs
+        
+        # Validate user_id is provided
+        if not user_id:
+            raise HTTPException(status_code=400, detail="Missing required field: user_id")
+        
+        # Determine if we're creating single or multiple sessions
+        if candidate_ids:
+            # Bulk creation: array of candidate_ids
+            if not isinstance(candidate_ids, list):
+                raise HTTPException(status_code=400, detail="candidate_ids must be an array")
+            
+            if len(candidate_ids) == 0:
+                raise HTTPException(status_code=400, detail="candidate_ids array cannot be empty")
+            
+            # Create sessions for each candidate
+            created_sessions = []
+            base_timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+            
+            for index, cid in enumerate(candidate_ids):
+                if not cid:
+                    logger.warning(f"Skipping empty candidate_id at index {index}")
+                    continue
+                
+                # Generate unique session ID with timestamp and index
+                session_id = f"session_{base_timestamp}_{index:04d}"
+                
+                # Create session data
+                session_data = {
+                    "session_id": session_id,
+                    "user_id": user_id,
+                    "candidate_id": cid,
+                    "status": "created",
+                    "created_at": datetime.utcnow().isoformat(),
+                    "updated_at": datetime.utcnow().isoformat()
+                }
+                
+                # Store session
+                sessions_db[session_id] = session_data
+                created_sessions.append(session_data)
+            
+            logger.info(f"Created {len(created_sessions)} sessions for user {user_id}")
+            
+            return create_response({
+                "sessions": created_sessions,
+                "total_created": len(created_sessions),
+                "requested_count": len(candidate_ids)
+            })
+            
+        elif candidate_id:
+            # Single session creation (backwards compatible)
+            session_id = f"session_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            
+            # Create session data
+            session_data = {
+                "session_id": session_id,
+                "user_id": user_id,
+                "candidate_id": candidate_id,
+                "status": "created",
+                "created_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.utcnow().isoformat()
+            }
+            
+            # Store session
+            sessions_db[session_id] = session_data
+            
+            return create_response(session_data)
+        else:
+            raise HTTPException(status_code=400, detail="Missing required field: candidate_id or candidate_ids")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating session(s): {str(e)}")
+        raise HTTPException(status_code=500, detail=f"An error occurred while creating session(s): {str(e)}")
 
 @app.get("/api/session/{session_id}")
 async def get_session(session_id: str):
@@ -257,43 +320,132 @@ async def store_token(request: Request):
 
 @app.post("/api/email/send-invitation")
 async def send_invitation(request: Request):
-    """Send an interview invitation email to a candidate"""
+    """Send an interview invitation email to a candidate
+    
+    Accepts either:
+    - Single invitation (backwards compatible)
+    - Array of invitations (for bulk sending)
+    """
     try:
         data = await request.json()
+        invitations = data.get("invitations")  # Array of invitation objects
         
-        # Validate required fields
-        required_fields = ['candidate_email', 'candidate_name', 'candidate_id', 'session_id']
-        for field in required_fields:
-            if field not in data:
-                raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
-        
-        # Send invitation email
-        result = email_service.send_interview_invitation(
-            candidate_email=data['candidate_email'],
-            candidate_name=data['candidate_name'],
-            candidate_id=data['candidate_id'],
-            session_id=data['session_id'],
-            recruiter_name=data.get('recruiter_name'),
-            company_name=data.get('company_name'),
-            expires_in_hours=data.get('expires_in_hours', 48)
-        )
-        
-        # Store token
-        token_store[result['token']] = {
-            'candidate_id': result['candidate_id'],
-            'candidate_name': result['candidate_name'],
-            'candidate_email': result['candidate_email'],
-            'session_id': result['session_id'],
-            'expires_at': result['expires_at'],
-            'used_at': None
-        }
-        
-        return create_response({
-            "email_id": result['email_id'],
-            "token": result['token'],
-            "expires_at": result['expires_at'],
-            "interview_link": f"{email_service.base_url}/interview-link?token={result['token']}"
-        })
+        # Check if bulk sending
+        if invitations:
+            # Bulk sending: array of invitations
+            if not isinstance(invitations, list):
+                raise HTTPException(status_code=400, detail="invitations must be an array")
+            
+            if len(invitations) == 0:
+                raise HTTPException(status_code=400, detail="invitations array cannot be empty")
+            
+            # Process each invitation
+            results = []
+            errors = []
+            
+            for index, invitation in enumerate(invitations):
+                try:
+                    # Validate required fields
+                    required_fields = ['candidate_email', 'candidate_name', 'candidate_id', 'session_id']
+                    missing_field = None
+                    for field in required_fields:
+                        if field not in invitation:
+                            missing_field = field
+                            break
+                    
+                    if missing_field:
+                        errors.append({
+                            "index": index,
+                            "error": f"Missing required field: {missing_field}",
+                            "candidate_id": invitation.get('candidate_id', 'unknown')
+                        })
+                        continue
+                    
+                    # Send invitation email
+                    result = email_service.send_interview_invitation(
+                        candidate_email=invitation['candidate_email'],
+                        candidate_name=invitation['candidate_name'],
+                        candidate_id=invitation['candidate_id'],
+                        session_id=invitation['session_id'],
+                        recruiter_name=invitation.get('recruiter_name') or data.get('recruiter_name'),
+                        company_name=invitation.get('company_name') or data.get('company_name'),
+                        expires_in_hours=invitation.get('expires_in_hours') or data.get('expires_in_hours', 48)
+                    )
+                    
+                    # Store token
+                    token_store[result['token']] = {
+                        'candidate_id': result['candidate_id'],
+                        'candidate_name': result['candidate_name'],
+                        'candidate_email': result['candidate_email'],
+                        'session_id': result['session_id'],
+                        'expires_at': result['expires_at'],
+                        'used_at': None
+                    }
+                    
+                    results.append({
+                        "candidate_id": result['candidate_id'],
+                        "candidate_email": result['candidate_email'],
+                        "session_id": result['session_id'],
+                        "email_id": result['email_id'],
+                        "token": result['token'],
+                        "expires_at": result['expires_at'],
+                        "interview_link": f"{email_service.base_url}/interview-link?token={result['token']}",
+                        "status": "sent"
+                    })
+                    
+                except Exception as e:
+                    logger.error(f"Error sending invitation for candidate {invitation.get('candidate_id', 'unknown')}: {str(e)}")
+                    errors.append({
+                        "index": index,
+                        "error": str(e),
+                        "candidate_id": invitation.get('candidate_id', 'unknown'),
+                        "candidate_email": invitation.get('candidate_email', 'unknown')
+                    })
+            
+            logger.info(f"Bulk email sending completed: {len(results)} sent, {len(errors)} failed")
+            
+            return create_response({
+                "sent": results,
+                "errors": errors,
+                "total_requested": len(invitations),
+                "total_sent": len(results),
+                "total_failed": len(errors)
+            })
+            
+        else:
+            # Single invitation (backwards compatible)
+            required_fields = ['candidate_email', 'candidate_name', 'candidate_id', 'session_id']
+            for field in required_fields:
+                if field not in data:
+                    raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
+            
+            # Send invitation email
+            result = email_service.send_interview_invitation(
+                candidate_email=data['candidate_email'],
+                candidate_name=data['candidate_name'],
+                candidate_id=data['candidate_id'],
+                session_id=data['session_id'],
+                recruiter_name=data.get('recruiter_name'),
+                company_name=data.get('company_name'),
+                expires_in_hours=data.get('expires_in_hours', 48)
+            )
+            
+            # Store token
+            token_store[result['token']] = {
+                'candidate_id': result['candidate_id'],
+                'candidate_name': result['candidate_name'],
+                'candidate_email': result['candidate_email'],
+                'session_id': result['session_id'],
+                'expires_at': result['expires_at'],
+                'used_at': None
+            }
+            
+            return create_response({
+                "email_id": result['email_id'],
+                "token": result['token'],
+                "expires_at": result['expires_at'],
+                "interview_link": f"{email_service.base_url}/interview-link?token={result['token']}"
+            })
         
     except HTTPException:
         raise
