@@ -11,7 +11,9 @@ class ConfigLoader:
     """Loads configuration from .config file"""
     
     def __init__(self, config_file: str = ".config"):
-        self.config_file = config_file
+        # Look for config file in the same directory as this module
+        module_dir = Path(__file__).parent.parent
+        self.config_file = module_dir / config_file
         self.config_data = {}
         self.load_config()
     

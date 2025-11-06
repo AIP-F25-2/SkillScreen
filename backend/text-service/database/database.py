@@ -8,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 from contextlib import contextmanager
 import os
 from typing import Generator
-from config import config
+from utils.config_loader import get_config
 
 class DatabaseManager:
     """Manages database connections and sessions"""
@@ -21,25 +21,33 @@ class DatabaseManager:
     def _initialize_database(self):
         """Initialize database connection"""
         try:
-            # Get database URL from config or environment
-            database_url = os.getenv('DATABASE_URL', 'sqlite:///skillscreen.db')
+            # Get database URL from environment variables
+            database_url = get_config('DATABASE_URL')
             
-            # For SQLite, use StaticPool to handle concurrent access
-            if database_url.startswith('sqlite'):
-                self.engine = create_engine(
-                    database_url,
-                    poolclass=StaticPool,
-                    connect_args={"check_same_thread": False},
-                    echo=config.debug
-                )
-            else:
-                # For PostgreSQL, MySQL, etc.
-                self.engine = create_engine(
-                    database_url,
-                    echo=config.debug,
-                    pool_pre_ping=True,
-                    pool_recycle=300
-                )
+            if not database_url:
+                # Fallback to individual components
+                host = get_config('DATABASE_HOST', 'localhost')
+                port = get_config('DATABASE_PORT', '5432')
+                dbname = get_config('DATABASE_NAME', 'skillscreen_database')
+                user = get_config('DATABASE_USER', 'postgres')
+                password = get_config('DATABASE_PASSWORD', '')
+                ssl_mode = get_config('DATABASE_SSL_MODE', 'prefer')
+                
+                database_url = f"postgresql://{user}:{password}@{host}:{port}/{dbname}?sslmode={ssl_mode}"
+            
+            # Create PostgreSQL engine with proper configuration
+            self.engine = create_engine(
+                database_url,
+                echo=False,  # Set to True for SQL debugging
+                pool_pre_ping=True,
+                pool_recycle=300,
+                pool_size=10,
+                max_overflow=20,
+                connect_args={
+                    "sslmode": "require",
+                    "application_name": "SkillScreen-TextService"
+                }
+            )
             
             # Create session factory
             self.SessionLocal = sessionmaker(
@@ -52,10 +60,10 @@ class DatabaseManager:
             from .models import Base
             Base.metadata.create_all(bind=self.engine)
             
-            print(f"✅ Database initialized: {database_url}")
+            print(f"Database initialized: {database_url.split('@')[1] if '@' in database_url else 'Azure PostgreSQL'}")
             
         except Exception as e:
-            print(f"❌ Database initialization failed: {e}")
+            print(f"Database initialization failed: {e}")
             raise
     
     @contextmanager
@@ -67,7 +75,7 @@ class DatabaseManager:
             session.commit()
         except Exception as e:
             session.rollback()
-            print(f"❌ Database session error: {e}")
+            print(f"Database session error: {e}")
             raise
         finally:
             session.close()
