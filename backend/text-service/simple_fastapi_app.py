@@ -29,8 +29,20 @@ try:
 except ImportError:
     LLM_SERVICE_AVAILABLE = False
 
-# Import configuration loader
-from utils.config_loader import get_config
+# Import database service
+try:
+    from database.database import db_manager
+    from services.database_service import InterviewDataService
+    DATABASE_AVAILABLE = True
+except ImportError:
+    DATABASE_AVAILABLE = False
+
+# Import config loader
+try:
+    from utils.config_loader import get_config
+except ImportError:
+    def get_config(key: str, default: str = '') -> str:
+        return os.environ.get(key, default)
 
 # Set up environment variables for API keys from config
 os.environ.setdefault('GEMINI_API_KEY', get_config('GEMINI_API_KEY', ''))
@@ -239,11 +251,23 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
+    services = ["interview", "nlp", "anti-cheating", "code-execution"]
+    database_status = "in-memory"
+    
+    if DATABASE_AVAILABLE:
+        try:
+            with db_manager.get_session() as db_session:
+                db_session.execute("SELECT 1")
+            database_status = "postgresql"
+            services.append("database")
+        except Exception as e:
+            database_status = f"postgresql-error: {str(e)}"
+    
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
-        "database": "in-memory",
-        "services": ["interview", "nlp", "anti-cheating", "code-execution"]
+        "database": database_status,
+        "services": services
     }
 
 # Code execution endpoints
@@ -400,23 +424,113 @@ async def start_interview(request: InterviewStart):
     candidate = candidates_db[request.candidate_id]
     job = jobs_db[request.job_id]
     
-    # Create interview session
-    sessions_db[session_id] = {
-        "session_id": session_id,
-        "candidate_id": request.candidate_id,
-        "job_id": request.job_id,
-        "candidate_name": candidate["name"],
-        "job_title": job["title"],
-        "status": "active",
-        "start_time": datetime.now().isoformat(),
-        "questions_asked": 0,
-        "responses_received": 0,
-        "current_question": "Tell me about yourself and your experience with this role.",
-        "question_history": [],
-        "response_history": [],
-        "total_score": 0.0,
-        "candidate_name_from_intro": None  # Will be extracted from first response
-    }
+    # Store in database if available
+    if DATABASE_AVAILABLE:
+        try:
+            with db_manager.get_session() as db_session:
+                db_service = InterviewDataService(db_session)
+                
+                # Get or create demo organization and user
+                org = db_service.get_or_create_default_organization()
+                user = db_service.get_or_create_demo_user(candidate["email"])
+                
+                # Create job position if it doesn't exist
+                job_position = db_service.create_job_position(
+                    organization_id=str(org.id),
+                    title=job["title"],
+                    description=job.get("description", ""),
+                    required_skills=job.get("required_skills", []),
+                    created_by=str(user.id)
+                )
+                
+                # Create interview template
+                template = db_service.create_interview_template(
+                    organization_id=str(org.id),
+                    name=f"Template for {job['title']}",
+                    template_type="technical",
+                    questions=[{"question": "Tell me about yourself and your experience with this role.", "type": "behavioral"}],
+                    created_by=str(user.id)
+                )
+                
+                # Create interview
+                interview = db_service.create_interview(
+                    organization_id=str(org.id),
+                    job_position_id=str(job_position.id),
+                    template_id=str(template.id),
+                    candidate_id=str(user.id),
+                    mode="chat"
+                )
+                
+                # Start the interview
+                interview = db_service.start_interview(str(interview.id))
+                
+                # Create first session
+                session = db_service.create_interview_session(
+                    interview_id=str(interview.id),
+                    question_text="Tell me about yourself and your experience with this role.",
+                    question_type="behavioral"
+                )
+                
+                # Store database IDs in session for later reference
+                sessions_db[session_id] = {
+                    "session_id": session_id,
+                    "candidate_id": request.candidate_id,
+                    "job_id": request.job_id,
+                    "candidate_name": candidate["name"],
+                    "job_title": job["title"],
+                    "status": "active",
+                    "start_time": datetime.now().isoformat(),
+                    "questions_asked": 0,
+                    "responses_received": 0,
+                    "current_question": "Tell me about yourself and your experience with this role.",
+                    "question_history": [],
+                    "response_history": [],
+                    "total_score": 0.0,
+                    "candidate_name_from_intro": None,
+                    # Database references
+                    "db_interview_id": str(interview.id),
+                    "db_session_id": str(session.id),
+                    "db_user_id": str(user.id),
+                    "db_job_position_id": str(job_position.id)
+                }
+                
+        except Exception as e:
+            print(f"Database operation failed: {e}")
+            # Fall back to in-memory storage
+            sessions_db[session_id] = {
+                "session_id": session_id,
+                "candidate_id": request.candidate_id,
+                "job_id": request.job_id,
+                "candidate_name": candidate["name"],
+                "job_title": job["title"],
+                "status": "active",
+                "start_time": datetime.now().isoformat(),
+                "questions_asked": 0,
+                "responses_received": 0,
+                "current_question": "Tell me about yourself and your experience with this role.",
+                "question_history": [],
+                "response_history": [],
+                "total_score": 0.0,
+                "candidate_name_from_intro": None
+            }
+    else:
+        # Create interview session in memory
+        sessions_db[session_id] = {
+            "session_id": session_id,
+            "candidate_id": request.candidate_id,
+            "job_id": request.job_id,
+            "candidate_name": candidate["name"],
+            "job_title": job["title"],
+            "status": "active",
+            "start_time": datetime.now().isoformat(),
+            "questions_asked": 0,
+            "responses_received": 0,
+            "current_question": "Tell me about yourself and your experience with this role.",
+            "question_history": [],
+            "response_history": [],
+            "total_score": 0.0,
+            "candidate_name_from_intro": None
+        }
     
     return {
         "session_id": session_id,

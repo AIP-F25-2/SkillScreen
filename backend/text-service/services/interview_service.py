@@ -17,6 +17,9 @@ from services.nlp_service import NLPService
 from services.anti_cheating_service import AntiCheatingService
 from services.rag_service import RAGExplainabilityService
 from services.llm_service import llm_service
+from services.behavioral_analysis_service import behavioral_analysis_service
+from services.bias_detection_service import bias_detection_service
+from services.quality_prediction_service import quality_prediction_service
 from utils.logger import log_info, log_error, log_warning
 
 class InterviewService:
@@ -26,6 +29,9 @@ class InterviewService:
         self.nlp_service = NLPService()
         self.anti_cheating_service = AntiCheatingService()
         self.rag_service = RAGExplainabilityService()
+        self.behavioral_analysis_service = behavioral_analysis_service
+        self.bias_detection_service = bias_detection_service
+        self.quality_prediction_service = quality_prediction_service
         
         # Interview configuration
         self.question_templates = {

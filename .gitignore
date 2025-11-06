@@ -332,3 +332,10 @@ credentials/
 
 # SonarQube
 .sonar
+
+# Personal documentation files (keep local only)
+AI_DATA_SCIENCE_PROGRESS_TRACKING.md
+PRESENTATION_Q&A.html
+PRESENTATION_Q&A.md
+ML_ENHANCEMENTS_SUMMARY.md
+progress.docx
