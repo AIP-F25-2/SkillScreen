@@ -202,7 +202,7 @@ class ApiClient {
     // Fetch from media-service and interview-service, then merge
     const [mediaRes, interviewSvcRes] = await Promise.all([
       this.request<{ interviews: any[]; count: number }>('/media/api/interviews'),
-      this.request<{ interviews: any[]; count: number }>(' /interview/api/interviews').catch(() => ({ success: true, data: { interviews: [], count: 0 }, meta: { timestamp: '', request_id: '', version: '' } } as any))
+      this.request<{ interviews: any[]; count: number }>('/interview/api/interviews').catch(() => ({ success: true, data: { interviews: [], count: 0 }, meta: { timestamp: '', request_id: '', version: '' } } as any))
     ]);
 
     const mediaList = mediaRes?.data?.interviews ?? [];
