@@ -22,13 +22,10 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from datetime import datetime
 
-from services.scheduling_service import schedule_interview_service
+from services.scheduling_service import schedule_interview_service, update_interview_status_service
 from utils.response import create_response
-from schemas.interviews import InterviewScheduledResponse
 from repositories.interviews_repository import get_interview_by_id
-
-from schemas.interviews import UpdateInterviewStatusRequest, UpdateInterviewStatusResponse
-from services.scheduling_service import update_interview_status_service
+from schemas.interviews import UpdateInterviewStatusRequest
 
 router = APIRouter()
 
@@ -46,8 +43,8 @@ class InterviewScheduleRequest(BaseModel):
     create_calendar_event: bool = False
 
 
-# ✅ Single, clean route with response_model
-@router.post("/schedule", response_model=InterviewScheduledResponse)
+# ✅ Route: POST /interviews/schedule
+@router.post("/schedule")
 def schedule_interview(request: InterviewScheduleRequest):
     try:
         result = schedule_interview_service(request)
@@ -57,6 +54,8 @@ def schedule_interview(request: InterviewScheduleRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# ✅ Route: GET /interviews/{id}
 @router.get("/{id}")
 def get_interview(id: str):
     result = get_interview_by_id(id)
@@ -64,7 +63,9 @@ def get_interview(id: str):
         raise HTTPException(status_code=404, detail="Interview not found")
     return create_response(result)
 
-@router.put("/{id}/status", response_model=UpdateInterviewStatusResponse)
+
+# ✅ Route: PUT /interviews/{id}/status
+@router.put("/{id}/status")
 def update_interview_status_route(id: str, req: UpdateInterviewStatusRequest):
     try:
         result = update_interview_status_service(id, req.status)

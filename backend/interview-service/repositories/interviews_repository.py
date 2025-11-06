@@ -12,26 +12,29 @@
 #     """
 #     return {"id": interview_id, "status": "scheduled (placeholder)"}
 
-
-import os, json
+import os
+import json
 from datetime import timedelta
 import psycopg
 
-DB_URL = os.getenv("DATABASE_URL")
+from dotenv import load_dotenv
 
-# ---------- Helpers ----------
+# ✅ Load environment variables from .env
+load_dotenv()
+
+# ---------- DB Connection ----------
 
 def _conn():
+    DB_URL = os.getenv("DATABASE_URL")
     if not DB_URL:
         raise RuntimeError("DATABASE_URL not set")
     return psycopg.connect(DB_URL)
 
-# ---------- FK / organization sanity checks ----------
+# ---------- Foreign Key Sanity Checks ----------
 
 def verify_fk_belong_to_org(org_id, job_position_id, candidate_id, interviewer_id, template_id):
     """
     Validate that referenced records exist and belong to the same organization.
-    This prevents opaque 500s from FK violations and teaches the data flow.
     """
     sql = """
     SELECT
@@ -62,14 +65,11 @@ def verify_fk_belong_to_org(org_id, job_position_id, candidate_id, interviewer_i
         return False, "template_id not found in organization"
     return True, "ok"
 
-# ---------- Conflicts ----------
+# ---------- Time Conflict Checker ----------
 
 def check_time_conflicts(org_id, candidate_id, interviewer_id, scheduled_at, duration):
     """
     Detect overlap for candidate or interviewer within same org.
-    We compute the NEW window as [start, start+duration).
-    For EXISTING rows, we use duration from settings if present; otherwise fallback to NEW duration.
-    Overlap test uses simple < and > to avoid requiring the range type extension.
     """
     end_time = scheduled_at + timedelta(minutes=duration)
 
@@ -79,12 +79,11 @@ def check_time_conflicts(org_id, candidate_id, interviewer_id, scheduled_at, dur
     WHERE i.organization_id = %(org)s
       AND (i.candidate_id = %(cand)s OR i.interviewer_id = %(intr)s)
       AND i.status IN ('scheduled','in_progress')
-      -- existing window:
       AND i.scheduled_at IS NOT NULL
       AND i.scheduled_at < %(new_end)s
       AND (
         i.scheduled_at
-        + make_interval(mins => COALESCE( (i.settings->>'duration_minutes')::int, %(dur)s ))
+        + make_interval(mins => COALESCE((i.settings->>'duration_minutes')::int, %(dur)s))
       ) > %(new_start)s
     LIMIT 1;
     """
@@ -99,7 +98,7 @@ def check_time_conflicts(org_id, candidate_id, interviewer_id, scheduled_at, dur
         })
         return cur.fetchone() is not None
 
-# ---------- Insert interview ----------
+# ---------- Insert Interview ----------
 
 def insert_interview_record(data: dict):
     """
@@ -117,8 +116,8 @@ def insert_interview_record(data: dict):
     params = {
         "org": data["organization_id"],
         "job": data["job_position_id"],
-        "cand": data["candidate_id"],       # candidates.id
-        "intr": data["interviewer_id"],     # users.id
+        "cand": data["candidate_id"],
+        "intr": data["interviewer_id"],
         "tpl": data["template_id"],
         "status": data["status"],
         "mode": data["mode"],
@@ -136,6 +135,7 @@ def insert_interview_record(data: dict):
             "settings": row[3]
         }
 
+# ---------- Get Interview ----------
 
 def get_interview_by_id(interview_id: str):
     """
@@ -154,6 +154,7 @@ def get_interview_by_id(interview_id: str):
             return None
         return dict(zip([desc.name for desc in cur.description], row))
 
+# ---------- Update Interview Status ----------
 
 def update_interview_status(interview_id: str, new_status: str):
     """
@@ -164,7 +165,7 @@ def update_interview_status(interview_id: str, new_status: str):
         "completed": "completed_at"
     }
     extra_field = time_fields.get(new_status)
-    
+
     sql = f"""
     UPDATE interviews
     SET status = %(status)s,
