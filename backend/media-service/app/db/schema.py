@@ -7,7 +7,7 @@ from sqlalchemy import (
 metadata = MetaData()
 
 media = Table(
-    "media_files",
+    "media",
     metadata,
 
     # Primary key
@@ -22,10 +22,9 @@ media = Table(
 
     # --- File / content info ---
     Column("media_type", String(50), nullable=False),                   # 'resume', 'interview', 'video', 'file', 'session', etc.
-    Column("file_name", String(255), nullable=True),
     Column("file_path", Text, nullable=True),                           # blob virtual path (e.g. "videos/user123/file.mp4")
     Column("blob_name", Text, nullable=True),                           # Azure blob reference if needed
-    Column("content_type", String(100), nullable=True),
+    Column("content_type", Text, nullable=True),
     Column("status", String(50), nullable=True),                        # 'uploaded', 'active', 'finalized', etc.
 
     # --- Meta data ---

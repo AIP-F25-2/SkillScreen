@@ -33,7 +33,6 @@ class MediaRepository(BaseRepository):
             .values(
                 user_id=user_id,
                 media_type="video",
-                file_name=None,
                 file_path=None,
                 blob_name=None,
                 content_type=None,         # will become 'video/mp4' at finalize
@@ -121,14 +120,13 @@ class MediaRepository(BaseRepository):
         *,
         user_id: str,
         session_id: str,
-        final_file_name: str,
         final_blob_path: str,
         merged_chunks: List[str],
         size_bytes: Optional[int] = None,
         duration_ms: Optional[int] = None,
     ) -> int:
         """
-        Finalize the existing recording row: write file_name/path/blob_name, status='finalized',
+        Finalize the existing recording row: write file_path/blob_name, status='finalized',
         content_type='video/mp4', extra -> {"merged_chunks": [...]}
         Returns the video row id.
         """
@@ -153,7 +151,6 @@ class MediaRepository(BaseRepository):
             update(media)
             .where(media.c.id == row)
             .values(
-                file_name=final_file_name,
                 file_path=final_blob_path,
                 blob_name=final_blob_path,
                 content_type="video/mp4",
@@ -187,7 +184,7 @@ class MediaRepository(BaseRepository):
         self,
         *,
         user_id: str,
-        file_name: str,
+        file_name: str,  # keeping parameter name for backward compatibility
         blob_path: str,
         content_type: str,
         size_bytes: Optional[int] = None,
@@ -200,7 +197,6 @@ class MediaRepository(BaseRepository):
             .values(
                 user_id=user_id,
                 media_type="file",
-                file_name=file_name,
                 file_path=blob_path,
                 blob_name=blob_path,
                 content_type=content_type,

@@ -1,49 +1,83 @@
 from __future__ import annotations
-from typing import List, Optional, Dict, Any, Tuple
+
 import os
-import tempfile
-import subprocess
-import shlex
 import re
-from glob import glob
+import json
+import shutil
+import subprocess
 from datetime import datetime
+from typing import List, Optional, Dict, Any, Tuple
 
-from .azure_storage_service import AzureStorageService, MANIFEST
+from ..utils.filename import secure_part
+from .azure_storage_service import AzureStorageService
 
-_CHUNK_RE = re.compile(r"chunk-(\d{5})\.webm$", re.IGNORECASE)
+# Constants
+WEBM_EXT = ".webm"
+MANIFEST = "chunks_manifest.json"
+
+_num_pat = re.compile(r"(\d+)(?=\.webm$)", re.IGNORECASE)
+
 
 def _server_chunk_name(idx_zero_based: int) -> str:
     return f"chunk-{idx_zero_based + 1:05d}.webm"
 
-# ---- Session / Manifest lifecycle -----------------------------------
+
+def _seq_num(name: str) -> int:
+    m = _num_pat.search(name)
+    return int(m.group(1)) if m else 0
+
+
+def _run(cmd: List[str]) -> subprocess.CompletedProcess:
+    return subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+
+# ---------------- Manifest / session lifecycle ----------------
 def init_manifest(
     user_id: str,
     *,
-    session_id: Optional[str],           # kept for DB use in callers; not used here
+    session_id: Optional[str],
     expected_total: int,
     candidate_id: Optional[str] = None,
     interview_id: Optional[str] = None,
     assigned_user: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Create/overwrite the manifest in Azure (user-scoped)."""
-    data = {"expected_total": int(expected_total), "received": [], "status": "in_progress"}
-    AzureStorageService.save_manifest(user_id, data)
+    data = {
+        "expected_total": int(expected_total),
+        "received": [],
+        "status": "in_progress",
+    }
+    AzureStorageService.save_manifest(
+        user_id,
+        data,
+        session_id=session_id,
+        candidate_id=candidate_id,
+        interview_id=interview_id,
+        assigned_user=assigned_user,
+    )
     return data
 
+
 def load_manifest(user_id: str) -> Dict[str, Any]:
-    return AzureStorageService.load_manifest(user_id) or {}
+    return AzureStorageService.load_manifest(user_id)
+
 
 def update_manifest_received(user_id: str, chunk_idx_zero_based: int) -> Dict[str, Any]:
-    """Append a received chunk index into the manifest (idempotent, user-scoped)."""
     mf = AzureStorageService.load_manifest(user_id) or {}
-    expected = int(mf.get("expected_total") or 0)
+    expected = int(mf.get("expected_total") or (chunk_idx_zero_based + 1))  # At least this many chunks
     received = list(mf.get("received") or [])
+
     if chunk_idx_zero_based not in received:
         received.append(chunk_idx_zero_based)
         received.sort()
-    out = {"expected_total": expected, "received": received, "status": mf.get("status") or "in_progress"}
-    AzureStorageService.save_manifest(user_id, out)
-    return out
+        # Update expected_total if we see a higher index
+        expected = max(expected, chunk_idx_zero_based + 1)
+
+    AzureStorageService.save_manifest(
+        user_id,
+        {"expected_total": expected, "received": received, "status": mf.get("status") or "in_progress"},
+    )
+    return {"expected_total": expected, "received": received, "status": mf.get("status") or "in_progress"}
+
 
 def get_missing_chunks(user_id: str) -> List[int]:
     mf = AzureStorageService.load_manifest(user_id) or {}
@@ -51,7 +85,8 @@ def get_missing_chunks(user_id: str) -> List[int]:
     received = set(mf.get("received") or [])
     return [i for i in range(expected) if i not in received]
 
-# ---- Chunk uploads ---------------------------------------------------
+
+# ---------------- Chunk uploads ----------------
 def save_chunk(
     user_id: str,
     idx_zero_based: int,
@@ -62,7 +97,6 @@ def save_chunk(
     interview_id: Optional[str] = None,
     assigned_user: Optional[str] = None,
 ) -> str:
-    """Upload a chunk to Azure and mirror in DB; also update manifest.received."""
     filename = _server_chunk_name(idx_zero_based)
     blob = AzureStorageService.save_chunk(
         user_id,
@@ -74,183 +108,182 @@ def save_chunk(
         assigned_user=assigned_user,
         media_type="chunk",
     )
+    # Track receipt in manifest
     update_manifest_received(user_id, idx_zero_based)
     return blob
 
-# ---- Finalization ----------------------------------------------------
-def finalize_with_merged(
-    user_id: str,
-    merged_local_path: str,
-    *,
-    content_type: str = "video/webm",
-    duration_ms: Optional[int] = None,
-    session_id: Optional[str] = None,
-    candidate_id: Optional[str] = None,
-    interview_id: Optional[str] = None,
-    assigned_user: Optional[str] = None,
-    keep_manifest: bool = True,
-    delete_chunks: bool = True,
-) -> str:
-    """
-    Upload merged WEBM, mark manifest done, optionally delete chunks.
-    NOTE: merged name fixed ('merged.webm') to avoid accidental deletion.
-    """
-    merged_blob = AzureStorageService.upload_from_path(
-        user_id=user_id,
-        local_path=merged_local_path,
-        dest_filename="merged.webm",
-        content_type=content_type,
-        media_type="merged",
-        session_id=session_id,
-        candidate_id=candidate_id,
-        interview_id=interview_id,
-        assigned_user=assigned_user,
-        duration_ms=duration_ms,
-    )
 
-    # Mark manifest done
+# ---------------- Helpers for concat/encode ----------------
+def _binary_concat_to_webm(folder: str, chunks_sorted: List[str]) -> str:
+    merged_path = os.path.join(folder, "merged.webm")
+    with open(merged_path, "wb") as out:
+        for fn in chunks_sorted:
+            with open(os.path.join(folder, fn), "rb") as inp:
+                out.write(inp.read())
+    return merged_path
+
+
+def _encode_webm_to_mp4(in_webm: str, out_mp4: str) -> None:
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-fflags",
+        "+genpts",
+        "-i",
+        in_webm,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "fast",
+        "-crf",
+        "23",
+        "-pix_fmt",
+        "yuv420p",
+        "-r",
+        "30",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-ar",
+        "48000",
+        "-ac",
+        "2",
+        "-movflags",
+        "+faststart",
+        out_mp4,
+    ]
+    _run(cmd)
+
+
+def _probe_duration_ms(path: str) -> Optional[int]:
     try:
-        mf = AzureStorageService.load_manifest(user_id) or {}
+        p = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                path,
+            ],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        s = p.stdout.decode().strip()
+        if not s:
+            return None
+        return int(float(s) * 1000)
     except Exception:
-        mf = {}
-    AzureStorageService.save_manifest(
-        user_id,
-        {"expected_total": mf.get("expected_total"),
-         "received": mf.get("received") or [],
-         "status": "done"}
-    )
+        return None
 
-    if delete_chunks:
-        delete_all_chunks(user_id)
 
-    if not keep_manifest:
-        AzureStorageService.delete_file(user_id, MANIFEST)
+def _clean_local_files(folder: str, filenames: List[str]) -> None:
+    for f in filenames:
+        try:
+            os.remove(os.path.join(folder, f))
+        except Exception:
+            pass
 
-    return merged_blob
 
-# ---- Cleanup helpers -------------------------------------------------
-def delete_all_chunks(user_id: str) -> List[str]:
-    """Delete every chunk-*.webm (keeps 'merged.webm' and manifest)."""
-    # Do NOT call delete_prefix; rely on filtered delete_all
-    return AzureStorageService.delete_all(
-        user_id, include_exts=[".webm"], exclude_exts=["merged.webm"]
-    )
-
-def reset_session(user_id: str, *, wipe_merged: bool = True, wipe_manifest: bool = True) -> None:
-    """Remove all chunks; optionally remove merged + manifest."""
-    delete_all_chunks(user_id)
-    if wipe_merged:
-        AzureStorageService.delete_file(user_id, "merged.webm")
-    if wipe_manifest:
-        AzureStorageService.delete_file(user_id, MANIFEST)
-
-# ---- Compatibility wrapper used by controller -----------------------
+# ---------------- Finalize: concat -> encode -> upload ----------------
 def finalize_concat_then_encode(
-    folder: str,                   # local chunk staging dir
+    user_folder: str,
     user_id: str,
     *,
     keep_merged: bool = False,
     keep_manifest: bool = False,
     session_id: Optional[str] = None,
-) -> Tuple[str, str, List[str]]:
-    """
-    Collect chunks (local-first, Azure fallback), concat+encode via ffmpeg,
-    upload final-YYYYMMDD-HHMMSS.mp4 + merged.webm, update manifest, optionally delete chunks.
-    """
-    local_chunk_paths: List[str] = []
-    used_chunk_names: List[str] = []
-
-    if folder and os.path.isdir(folder):
-        candidates = glob(os.path.join(folder, "chunk-*.webm"))
-        def keyf(p: str) -> int:
-            m = _CHUNK_RE.search(os.path.basename(p))
-            return int(m.group(1)) if m else 10**9
-        candidates = sorted(candidates, key=keyf)
-        if candidates:
-            local_chunk_paths = candidates
-            used_chunk_names = [os.path.basename(p) for p in candidates]
-
-    if not local_chunk_paths:
-        mf = AzureStorageService.load_manifest(user_id) or {}
-        received = sorted(set(mf.get("received") or []))
-        if not received and (mf.get("expected_total") is None or int(mf.get("expected_total") or 0) == 0):
-            probe_max = 1000
-            i = 0
-            temp_paths, names = [], []
-            while i < probe_max:
-                name = _server_chunk_name(i)
-                try:
-                    p = AzureStorageService.download_to_temp(user_id, name)
-                    temp_paths.append(p)
-                    names.append(name)
-                    i += 1
-                except Exception:
-                    break
-            if not temp_paths:
-                raise FileNotFoundError("No .webm chunks found (azure fallback)")
-            local_chunk_paths = temp_paths
-            used_chunk_names = names
-        else:
-            if not received:
-                raise FileNotFoundError("No .webm chunks found (manifest empty)")
-            max_idx = max(received)
-            names = [_server_chunk_name(i) for i in range(max_idx + 1)]
-            temp_paths = [AzureStorageService.download_to_temp(user_id, nm) for nm in names]
-            local_chunk_paths = temp_paths
-            used_chunk_names = names
-
-    if not local_chunk_paths:
+    candidate_id: Optional[str] = None,
+    interview_id: Optional[str] = None,
+    assigned_user: Optional[str] = None,
+) -> Tuple[str, Optional[str], List[str]]:
+    # 1) gather and order chunks
+    chunks = [f for f in os.listdir(user_folder) if f.lower().endswith(WEBM_EXT) and not f.startswith("merged")]
+    if not chunks:
         raise FileNotFoundError("No .webm chunks found")
+    chunks.sort(key=_seq_num)
 
-    # Timestamp for final file name (UTC)
-    ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
-    final_mp4_name = f"final-{ts}.mp4"
-    merged_webm_name = "merged.webm"
+    # 2) concat -> merged.webm
+    merged_webm_path = _binary_concat_to_webm(user_folder, chunks)
 
-    with tempfile.TemporaryDirectory(prefix="merge_") as td:
-        list_path = os.path.join(td, "list.txt")
-        with open(list_path, "w", encoding="utf-8") as f:
-            for p in local_chunk_paths:
-                esc = p.replace("'", r"'\''")
-                f.write(f"file '{esc}'\n")
+    # 3) encode merged.webm -> final mp4
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_name_mp4 = f"{secure_part(user_id)}_{ts}.mp4"
+    out_path_mp4 = os.path.join(user_folder, out_name_mp4)
 
-        merged_webm_local = os.path.join(td, merged_webm_name)
-        final_mp4_local  = os.path.join(td, final_mp4_name)
+    try:
+        _encode_webm_to_mp4(merged_webm_path, out_path_mp4)
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError((e.stderr or b"").decode(errors="ignore"))
 
-        cmd_webm = (
-            f"ffmpeg -y -f concat -safe 0 -i {shlex.quote(list_path)} "
-            f"-c:v libvpx-vp9 -crf 32 -b:v 0 -c:a libopus {shlex.quote(merged_webm_local)}"
-        )
-        p1 = subprocess.run(cmd_webm, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if p1.returncode != 0:
-            raise RuntimeError(p1.stderr.decode("utf-8", errors="ignore"))
+    # 4) probe duration
+    duration_ms = _probe_duration_ms(out_path_mp4)
 
-        cmd_mp4 = (
-            f"ffmpeg -y -i {shlex.quote(merged_webm_local)} "
-            f"-c:v libx264 -preset veryfast -crf 23 -c:a aac -movflags +faststart {shlex.quote(final_mp4_local)}"
-        )
-        p2 = subprocess.run(cmd_mp4, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if p2.returncode != 0:
-            raise RuntimeError(p2.stderr.decode("utf-8", errors="ignore"))
-
-        # Upload final MP4 (timestamped) — pass session_id
+    # 5) upload final mp4 to Azure
+    try:
         AzureStorageService.upload_from_path(
             user_id=user_id,
-            local_path=final_mp4_local,
-            dest_filename=final_mp4_name,
+            local_path=out_path_mp4,
+            dest_filename=out_name_mp4,
             content_type="video/mp4",
-            media_type="video",
             session_id=session_id,
+            candidate_id=candidate_id,
+            interview_id=interview_id,
+            assigned_user=assigned_user,
+            media_type="file",
+            duration_ms=duration_ms,
         )
+    except Exception as e:
+        # bubble up as runtime error for controller to convert
+        raise RuntimeError(str(e))
 
-        # Upload merged.webm and finalize
-        finalize_with_merged(
-            user_id=user_id,
-            merged_local_path=merged_webm_local,
-            content_type="video/webm",
-            session_id=session_id,
-            keep_manifest=keep_manifest,
-            delete_chunks=not keep_merged,
-        )
+    merged_name: Optional[str] = None
+    if keep_merged:
+        try:
+            AzureStorageService.upload_from_path(
+                user_id=user_id,
+                local_path=merged_webm_path,
+                dest_filename="merged.webm",
+                content_type="video/webm",
+                session_id=session_id,
+                candidate_id=candidate_id,
+                interview_id=interview_id,
+                assigned_user=assigned_user,
+                media_type="merged",
+            )
+            merged_name = os.path.basename(merged_webm_path)
+        except Exception:
+            # non-fatal
+            merged_name = None
 
-    return (final_mp4_name, merged_webm_name, used_chunk_names)
+    # 6) cleanup local chunks
+    _clean_local_files(user_folder, chunks)
+
+    # 7) cleanup merged.webm (unless asked to keep)
+    if not keep_merged:
+        try:
+            os.remove(merged_webm_path)
+        except Exception:
+            pass
+
+    # 8) cleanup manifest(s) (unless asked to keep)
+    if not keep_manifest:
+        try:
+            AzureStorageService.delete_file(user_id, MANIFEST)
+        except Exception:
+            pass
+
+    return out_name_mp4, merged_name, chunks
+
+
+def reset_session(user_id: str, *, wipe_merged: bool = True, wipe_manifest: bool = True) -> None:
+    # Remove all chunk blobs
+    AzureStorageService.delete_all(user_id, include_exts=[".webm"], exclude_exts=None)
+    if wipe_merged:
+        AzureStorageService.delete_file(user_id, "merged.webm")
+    if wipe_manifest:
+        AzureStorageService.delete_file(user_id, MANIFEST)

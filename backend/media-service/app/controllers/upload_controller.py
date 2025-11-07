@@ -341,7 +341,6 @@ def finalize_upload():
         video_id = repo.finalize_recording(
             user_id=str(user_id),
             session_id=session_id,
-            final_file_name=final_mp4_name,
             final_blob_path=final_blob_path,
             merged_chunks=used_chunks,
             size_bytes=None,

@@ -97,7 +97,6 @@ def _upsert_media_row(
     user_id: str,
     media_type_val: str,
     blob_name_val: str,
-    file_name_val: Optional[str] = None,
     content_type_val: Optional[str] = None,
     session_id_val: Optional[str] = None,
     candidate_id_val: Optional[str] = None,
@@ -109,6 +108,7 @@ def _upsert_media_row(
     expected_total_val: Optional[int] = None,
     received_indices_val: Optional[List[int]] = None,
     extra_val: Optional[dict] = None,
+    file_path_val: Optional[str] = None,
 ):
     """Upsert by (user_id, blob_name). If no row, INSERT; else UPDATE."""
     with engine.begin() as conn:
@@ -122,8 +122,7 @@ def _upsert_media_row(
         payload = {
             "user_id": user_id,
             "media_type": media_type_val,
-            "file_name": file_name_val,
-            "file_path": blob_name_val,   # store virtual path (same as blob for convenience)
+            "file_path": file_path_val or blob_name_val,  # use provided file_path or fallback to blob_name
             "blob_name": blob_name_val,
             "content_type": content_type_val,
             "session_id": session_id_val,
@@ -237,7 +236,7 @@ class AzureStorageService:
                     user_id=user_id,
                     media_type_val="file",
                     blob_name_val=b.name,
-                    file_name_val=fname,
+                    file_path_val=b.name,
                     status_val="indexed",
                     extra_val={"reconciled": True},
                 )
@@ -289,7 +288,6 @@ class AzureStorageService:
                 user_id=user_id,
                 media_type_val="manifest",
                 blob_name_val=blob,
-                file_name_val=MANIFEST,
                 content_type_val="application/json",
                 expected_total_val=obj.get("expected_total"),
                 received_indices_val=obj.get("received") or [],
@@ -325,7 +323,6 @@ class AzureStorageService:
                 user_id=user_id,
                 media_type_val="manifest",
                 blob_name_val=blob,
-                file_name_val=MANIFEST,
                 content_type_val="application/json",
                 session_id_val=session_id,
                 candidate_id_val=candidate_id,
@@ -368,7 +365,6 @@ class AzureStorageService:
                 user_id=user_id,
                 media_type_val=media_type,
                 blob_name_val=blob,
-                file_name_val=filename,
                 content_type_val="video/webm",
                 session_id_val=session_id,
                 candidate_id_val=candidate_id,
@@ -413,7 +409,6 @@ class AzureStorageService:
                 user_id=user_id,
                 media_type_val=media_type,
                 blob_name_val=blob,
-                file_name_val=dest_filename,
                 content_type_val=content_type,
                 session_id_val=session_id,
                 candidate_id_val=candidate_id,
@@ -535,7 +530,7 @@ class AzureStorageService:
                     user_id=user_id,
                     media_type_val="file",
                     blob_name_val=b.name,
-                    file_name_val=fname,
+                    file_path_val=b.name,
                     status_val="indexed",
                     extra_val={"reconciled": True},
                 )

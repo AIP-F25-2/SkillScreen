@@ -78,7 +78,7 @@ def upload_resume():
         media_id = repo.insert_file(
             user_id=user_id,
             media_type="resume",
-            file_name=os.path.basename(blob_name),
+            file_name=os.path.basename(blob_name),  # kept for backward compatibility
             file_path=blob_name,
             blob_name=blob_name,
             content_type="application/pdf",
@@ -216,10 +216,8 @@ def schedule_candidate(candidate_id):
         repo = MediaRepository(uow)
         new_id = repo.insert_file(
             user_id=cand.get("user_id"),
-            media_type="interview",
-            file_name=None,
-            file_path=None,
-            blob_name=None,
+            file_name="",  # kept for backward compatibility
+            blob_path="",
             content_type=None,
             status="scheduled",
             candidate_id=candidate_id,

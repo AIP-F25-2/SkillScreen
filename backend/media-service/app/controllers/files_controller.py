@@ -51,7 +51,7 @@ def upload_general_file():
         repo = MediaRepository(uow)
         repo.insert_file(
             user_id=str(user_id),
-            file_name=safe_name,
+            file_name=safe_name,  # kept for backward compatibility
             blob_path=db_blob_path,
             content_type=content_type,
             size_bytes=None,
