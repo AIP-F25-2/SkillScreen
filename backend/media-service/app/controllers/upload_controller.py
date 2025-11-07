@@ -14,18 +14,24 @@ from ..services.video_service import (
 )
 
 from ..utils.filename import secure_part
-from sqlalchemy import select,text
+from ..utils.ids import require_uuid_str
+from sqlalchemy import select, text
 from db import UnitOfWork
 from app.repositories.media_repository import MediaRepository
+from app.db.schema import media
 
 upload_bp = Blueprint("upload", __name__)
 
 def _server_chunk_name(idx_zero_based: int) -> str:
     return f"chunk-{idx_zero_based + 1:05d}.webm"
 
-def _get_session_id(src: dict, default: str = "default") -> str:
-    sid = src.get("session_id")
-    return secure_part(sid) if sid else default
+def _get_session_id(src: dict, *, required: bool = True) -> str:
+    sid = src.get("session_id") if hasattr(src, "get") else None
+    if not sid:
+        if required:
+            raise ValueError("session_id is required")
+        return None
+    return require_uuid_str(str(sid), "session_id")
 
 
 def _manifest_matches_session(man: dict, session_id: str) -> bool:
@@ -40,7 +46,10 @@ def upload_init():
     data = request.get_json() or {}
     user_id = data.get("user_id")
     total_chunks = data.get("total_chunks")
-    session_id = _get_session_id(data)
+    try:
+        session_id = _get_session_id(data)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
 
     if not user_id or total_chunks is None:
         return jsonify({"error": "Missing user_id or total_chunks"}), 400
@@ -65,14 +74,14 @@ def upload_init():
             try:
                 uow.session.execute(
                     """
-                    UPDATE media
+                    UPDATE media_files
                        SET expected_total = COALESCE(
                                GREATEST(COALESCE(expected_total, 0), :tot),
                                :tot
                            ),
                            updated_at = NOW()
                      WHERE user_id = :uid
-                       AND session_id::text = :sid
+                       AND session_id = CAST(:sid AS uuid)
                        AND media_type = 'video'
                        AND status = 'recording'
                     """,
@@ -113,9 +122,20 @@ def upload_chunk():
     user_id = request.form.get("user_id")
     chunk_index = request.form.get("chunk_index", type=int)
     total_chunks = request.form.get("total_chunks", type=int)  # optional (used to backfill)
-    session_id = _get_session_id(request.form)
+    try:
+        session_id = _get_session_id(request.form)
+    except ValueError as exc:
+        current_app.logger.error(
+            f"upload_chunk: session_id validation failed - method={request.method}, path={request.path}, "
+            f"form_keys={list(request.form.keys())}, error={str(exc)}"
+        )
+        return jsonify({"error": str(exc)}), 400
 
     if not file or not user_id or chunk_index is None:
+        current_app.logger.error(
+            f"upload_chunk: missing required fields - method={request.method}, path={request.path}, "
+            f"file={bool(file)}, user_id={bool(user_id)}, chunk_index={chunk_index}, session_id={session_id}"
+        )
         return jsonify({"error": "Missing file, user_id, or chunk_index"}), 400
 
     server_filename = _server_chunk_name(chunk_index)
@@ -159,6 +179,10 @@ def upload_chunk():
             assigned_user=request.form.get("assigned_user"),
         )
     except ValueError as ve:
+        current_app.logger.error(
+            f"upload_chunk: save_chunk ValueError - method={request.method}, path={request.path}, "
+            f"user_id={user_id}, session_id={session_id}, chunk_index={chunk_index}, error={str(ve)}"
+        )
         return jsonify({"error": str(ve)}), 400
     except Exception as e:
         current_app.logger.exception("upload_chunk failed")
@@ -211,7 +235,10 @@ def upload_chunk():
 @upload_bp.route("/upload/missing", methods=["GET"])
 def upload_missing():
     user_id = request.args.get("user_id")
-    session_id = _get_session_id(request.args)
+    try:
+        session_id = _get_session_id(request.args)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     if not user_id:
         return jsonify({"error": "Missing user_id"}), 400
 
@@ -278,7 +305,10 @@ def reset_chunks():
     data.update(data_json or {})
 
     user_id = data.get("user_id")
-    session_id = _get_session_id(data)
+    try:
+        session_id = _get_session_id(data)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
 
     if not user_id:
         return jsonify({"error": "Missing user_id (send as JSON, form, or ?user_id=)"}), 400
@@ -307,7 +337,7 @@ def reset_chunks():
                      WHERE user_id = :uid
                        AND media_type='video'
                        AND status='recording'
-                       AND session_id::text = :sid
+                       AND session_id = CAST(:sid AS uuid)
                 """),
                 {"uid": str(user_id), "sid": session_id}
             )
@@ -333,7 +363,10 @@ def finalize_upload():
     user_id = data.get("user_id")
     keep_merged = bool(data.get("keep_merged", False))
     keep_manifest = bool(data.get("keep_manifest", False))
-    session_id = _get_session_id(data)
+    try:
+        session_id = _get_session_id(data)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
 
     if not user_id:
         return jsonify({"error": "Missing user_id"}), 400
@@ -439,7 +472,10 @@ def finalize_upload():
                        AND media_type = 'video'
                        AND status = 'uploaded'
                        AND blob_name = :blob
-                       AND (session_id IS NULL OR session_id::text = :sid)
+                       AND (
+                           session_id IS NULL
+                           OR session_id = CAST(:sid AS uuid)
+                       )
                        AND id <> :keep_id
                 """),
                 {
@@ -490,7 +526,13 @@ def serve_video(user_id, filename):
 @upload_bp.route("/chunks/status", methods=["GET"])
 def chunks_status():
     user_id = request.args.get("user_id")
-    session_id = request.args.get("session_id") or request_args.get("sid") if (request_args := request.args) else None
+    raw_session = request.args.get("session_id") or request.args.get("sid")
+    session_id = None
+    if raw_session:
+        try:
+            session_id = _get_session_id({"session_id": raw_session})
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
 
     if not user_id:
         return jsonify({"error": "Missing user_id"}), 400
@@ -499,12 +541,12 @@ def chunks_status():
         repo = MediaRepository(uow)
         if not session_id:
             latest = uow.session.execute(
-                select(repo.c.session_id)
-                .where(repo.c.user_id == str(user_id), repo.c.media_type == "video")
-                .order_by(repo.c.id.desc())
+                select(media.c.session_id)
+                .where(media.c.user_id == str(user_id), media.c.media_type == "video")
+                .order_by(media.c.created_at.desc())
                 .limit(1)
             ).scalar_one_or_none()
-            session_id = latest
+            session_id = str(latest) if latest else None
 
         if not session_id:
             return jsonify({"expected_total": 0, "received": [], "missing": [], "status": "idle"}), 200
