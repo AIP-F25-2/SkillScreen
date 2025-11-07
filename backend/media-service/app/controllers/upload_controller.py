@@ -2,8 +2,8 @@ import os, re, tempfile, shutil
 from pathlib import Path
 from flask import Blueprint, request, jsonify, send_file, current_app
 
-# Azure-backed storage service
-from ..services.azure_storage_service import AzureStorageService as StorageService
+# Storage service (configurable Azure/Local)
+from ..services.storage_service import StorageService
 
 from ..services.video_service import (
     init_manifest as vs_init_manifest,
@@ -26,6 +26,13 @@ def _server_chunk_name(idx_zero_based: int) -> str:
 def _get_session_id(src: dict, default: str = "default") -> str:
     sid = src.get("session_id")
     return secure_part(sid) if sid else default
+
+
+def _manifest_matches_session(man: dict, session_id: str) -> bool:
+    if not man or not session_id:
+        return False
+    man_session = man.get("session_id")
+    return bool(man_session and man_session == session_id)
 
 
 @upload_bp.route("/upload/init", methods=["POST"])
@@ -82,11 +89,14 @@ def upload_init():
                 "db_id": existing.get("id") if isinstance(existing, dict) else None,
             }), 200
 
-        # Otherwise, create a fresh recording row
+        # Create a fresh recording row with expected_total
         video_id = repo.create_recording_video(
             user_id=str(user_id),
             session_id=session_id,
-            expected_total=int(total_chunks),
+            expected_total=int(total_chunks),  # Ensure this is set
+            assigned_user=None,
+            candidate_id=None,
+            interview_id=None,
         )
 
     return jsonify({
@@ -112,6 +122,33 @@ def upload_chunk():
 
     # 1) Save chunk (Azure + manifest.received)
     try:
+        # If there's no recording row yet in the DB, and the client supplied total_chunks,
+        # create the recording row first so expected_total is set on the video row.
+        if total_chunks is not None:
+            # update the user-scoped manifest as well
+            vs_init_manifest(
+                user_id=str(user_id),
+                session_id=session_id,
+                expected_total=int(total_chunks),
+            )
+
+        # Ensure DB row exists with expected_total before saving the chunk when possible
+        if total_chunks is not None:
+            try:
+                with UnitOfWork() as uow_pre:
+                    repo_pre = MediaRepository(uow_pre)
+                    existing_rec = repo_pre.get_recording_status(user_id=str(user_id), session_id=session_id)
+                    if not existing_rec:
+                        repo_pre.create_recording_video(
+                            user_id=str(user_id),
+                            session_id=session_id,
+                            expected_total=int(total_chunks),
+                        )
+                        uow_pre.session.commit()
+            except Exception:
+                # non-fatal; we'll still attempt to save the chunk and mark it later
+                pass
+
         vs_save_chunk(
             user_id=str(user_id),
             idx_zero_based=int(chunk_index),
@@ -130,13 +167,26 @@ def upload_chunk():
     # 2) EXTRA safety: idempotent merge in manifest (user-scoped)
     try:
         man = StorageService.load_manifest(str(user_id)) or {}
+        if not _manifest_matches_session(man, session_id):
+            man = {"received": [], "expected_total": None, "status": "in_progress", "session_id": session_id}
         rec = set(man.get("received") or [])
         rec.add(int(chunk_index))
         man["received"] = sorted(rec)
+        man["session_id"] = session_id
+        
+        # Always maintain expected_total in manifest
+        max_received = (max(rec) + 1) if rec else 0
+        prev_expected = man.get("expected_total")
+        try:
+            prev_expected_int = int(prev_expected)
+        except (TypeError, ValueError):
+            prev_expected_int = 0
         if total_chunks is not None:
-            prev = int(man.get("expected_total") or 0)
-            man["expected_total"] = max(int(total_chunks), prev)
-        StorageService.save_manifest(str(user_id), man)
+            target_total = int(total_chunks)
+            man["expected_total"] = max(target_total, prev_expected_int, max_received)
+        else:
+            man["expected_total"] = max(prev_expected_int, max_received)
+        StorageService.save_manifest(str(user_id), man, session_id=session_id)
     except Exception:
         current_app.logger.exception("manifest merge failed (non-fatal)")
 
@@ -168,10 +218,15 @@ def upload_missing():
     # Union manifest (user-scoped) + DB (session-scoped)
     expected_total = None
     received = set()
+    manifest_expected = None
+    db_expected = None
     try:
         man = StorageService.load_manifest(str(user_id)) or {}
-        received |= set(man.get("received") or [])
-        expected_total = man.get("expected_total")
+        if _manifest_matches_session(man, session_id):
+            received |= set(man.get("received") or [])
+            manifest_expected = man.get("expected_total")
+        else:
+            man = {}
     except Exception:
         man = {}
 
@@ -180,14 +235,23 @@ def upload_missing():
         status = repo.get_recording_status(user_id=str(user_id), session_id=session_id)
         if status:
             received |= set(status.get("received", []) or [])
-            if expected_total is None:
-                expected_total = status.get("expected_total")
+            db_expected = status.get("expected_total")
 
     if not received:
         return jsonify({"missing": [], "expected_total": 0, "session_id": session_id}), 200
 
-    if expected_total is None:
-        expected_total = max(received) + 1
+    def _safe_int(val):
+        try:
+            return int(val)
+        except (TypeError, ValueError):
+            return None
+
+    candidates = [
+        _safe_int(manifest_expected),
+        _safe_int(db_expected),
+        _safe_int(max(received) + 1 if received else None),
+    ]
+    expected_total = max((c for c in candidates if c is not None), default=0)
 
     missing = [i for i in range(int(expected_total)) if i not in received]
     return jsonify({"missing": missing, "expected_total": int(expected_total), "session_id": session_id}), 200
@@ -275,12 +339,16 @@ def finalize_upload():
         return jsonify({"error": "Missing user_id"}), 400
 
     # 1) Build a UNION of manifest (user) + DB (session)
-    expected_total = None
     received = set()
+    manifest_expected = None
+    db_expected = None
     try:
         man = StorageService.load_manifest(str(user_id)) or {}
-        received |= set(man.get("received") or [])
-        expected_total = man.get("expected_total")
+        if _manifest_matches_session(man, session_id):
+            received |= set(man.get("received") or [])
+            manifest_expected = man.get("expected_total")
+        else:
+            man = {}
     except Exception:
         man = {}
 
@@ -289,17 +357,32 @@ def finalize_upload():
         status = repo.get_recording_status(user_id=str(user_id), session_id=session_id)
         if status:
             received |= set(status.get("received", []) or [])
-            if expected_total is None:
-                expected_total = status.get("expected_total")
+            db_expected = status.get("expected_total")
 
     if not received:
         return jsonify({"error": "No .webm chunks found"}), 400
 
-    if expected_total is None:
-        expected_total = max(received) + 1
+    def _safe_int(val):
+        try:
+            return int(val)
+        except (TypeError, ValueError):
+            return None
 
-    # Compute missing from the union
-    missing = [i for i in range(int(expected_total)) if i not in received]
+    candidates = [
+        _safe_int(manifest_expected),
+        _safe_int(db_expected),
+        _safe_int(max(received) + 1 if received else None),
+    ]
+    expected_total = max((c for c in candidates if c is not None), default=None)
+
+    if expected_total is None:
+        return jsonify({"error": "No expected_total provided and no chunks found"}), 400
+
+    # Safety check - make sure we have an integer
+    expected_total = int(expected_total)
+    
+    # Compute missing from the union - ensure we check all indices
+    missing = [i for i in range(expected_total) if i not in received]
     if missing:
         return jsonify({"error": "missing chunks", "missing": missing}), 409
 
@@ -376,7 +459,8 @@ def finalize_upload():
         man["received"] = list(range(int(expected_total)))
         man["expected_total"] = int(expected_total)
         man["status"] = "done"
-        StorageService.save_manifest(str(user_id), man)
+        man["session_id"] = session_id
+        StorageService.save_manifest(str(user_id), man, session_id=session_id)
     except Exception:
         pass
 

@@ -6,6 +6,7 @@ from typing import Optional, Dict, Any
 from sqlalchemy import select, insert, update, delete
 from repository.base_repository import BaseRepository
 from app.db.schema import media
+from app.services.storage_service import StorageService
 
 
 class MediaRepository(BaseRepository):
@@ -27,6 +28,15 @@ class MediaRepository(BaseRepository):
         Create a 'video' row at upload/init time.
         Tracks chunks in received_indices/expected_total on THIS row.
         """
+        # If caller didn't supply expected_total, try to backfill from user-scoped manifest
+        if expected_total is None:
+            try:
+                mf = StorageService.load_manifest(user_id) or {}
+                if mf.get("session_id") == session_id:
+                    expected_total = mf.get("expected_total")
+            except Exception:
+                expected_total = None
+
         now = datetime.utcnow()
         stmt = (
             insert(media)
@@ -62,6 +72,10 @@ class MediaRepository(BaseRepository):
         expected_total: Optional[int] = None,
     ) -> None:
         """
+        Update chunk receipt and expected_total.
+        If expected_total is provided, ensures it's set in the database.
+        """
+        """
         Append idx into received_indices and lift expected_total if provided.
         Operates on the existing video row (status='recording').
         """
@@ -83,6 +97,15 @@ class MediaRepository(BaseRepository):
 
         if not row:
             # If no row found (edge case), create one on-the-fly
+            # Try to backfill expected_total from the user-scoped manifest if available
+            if expected_total is None:
+                try:
+                    mf = StorageService.load_manifest(user_id) or {}
+                    if mf.get("session_id") == session_id:
+                        expected_total = mf.get("expected_total")
+                except Exception:
+                    expected_total = None
+
             video_id = self.create_recording_video(
                 user_id=user_id, session_id=session_id, expected_total=expected_total
             )
@@ -102,15 +125,26 @@ class MediaRepository(BaseRepository):
                 cur.append(ii)
                 cur.sort()
 
+        # Always ensure we have an expected_total value.
+        # If the caller provided expected_total, use/raise it.
         if expected_total is not None:
-            exp = max(int(expected_total), int(exp or 0))
+            exp = int(expected_total)
+            if row and row.get("expected_total") is not None:
+                exp = max(int(expected_total), int(row.get("expected_total")))
+        else:
+            # If no expected_total provided, derive a safe rolling value from received indices
+            # so DB will not stay NULL. Use max(received)+1 when we have any chunks.
+            if cur:
+                exp = max(cur) + 1
+            else:
+                exp = None
 
         self.session.execute(
             update(media)
             .where(media.c.id == row_id)
             .values(
                 received_indices=cur,
-                expected_total=exp,
+                expected_total=exp,  # Will be None if not provided
                 updated_at=datetime.utcnow(),
             )
         )

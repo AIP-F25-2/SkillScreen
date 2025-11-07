@@ -183,6 +183,74 @@ let mediaRecorder, liveStream;
 let chunkIndex = 0;
 let requestTimer = null;
 let sessionId = null;
+let pendingUploads = []; // array of Promises for in-flight chunk uploads
+// Serial upload queue to improve reliability and retries
+const uploadQueue = [];
+let uploadWorkerRunning = false;
+const UPLOAD_RETRIES = 3;
+const UPLOAD_BACKOFF_MS = 300; // base backoff
+const DEFAULT_UPLOAD_WAIT_MS = 10000;
+
+// Keep a temporary in-memory copy of recent blobs so we can re-upload missing chunks
+const recordedBlobs = {}; // idx -> Blob
+const MAX_STORED_BLOBS = 200; // cap to avoid blowing memory
+
+async function waitForPendingUploads(timeoutMs = DEFAULT_UPLOAD_WAIT_MS) {
+  const start = Date.now();
+  while (pendingUploads.length) {
+    const elapsed = Date.now() - start;
+    if (elapsed >= timeoutMs) {
+      console.warn('waitForPendingUploads timed out');
+      break;
+    }
+    const remaining = timeoutMs - elapsed;
+    const snapshot = pendingUploads.slice();
+    try {
+      await Promise.race([
+        Promise.all(snapshot),
+        new Promise((resolve) => setTimeout(resolve, Math.min(remaining, 1000)))
+      ]);
+    } catch (err) {
+      console.warn('waitForPendingUploads encountered an error', err);
+      break;
+    }
+  }
+}
+
+function enqueueUpload(form) {
+  return new Promise((resolve, reject) => {
+    uploadQueue.push({ form, resolve, reject, attempts: 0 });
+    if (!uploadWorkerRunning) processUploadQueue();
+  });
+}
+
+async function processUploadQueue() {
+  uploadWorkerRunning = true;
+  while (uploadQueue.length) {
+    const job = uploadQueue.shift();
+    let ok = false;
+    let lastErr = null;
+    while (job.attempts < UPLOAD_RETRIES && !ok) {
+      try {
+        job.attempts += 1;
+        const res = await fetch('/media/upload_chunk', { method: 'POST', body: job.form });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        ok = true;
+        const data = await res.text();
+        job.resolve(data);
+      } catch (err) {
+        lastErr = err;
+        // exponential backoff
+        const wait = UPLOAD_BACKOFF_MS * Math.pow(2, job.attempts - 1);
+        await new Promise(r => setTimeout(r, wait));
+      }
+    }
+    if (!ok) {
+      job.reject(lastErr);
+    }
+  }
+  uploadWorkerRunning = false;
+}
 
 const CHUNK_MS = 1000;
 
@@ -234,17 +302,37 @@ document.getElementById('startRecBtn').addEventListener('click', async () => {
     if (!e.data || e.data.size === 0) return;
     const idx = chunkIndex++;
     const filename = chunkName(idx);
+    const blob = new Blob([e.data], { type: 'video/webm' });
+    // store blob for possible re-uploads
+    try {
+      recordedBlobs[idx] = blob;
+      // simple cap: delete oldest if too many
+      const keys = Object.keys(recordedBlobs);
+      if (keys.length > MAX_STORED_BLOBS) delete recordedBlobs[keys[0]];
+    } catch (err) {}
 
     const form = new FormData();
-    form.append('file', new Blob([e.data], { type: 'video/webm' }), filename);
+    form.append('file', blob, filename);
     form.append('user_id', userId);
     form.append('chunk_index', String(idx));
     form.append('session_id', sessionId);
 
     try {
-      await fetch('/media/upload_chunk', { method: 'POST', body: form });
+      // enqueue upload into serial queue with retries
+      let p = enqueueUpload(form)
+        .catch(err => { console.error('Chunk upload failed (enqueue):', err); throw err; });
+      pendingUploads.push(p);
+      p.then(() => {
+        // on success, remove stored blob to free memory
+        try { delete recordedBlobs[idx]; } catch (e) {}
+      });
+      p.finally(() => {
+        const i = pendingUploads.indexOf(p);
+        if (i !== -1) pendingUploads.splice(i, 1);
+      });
+      await p;
     } catch (err) {
-      console.error('Chunk upload failed:', err);
+      console.error('Chunk upload failed (outer):', err);
     }
   };
 
@@ -263,18 +351,101 @@ document.getElementById('stopRecBtn').addEventListener('click', async () => {
   const userId = document.getElementById('recordUserId').value.trim();
   if (!userId) return alert('Enter User ID');
 
+  const uploadTimeoutMs = DEFAULT_UPLOAD_WAIT_MS;
+
   try { clearInterval(requestTimer); } catch(e) {}
   requestTimer = null;
 
+  // First request final data before stopping
   try { mediaRecorder && mediaRecorder.requestData(); } catch(e) {}
+  
+  // Create a promise for the final chunk
+  const finalChunkPromise = new Promise(resolve => {
+    mediaRecorder.ondataavailable = async (e) => {
+      if (!e.data || e.data.size === 0) {
+        resolve();
+        return;
+      }
+      const idx = chunkIndex++;
+      const filename = chunkName(idx);
+      const blob = new Blob([e.data], { type: 'video/webm' });
+      try {
+        recordedBlobs[idx] = blob;
+      } catch (err) {}
+
+      const form = new FormData();
+      form.append('file', blob, filename);
+      form.append('user_id', userId);
+      form.append('chunk_index', String(idx));
+      form.append('session_id', sessionId);
+      form.append('is_final', 'true'); // Mark this as final chunk
+
+      try {
+        let p = enqueueUpload(form)
+          .catch(err => { console.error('Final chunk upload failed:', err); throw err; });
+        pendingUploads.push(p);
+        p.finally(() => {
+          const i = pendingUploads.indexOf(p);
+          if (i !== -1) pendingUploads.splice(i, 1);
+          resolve();
+        });
+      } catch (err) {
+        console.error('Final chunk upload failed:', err);
+        resolve();
+      }
+    };
+  });
+
+  // Ensure all in-flight chunks finish uploading before we trigger stop
+  await waitForPendingUploads(uploadTimeoutMs);
+
+  // Now stop the recorder
   try { mediaRecorder && mediaRecorder.stop(); } catch (e) {}
+  
+  // Wait for the final chunk upload to resolve, then drain any remaining uploads
+  await finalChunkPromise;
+  await waitForPendingUploads(uploadTimeoutMs);
+
+  // If server reports missing chunks, try to re-upload them from our in-memory blobs
+  try {
+    const stat = await fetchJSON(`/media/chunks/status?user_id=${encodeURIComponent(userId)}&session_id=${encodeURIComponent(sessionId)}`);
+    if (stat.missing && stat.missing.length) {
+      const toRetry = stat.missing.filter(i => recordedBlobs[i]);
+      // enqueue retries
+      for (const idx of toRetry) {
+        const filename = chunkName(idx);
+        const form = new FormData();
+        form.append('file', recordedBlobs[idx], filename);
+        form.append('user_id', userId);
+        form.append('chunk_index', String(idx));
+        form.append('session_id', sessionId);
+        const p = enqueueUpload(form).catch(err => console.error('Retry upload failed', idx, err));
+        pendingUploads.push(p);
+        p.finally(() => {
+          const i = pendingUploads.indexOf(p);
+          if (i !== -1) pendingUploads.splice(i, 1);
+        });
+      }
+
+      // wait again for retries (short timeout)
+      await waitForPendingUploads(5000);
+
+      // Re-check missing after retries
+      const stat2 = await fetchJSON(`/media/chunks/status?user_id=${encodeURIComponent(userId)}&session_id=${encodeURIComponent(sessionId)}`);
+      if (stat2.missing && stat2.missing.length) {
+        alert(`Server still missing ${stat2.missing.length} chunks after retries: [${stat2.missing.join(', ')}]. Cannot merge.`);
+        return;
+      }
+    }
+  } catch (e) {
+    console.warn('Status check / retry stage failed, proceeding to finalize:', e.message);
+  }
+
+  // Now it's safe to stop camera tracks and hide preview
   try { liveStream && liveStream.getTracks().forEach(t => t.stop()); } catch (e) {}
   document.getElementById('livePreview').style.display = 'none';
   document.getElementById('startRecBtn').disabled = false;
   document.getElementById('stopRecBtn').disabled = true;
-
-  // tiny drain time
-  await new Promise(r => setTimeout(r, 400));
 
   // Check missing with SAME session
   try {

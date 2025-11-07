@@ -266,7 +266,12 @@ class AzureStorageService:
         # Try DB first
         with engine.begin() as conn:
             row = conn.execute(
-                select(media.c.expected_total, media.c.received_indices, media.c.status)
+                select(
+                    media.c.expected_total,
+                    media.c.received_indices,
+                    media.c.status,
+                    media.c.session_id,
+                )
                 .where(media.c.user_id == user_id, media.c.blob_name == blob, media.c.media_type == "manifest")
             ).fetchone()
 
@@ -275,6 +280,7 @@ class AzureStorageService:
                 "expected_total": row.expected_total,
                 "received": row.received_indices or [],
                 "status": row.status or "unknown",
+                "session_id": row.session_id,
             }
 
         # Fallback to Azure JSON
@@ -292,6 +298,7 @@ class AzureStorageService:
                 expected_total_val=obj.get("expected_total"),
                 received_indices_val=obj.get("received") or [],
                 status_val=obj.get("status") or "in_progress",
+                session_id_val=obj.get("session_id"),
                 extra_val={"source": "backfill"},
             )
             return obj

@@ -7,9 +7,12 @@ import shutil
 import subprocess
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Tuple
+import logging
 
 from ..utils.filename import secure_part
-from .azure_storage_service import AzureStorageService
+from .storage_service import StorageService
+
+logger = logging.getLogger(__name__)
 
 # Constants
 WEBM_EXT = ".webm"
@@ -41,12 +44,34 @@ def init_manifest(
     interview_id: Optional[str] = None,
     assigned_user: Optional[str] = None,
 ) -> Dict[str, Any]:
+    # First load any existing manifest to preserve received chunks
+    existing = StorageService.load_manifest(user_id) or {}
+    existing_received = existing.get("received", [])
+    existing_session = existing.get("session_id")
+    existing_status = existing.get("status")
+
+    sanitized_session = secure_part(session_id) if session_id else None
+
+    # If caller starts a fresh session (different ID) or previous manifest was finalized,
+    # clear out the stale chunk indices so we only track the active recording.
+    if existing_received:
+        reset_required = False
+        if sanitized_session:
+            if existing_session != sanitized_session:
+                reset_required = True
+        else:
+            if existing_status == "done":
+                reset_required = True
+        if reset_required:
+            existing_received = []
+    
     data = {
         "expected_total": int(expected_total),
-        "received": [],
+        "received": existing_received,  # Preserve any existing received chunks
         "status": "in_progress",
+        "session_id": sanitized_session,
     }
-    AzureStorageService.save_manifest(
+    StorageService.save_manifest(
         user_id,
         data,
         session_id=session_id,
@@ -58,32 +83,43 @@ def init_manifest(
 
 
 def load_manifest(user_id: str) -> Dict[str, Any]:
-    return AzureStorageService.load_manifest(user_id)
+    return StorageService.load_manifest(user_id)
 
 
-def update_manifest_received(user_id: str, chunk_idx_zero_based: int) -> Dict[str, Any]:
-    mf = AzureStorageService.load_manifest(user_id) or {}
-    expected = int(mf.get("expected_total") or (chunk_idx_zero_based + 1))  # At least this many chunks
-    received = list(mf.get("received") or [])
-
-    if chunk_idx_zero_based not in received:
-        received.append(chunk_idx_zero_based)
-        received.sort()
-        # Update expected_total if we see a higher index
-        expected = max(expected, chunk_idx_zero_based + 1)
-
-    AzureStorageService.save_manifest(
+def update_manifest_received(
+    user_id: str,
+    chunk_idx_zero_based: int,
+    *,
+    session_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    mf = StorageService.load_manifest(user_id) or {}
+    received = set(mf.get("received") or [])
+    received.add(chunk_idx_zero_based)
+    mf["received"] = sorted(received)  # sort for stability
+    prev_expected = mf.get("expected_total")
+    try:
+        prev_expected_int = int(prev_expected)
+    except (TypeError, ValueError):
+        prev_expected_int = 0
+    mf["expected_total"] = max(prev_expected_int, chunk_idx_zero_based + 1)
+    if session_id:
+        mf["session_id"] = secure_part(session_id)
+    StorageService.save_manifest(
         user_id,
-        {"expected_total": expected, "received": received, "status": mf.get("status") or "in_progress"},
+        mf,
+        session_id=session_id,
     )
-    return {"expected_total": expected, "received": received, "status": mf.get("status") or "in_progress"}
+    return mf
 
 
 def get_missing_chunks(user_id: str) -> List[int]:
-    mf = AzureStorageService.load_manifest(user_id) or {}
+    mf = StorageService.load_manifest(user_id) or {}
     expected = int(mf.get("expected_total") or 0)
     received = set(mf.get("received") or [])
     return [i for i in range(expected) if i not in received]
+
+
+
 
 
 # ---------------- Chunk uploads ----------------
@@ -97,8 +133,30 @@ def save_chunk(
     interview_id: Optional[str] = None,
     assigned_user: Optional[str] = None,
 ) -> str:
+    # First ensure manifest exists
+    try:
+        man = StorageService.load_manifest(user_id)
+        sanitized_session = secure_part(session_id) if session_id else None
+        man_session = man.get("session_id") if man else None
+        session_mismatch = (
+            sanitized_session
+            and man
+            and (
+                (man_session and man_session != sanitized_session)
+                or (man_session is None and bool(man.get("received")))
+                or (man_session is None and (man.get("status") in {"done", "aborted"}))
+            )
+        )
+        if not man or "expected_total" not in man or session_mismatch:
+            # Create or update manifest with reasonable defaults
+            # Will be updated by client with correct total
+            init_manifest(user_id, session_id=session_id, expected_total=max(idx_zero_based + 1, 1))
+    except Exception as e:
+        logger.warning(f"Failed to handle manifest in save_chunk: {str(e)}")
+        pass
+
     filename = _server_chunk_name(idx_zero_based)
-    blob = AzureStorageService.save_chunk(
+    blob = StorageService.save_chunk_to_cloud(
         user_id,
         filename,
         fileobj,
@@ -109,7 +167,7 @@ def save_chunk(
         media_type="chunk",
     )
     # Track receipt in manifest
-    update_manifest_received(user_id, idx_zero_based)
+    update_manifest_received(user_id, idx_zero_based, session_id=session_id)
     return blob
 
 
@@ -223,9 +281,9 @@ def finalize_concat_then_encode(
     # 4) probe duration
     duration_ms = _probe_duration_ms(out_path_mp4)
 
-    # 5) upload final mp4 to Azure
+        # 5) upload final mp4 to Azure
     try:
-        AzureStorageService.upload_from_path(
+        StorageService.upload_from_path(
             user_id=user_id,
             local_path=out_path_mp4,
             dest_filename=out_name_mp4,
@@ -244,7 +302,7 @@ def finalize_concat_then_encode(
     merged_name: Optional[str] = None
     if keep_merged:
         try:
-            AzureStorageService.upload_from_path(
+            StorageService.upload_from_path(
                 user_id=user_id,
                 local_path=merged_webm_path,
                 dest_filename="merged.webm",
@@ -273,17 +331,17 @@ def finalize_concat_then_encode(
     # 8) cleanup manifest(s) (unless asked to keep)
     if not keep_manifest:
         try:
-            AzureStorageService.delete_file(user_id, MANIFEST)
+            StorageService.delete_file(user_id, MANIFEST)
         except Exception:
             pass
-
+            
     return out_name_mp4, merged_name, chunks
 
 
 def reset_session(user_id: str, *, wipe_merged: bool = True, wipe_manifest: bool = True) -> None:
     # Remove all chunk blobs
-    AzureStorageService.delete_all(user_id, include_exts=[".webm"], exclude_exts=None)
+    StorageService.delete_all(user_id, include_exts=[".webm"], exclude_exts=None)
     if wipe_merged:
-        AzureStorageService.delete_file(user_id, "merged.webm")
+        StorageService.delete_file(user_id, "merged.webm")
     if wipe_manifest:
-        AzureStorageService.delete_file(user_id, MANIFEST)
+        StorageService.delete_file(user_id, MANIFEST)

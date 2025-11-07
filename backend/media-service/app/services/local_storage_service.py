@@ -1,4 +1,5 @@
-# app/services/storage_service.py
+"""Local file system storage service implementation."""
+
 import os
 import stat
 import json
@@ -9,25 +10,27 @@ from ..utils.filename import secure_part
 
 MANIFEST = "chunks_manifest.json"
 
-class StorageService:
+class LocalStorageService:
+    """Storage service implementation using local file system."""
+
     @staticmethod
     def user_folder(user_id: str) -> str:
-        base = current_app.config.get("UPLOAD_FOLDER", "uploads")
+        base = current_app.config.get("UPLOAD_FOLDER", "temp/uploads")
         uid = secure_part(user_id)
         folder = os.path.join(base, uid)
         os.makedirs(folder, exist_ok=True)
         return folder
 
     @staticmethod
-    def list_users() -> list[str]:
-        base = current_app.config.get("UPLOAD_FOLDER", "uploads")
+    def list_users() -> List[str]:
+        base = current_app.config.get("UPLOAD_FOLDER", "temp/uploads")
         if not os.path.isdir(base):
             return []
         return [d for d in os.listdir(base) if os.path.isdir(os.path.join(base, d))]
 
     @staticmethod
-    def list_files(user_id: str, include_exts: List[str] | None = None, exclude_exts: List[str] | None = None) -> list[str]:
-        folder = StorageService.user_folder(user_id)
+    def list_files(user_id: str, include_exts: List[str] | None = None, exclude_exts: List[str] | None = None) -> List[str]:
+        folder = LocalStorageService.user_folder(user_id)
         items = []
         for f in os.listdir(folder):
             p = os.path.join(folder, f)
@@ -43,7 +46,7 @@ class StorageService:
 
     @staticmethod
     def delete_file(user_id: str, filename: str) -> bool:
-        folder = StorageService.user_folder(user_id)
+        folder = LocalStorageService.user_folder(user_id)
         from ..utils.filename import secure_part as sp
         path = os.path.join(folder, sp(filename))
         if os.path.isfile(path):
@@ -52,9 +55,9 @@ class StorageService:
         return False
 
     @staticmethod
-    def delete_all(user_id: str, include_exts: List[str] | None = None, exclude_exts: List[str] | None = None) -> list[str]:
+    def delete_all(user_id: str, include_exts: List[str] | None = None, exclude_exts: List[str] | None = None) -> List[str]:
         deleted = []
-        folder = StorageService.user_folder(user_id)
+        folder = LocalStorageService.user_folder(user_id)
         for f in os.listdir(folder):
             low = f.lower()
             if include_exts and not any(low.endswith(e) for e in include_exts):
@@ -80,7 +83,7 @@ class StorageService:
 
     @staticmethod
     def delete_user(user_id: str) -> bool:
-        folder = StorageService.user_folder(user_id)
+        folder = LocalStorageService.user_folder(user_id)
         if not os.path.isdir(folder):
             return False
 
@@ -98,8 +101,8 @@ class StorageService:
             return False
 
     @staticmethod
-    def delete_all_users() -> list[str]:
-        base = current_app.config.get("UPLOAD_FOLDER", "uploads")
+    def delete_all_users() -> List[str]:
+        base = current_app.config.get("UPLOAD_FOLDER", "temp/uploads")
         deleted = []
         if not os.path.isdir(base):
             return deleted
@@ -115,11 +118,11 @@ class StorageService:
 
     @staticmethod
     def manifest_path(user_id: str) -> str:
-        return os.path.join(StorageService.user_folder(user_id), MANIFEST)
+        return os.path.join(LocalStorageService.user_folder(user_id), MANIFEST)
 
     @staticmethod
     def load_manifest(user_id: str) -> dict:
-        p = StorageService.manifest_path(user_id)
+        p = LocalStorageService.manifest_path(user_id)
         if os.path.isfile(p):
             try:
                 with open(p, "r", encoding="utf-8") as f:
@@ -130,6 +133,6 @@ class StorageService:
 
     @staticmethod
     def save_manifest(user_id: str, data: dict) -> None:
-        p = StorageService.manifest_path(user_id)
+        p = LocalStorageService.manifest_path(user_id)
         with open(p, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False)
