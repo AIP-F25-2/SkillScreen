@@ -18,16 +18,24 @@ class DiarizationService:
             
             logger.info("Loading pyannote diarization pipeline...")
             try:
+                # Set HuggingFace token as environment variable
+                import os
+                os.environ["HF_TOKEN"] = settings.HUGGINGFACE_TOKEN
+                
+                # Load pipeline - use older version 3.0 for compatibility
                 self.pipeline = Pipeline.from_pretrained(
-                    "pyannote/speaker-diarization-3.1",
-                    use_auth_token=settings.HUGGINGFACE_TOKEN
+                    "pyannote/speaker-diarization-3.0",  # Changed from 3.1
+                    use_auth_token=settings.HUGGINGFACE_TOKEN  # Explicitly pass token
                 )
                 
                 # Set device
-                device = torch.device(settings.WHISPER_DEVICE)
-                self.pipeline.to(device)
-                
-                logger.info("Diarization pipeline loaded successfully")
+                if self.pipeline:  # Check if loaded successfully
+                    device = torch.device(settings.WHISPER_DEVICE)
+                    self.pipeline.to(device)
+                    logger.info("Diarization pipeline loaded successfully")
+                else:
+                    raise Exception("Pipeline failed to load")
+                    
             except Exception as e:
                 logger.error(f"Failed to load diarization pipeline: {str(e)}")
                 raise
