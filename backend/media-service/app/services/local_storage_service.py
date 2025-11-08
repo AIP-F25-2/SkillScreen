@@ -1,138 +1,88 @@
-"""Local file system storage service implementation."""
-
-import os
-import stat
-import json
-import shutil
-from typing import List
+import os, shutil, tempfile
+from typing import Tuple, List
 from flask import current_app
-from ..utils.filename import secure_part
 
-MANIFEST = "chunks_manifest.json"
 
 class LocalStorageService:
-    """Storage service implementation using local file system."""
+    """Local equivalent for new architecture."""
 
     @staticmethod
-    def user_folder(user_id: str) -> str:
-        base = current_app.config.get("UPLOAD_FOLDER", "temp/uploads")
-        uid = secure_part(user_id)
-        folder = os.path.join(base, uid)
+    def base_folder() -> str:
+        base = current_app.config.get("UPLOAD_FOLDER", "temp/uploads/videos")
+        os.makedirs(base, exist_ok=True)
+        return base
+
+    @staticmethod
+    def interview_folder(interview_id: str) -> str:
+        path = os.path.join(LocalStorageService.base_folder(), interview_id)
+        os.makedirs(path, exist_ok=True)
+        return path
+
+    # ----------------------------------------------------------
+    # Chunk save/merge
+    # ----------------------------------------------------------
+    @staticmethod
+    def save_chunk(interview_id: str, blob_name: str, chunk_index: int, data: bytes) -> str:
+        folder = os.path.join(LocalStorageService.interview_folder(interview_id), "chunks")
         os.makedirs(folder, exist_ok=True)
-        return folder
+        path = os.path.join(folder, f"chunk_{chunk_index:05d}.webm")
+        with open(path, "wb") as f:
+            f.write(data)
+        return path
 
     @staticmethod
-    def list_users() -> List[str]:
-        base = current_app.config.get("UPLOAD_FOLDER", "temp/uploads")
-        if not os.path.isdir(base):
-            return []
-        return [d for d in os.listdir(base) if os.path.isdir(os.path.join(base, d))]
+    def merge_chunks(interview_id: str, blob_name: str, total_chunks: int) -> Tuple[str, str]:
+        folder = LocalStorageService.interview_folder(interview_id)
+        chunks_dir = os.path.join(folder, "chunks")
+        final_local = os.path.join(folder, os.path.basename(blob_name).replace(".webm", "_merged.mp4"))
+        with open(final_local, "wb") as merged:
+            for i in range(total_chunks):
+                chunk_path = os.path.join(chunks_dir, f"chunk_{i:05d}.webm")
+                with open(chunk_path, "rb") as c:
+                    merged.write(c.read())
+        # cleanup
+        shutil.rmtree(chunks_dir, ignore_errors=True)
+        return final_local, final_local  # local path = uri for local
+
+    # ----------------------------------------------------------
+    # Deletion / listing
+    # ----------------------------------------------------------
+    @staticmethod
+    def delete_folder(prefix: str) -> None:
+        base = LocalStorageService.base_folder()
+        full = os.path.join(base, prefix)
+        if os.path.isdir(full):
+            shutil.rmtree(full, ignore_errors=True)
 
     @staticmethod
-    def list_files(user_id: str, include_exts: List[str] | None = None, exclude_exts: List[str] | None = None) -> List[str]:
-        folder = LocalStorageService.user_folder(user_id)
-        items = []
-        for f in os.listdir(folder):
-            p = os.path.join(folder, f)
-            if not os.path.isfile(p):
-                continue
-            lower = f.lower()
-            if include_exts and not any(lower.endswith(e) for e in include_exts):
-                continue
-            if exclude_exts and any(lower.endswith(e) for e in exclude_exts):
-                continue
-            items.append(f)
-        return items
-
-    @staticmethod
-    def delete_file(user_id: str, filename: str) -> bool:
-        folder = LocalStorageService.user_folder(user_id)
-        from ..utils.filename import secure_part as sp
-        path = os.path.join(folder, sp(filename))
+    def delete_file(interview_id: str, filename: str) -> bool:
+        path = os.path.join(LocalStorageService.interview_folder(interview_id), filename)
         if os.path.isfile(path):
             os.remove(path)
             return True
         return False
 
     @staticmethod
-    def delete_all(user_id: str, include_exts: List[str] | None = None, exclude_exts: List[str] | None = None) -> List[str]:
-        deleted = []
-        folder = LocalStorageService.user_folder(user_id)
-        for f in os.listdir(folder):
-            low = f.lower()
-            if include_exts and not any(low.endswith(e) for e in include_exts):
-                continue
-            if exclude_exts and any(low.endswith(e) for e in exclude_exts):
-                continue
-            try:
-                os.remove(os.path.join(folder, f))
-                deleted.append(f)
-            except Exception:
-                pass
-        # if we cleaned webm chunks, also remove manifest(s) and merged.webm
-        try:
-            if include_exts and ".webm" in include_exts:
-                for mf in ("merged.webm", "chunks_manifest.json", "manifest.json"):
-                    mp = os.path.join(folder, mf)
-                    if os.path.exists(mp):
-                        try: os.remove(mp)
-                        except Exception: pass
-        except Exception:
-            pass
-        return deleted
-
-    @staticmethod
-    def delete_user(user_id: str) -> bool:
-        folder = LocalStorageService.user_folder(user_id)
+    def list_files(interview_id: str) -> List[str]:
+        folder = LocalStorageService.interview_folder(interview_id)
         if not os.path.isdir(folder):
-            return False
+            return []
+        return [f for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))]
 
-        def _on_rm_error(func, path, exc_info):
-            try:
-                os.chmod(path, stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
-                func(path)
-            except Exception:
-                pass
-
-        try:
-            shutil.rmtree(folder, onerror=_on_rm_error)
-            return True
-        except Exception:
-            return False
+    # ----------------------------------------------------------
+    # Download/upload helpers
+    # ----------------------------------------------------------
+    @staticmethod
+    def download_to_temp(interview_id: str, filename: str) -> str:
+        src = os.path.join(LocalStorageService.interview_folder(interview_id), filename)
+        if not os.path.exists(src):
+            raise FileNotFoundError(filename)
+        tmp = tempfile.NamedTemporaryFile(delete=False)
+        shutil.copy2(src, tmp.name)
+        return tmp.name
 
     @staticmethod
-    def delete_all_users() -> List[str]:
-        base = current_app.config.get("UPLOAD_FOLDER", "temp/uploads")
-        deleted = []
-        if not os.path.isdir(base):
-            return deleted
-        for user in os.listdir(base):
-            uf = os.path.join(base, user)
-            if os.path.isdir(uf):
-                try:
-                    shutil.rmtree(uf)
-                    deleted.append(user)
-                except Exception:
-                    pass
-        return deleted
-
-    @staticmethod
-    def manifest_path(user_id: str) -> str:
-        return os.path.join(LocalStorageService.user_folder(user_id), MANIFEST)
-
-    @staticmethod
-    def load_manifest(user_id: str) -> dict:
-        p = LocalStorageService.manifest_path(user_id)
-        if os.path.isfile(p):
-            try:
-                with open(p, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception:
-                pass
-        return {"received": [], "expected_total": None}
-
-    @staticmethod
-    def save_manifest(user_id: str, data: dict) -> None:
-        p = LocalStorageService.manifest_path(user_id)
-        with open(p, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False)
+    def upload_from_path(interview_id: str, local_path: str, dest_filename: str, content_type: str) -> str:
+        dest = os.path.join(LocalStorageService.interview_folder(interview_id), dest_filename)
+        shutil.copy2(local_path, dest)
+        return dest

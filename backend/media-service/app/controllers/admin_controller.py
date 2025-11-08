@@ -1,210 +1,184 @@
-# app/controllers/admin_controller.py
+from app.repositories.media_repository import MediaRepository
+from common.db import UnitOfWork
 import mimetypes
 from flask import Blueprint, request, jsonify, redirect, current_app
-from ..services.storage_service import StorageService
-from ..utils.filename import secure_part
 from urllib.parse import urlsplit, urlunsplit, quote
+from sqlalchemy import text
+from app.services.storage_service import StorageService
+from app.utils.filename import secure_part
 
 admin_bp = Blueprint("admin", __name__)
 
-def _build_blob_url(container_url: str, blob_name: str) -> str:
+def _build_blob_url(container_url: str, blob_path: str) -> str:
+    """Build full Azure blob URL from container + blob path."""
     u = urlsplit(container_url)
-    parts = [p for p in blob_name.split("/") if p]
+    parts = [p for p in blob_path.split("/") if p]
     encoded_path = "/".join(quote(p, safe="~()*!.'") for p in parts)
     new_path = (u.path.rstrip("/") + "/" + encoded_path).replace("//", "/")
     return urlunsplit((u.scheme, u.netloc, new_path, u.query, u.fragment))
 
+
+# =========================================================
+# 🎥 VIDEOS
+# =========================================================
+
 @admin_bp.route("/videos", methods=["GET"])
-def get_all_videos():
-    out = {}
-    for user in StorageService.list_users():
-        vids = StorageService.list_files(user, include_exts=[".mp4"])
-        if vids:
-            out[user] = vids
-    return jsonify(out), 200
+def list_all_videos():
+    """Return all video metadata and any blob names stored"""
+    try:
+        with UnitOfWork() as uow:
+            repo = MediaRepository(uow)
+            rows = repo.list_all_videos()  # New helper below
+        files = StorageService.list_files()
+        return jsonify({"videos": rows, "files": files}), 200
+    except Exception as e:
+        current_app.logger.exception("Failed to list videos")
+        return jsonify({"error": str(e)}), 500
 
-@admin_bp.route("/videos/<user_id>", methods=["GET"])
-def get_user_videos(user_id):
-    user_id = secure_part(user_id)
-    vids = StorageService.list_files(user_id, include_exts=[".mp4"]) or []
-    return jsonify({"user": user_id, "videos": vids}), 200
 
-@admin_bp.route("/video/<user_id>/<filename>", methods=["DELETE"])
-def delete_video(user_id, filename):
-    ok = StorageService.delete_file(user_id, filename)
-    if ok:
-        return jsonify({"status": "deleted", "file": secure_part(filename)}), 200
+@admin_bp.route("/videos/<interview_id>", methods=["GET"])
+def list_interview_videos(interview_id):
+    """List videos for one interview."""
+    interview_id = secure_part(interview_id)
+    vids = [f for f in StorageService.list_files(interview_id) if f.endswith(".mp4")]
+    return jsonify({"interview_id": interview_id, "videos": vids}), 200
+
+
+@admin_bp.route("/video/<interview_id>/<filename>", methods=["DELETE"])
+def delete_video(interview_id, filename):
+    """Delete both blob and DB record for a video."""
+    interview_id = secure_part(interview_id)
+    filename = secure_part(filename)
+    deleted_from_storage = False
+    deleted_from_db = False
+    print(filename)
+    # 1️⃣ Delete from Azure/local storage
+    try:
+        deleted_from_storage = StorageService.delete_file(interview_id, filename)
+    except Exception:
+        current_app.logger.warning(f"Storage deletion failed for {filename}", exc_info=True)
+
+    # 2️⃣ Delete from DB
+    try:
+        with UnitOfWork() as uow:
+            repo = MediaRepository(uow)
+            uow.session.execute(
+                text("""
+                    DELETE FROM media_files
+                    WHERE interview_id = :iid
+                      AND (blob_name = :fname OR storage_uri ILIKE :uri_like)
+                """),
+                {
+                    "iid": interview_id,
+                    "fname": filename,
+                    "uri_like": f"%{filename}%",
+                }
+            )
+            uow.session.commit()
+            deleted_from_db = True
+    except Exception:
+        current_app.logger.warning(f"DB row deletion failed for {filename}", exc_info=True)
+
+    if deleted_from_storage or deleted_from_db:
+        return jsonify({
+            "status": "deleted",
+            "file": filename,
+            "storage_deleted": deleted_from_storage,
+            "db_deleted": deleted_from_db
+        }), 200
+
     return jsonify({"error": "file not found"}), 404
 
-@admin_bp.route("/videos/<user_id>", methods=["DELETE"])
-def delete_user_videos(user_id):
-    deleted = StorageService.delete_all(user_id, include_exts=[".mp4"])
-    return jsonify({"status": "deleted", "deleted_files": deleted}), 200
 
-@admin_bp.route("/videos", methods=["DELETE"])
-def delete_all_videos():
-    out = {}
-    for user in StorageService.list_users():
-        out[user] = StorageService.delete_all(user, include_exts=[".mp4"])
-    return jsonify({"status": "deleted all videos", "deleted_files": out}), 200
 
-@admin_bp.route("/video/<user_id>/preview/<filename>", methods=["GET"])
-def admin_preview_video(user_id, filename):
-    user_id = secure_part(user_id); filename = secure_part(filename)
+@admin_bp.route("/videos/<interview_id>", methods=["DELETE"])
+def delete_all_videos_for_interview(interview_id):
+    """Delete all videos under one interview."""
+    StorageService.delete_folder(f"videos/{secure_part(interview_id)}/")
+    return jsonify({"status": "deleted", "interview_id": interview_id}), 200
+
+
+@admin_bp.route("/video/<interview_id>/preview/<filename>", methods=["GET"])
+def preview_video(interview_id, filename):
+    """Redirect to Azure blob for quick preview."""
+    interview_id = secure_part(interview_id)
+    filename = secure_part(filename)
     container_url = current_app.config.get("AZURE_BLOB_CONTAINER_URL")
-    blob_url = _build_blob_url(container_url, f"{user_id}/{filename}")
+    blob_url = _build_blob_url(container_url, f"videos/{interview_id}/{filename}")
     return redirect(blob_url, code=302)
 
-@admin_bp.route("/search/users", methods=["GET"])
-def search_users():
-    q = (request.args.get("q") or "").lower()
-    matches = [u for u in StorageService.list_users() if q in u.lower()]
-    return jsonify({"query": q, "matched_users": matches}), 200
 
-@admin_bp.route("/search/videos", methods=["GET"])
-def search_videos():
-    q = (request.args.get("q") or "").lower()
-    out = {}
-    for u in StorageService.list_users():
-        vids = [f for f in StorageService.list_files(u, include_exts=[".mp4"]) if q in f.lower()]
-        if vids:
-            out[u] = vids
-    return jsonify({"query": q, "matched_videos": out}), 200
+# =========================================================
+# 📄 FILES (non-video assets)
+# =========================================================
 
-@admin_bp.route("/files", methods=["GET"])
-def get_all_files():
-    out = {}
-    for u in StorageService.list_users():
-        files = StorageService.list_files(u, exclude_exts=[".mp4", ".webm"])
-        if files:
-            out[u] = files
-    return jsonify(out), 200
+@admin_bp.route("/files/<interview_id>", methods=["GET"])
+def list_interview_files(interview_id):
+    """List non-video files under one interview folder."""
+    interview_id = secure_part(interview_id)
+    files = [
+        f for f in StorageService.list_files(interview_id)
+        if not (f.endswith(".mp4") or f.endswith(".webm"))
+    ]
+    return jsonify({"interview_id": interview_id, "files": files}), 200
 
-@admin_bp.route("/files/<user_id>", methods=["GET"])
-def get_user_files(user_id):
-    user_id = secure_part(user_id)
-    files = StorageService.list_files(user_id, exclude_exts=[".mp4", ".webm"]) or []
-    return jsonify({"user": user_id, "files": files}), 200
 
-@admin_bp.route("/file/<user_id>/<filename>", methods=["DELETE"])
-def delete_user_file(user_id, filename):
-    ok = StorageService.delete_file(user_id, filename)
+@admin_bp.route("/file/<interview_id>/<filename>", methods=["DELETE"])
+def delete_file(interview_id, filename):
+    """Delete both the file in Azure and its DB record."""
+    interview_id = secure_part(interview_id)
+    filename = secure_part(filename)
+
+    # 1️⃣ Delete from Azure
+    ok = StorageService.delete_file(interview_id, filename)
+
+    # 2️⃣ Delete from DB
+    deleted_rows = 0
     if ok:
-        return jsonify({"status": "deleted", "file": secure_part(filename)}), 200
+        with UnitOfWork() as uow:
+            repo = MediaRepository(uow)
+            deleted_rows = repo.delete_file_record(interview_id, f"videos/{interview_id}/{filename}")
+
+    if ok:
+        return jsonify({
+            "status": "deleted",
+            "file": filename,
+            "db_deleted": bool(deleted_rows)
+        }), 200
+
     return jsonify({"error": "file not found"}), 404
 
-@admin_bp.route("/files/<user_id>", methods=["DELETE"])
-def delete_all_user_files(user_id):
-    deleted = StorageService.delete_all(user_id, exclude_exts=[".mp4", ".webm"])
-    return jsonify({"status": "deleted", "deleted_files": deleted}), 200
 
-@admin_bp.route("/files", methods=["DELETE"])
-def delete_all_general_files():
-    out = {}
-    for u in StorageService.list_users():
-        out[u] = StorageService.delete_all(u, exclude_exts=[".mp4", ".webm"])
-    return jsonify({"status": "deleted all general files", "deleted_files": out}), 200
 
-@admin_bp.route("/search/files", methods=["GET"])
-def search_files():
-    q = (request.args.get("q") or "").lower()
-    out = {}
-    for u in StorageService.list_users():
-        files = [
-            f for f in StorageService.list_files(u, exclude_exts=[".mp4", ".webm"])
-            if q in f.lower()
-        ]
-        if files:
-            out[u] = files
-    return jsonify({"query": q, "matched_files": out}), 200
-
-@admin_bp.route("/file/<user_id>/preview/<filename>", methods=["GET"])
-def admin_preview_file(user_id, filename):
-    user_id = secure_part(user_id); filename = secure_part(filename)
+@admin_bp.route("/file/<interview_id>/preview/<filename>", methods=["GET"])
+def preview_file(interview_id, filename):
+    """Direct link preview for a generic file."""
+    interview_id = secure_part(interview_id)
+    filename = secure_part(filename)
     container_url = current_app.config.get("AZURE_BLOB_CONTAINER_URL")
-    blob_url = _build_blob_url(container_url, f"{user_id}/{filename}")
+    blob_url = _build_blob_url(container_url, f"videos/{interview_id}/{filename}")
     return redirect(blob_url, code=302)
 
-@admin_bp.route("/user", methods=["POST"])
-def create_user():
-    data = request.get_json() or {}
-    user_id = data.get("user_id")
-    if not user_id:
-        return jsonify({"error": "Missing user_id"}), 400
-    from ..services.user_service import create_user as _create
-    created = _create(user_id)
-    if created:
-        return jsonify({"status": "user created", "user_id": secure_part(user_id)}), 201
-    return jsonify({"status": "user already exists"}), 200
 
-@admin_bp.route("/users", methods=["GET"])
-def get_all_users():
-    return jsonify({"users": StorageService.list_users()}), 200
+# =========================================================
+# 🔍 SEARCH
+# =========================================================
 
-@admin_bp.route("/user/<user_id>", methods=["GET"])
-def get_user(user_id):
-    user_id = secure_part(user_id)
-    users = set(StorageService.list_users())
-    if user_id not in users:
-        files = StorageService.list_files(user_id) or []
-        if not files:
-            return jsonify({"error": "user not found"}), 404
-        vids = [f for f in files if f.lower().endswith(".mp4")]
-        return jsonify({"user_id": user_id, "videos": vids}), 200
+@admin_bp.route("/search/interviews", methods=["GET"])
+def search_interviews():
+    q = (request.args.get("q") or "").lower()
+    all_blobs = StorageService.list_files()  # Flat list of all files
+    grouped = {}
 
-    vids = StorageService.list_files(user_id, include_exts=[".mp4"]) or []
-    return jsonify({"user_id": user_id, "videos": vids}), 200
+    for blob in all_blobs:
+        # Expect path like "videos/<interview_id>/filename.ext"
+        parts = blob.split("/")
+        if len(parts) < 3 or not parts[1]:
+            continue
+        interview_id = parts[1]
+        filename = parts[-1]
 
-@admin_bp.route("/user/<user_id>", methods=["PUT"])
-def update_user(user_id):
-    data = request.get_json() or {}
-    new_user_id = data.get("new_user_id")
-    if not new_user_id:
-        return jsonify({"error": "Missing new_user_id"}), 400
+        if q in filename.lower():
+            grouped.setdefault(interview_id, []).append(filename)
 
-    old_user = secure_part(user_id)
-    new_user = secure_part(new_user_id)
-
-    if new_user in set(StorageService.list_users()):
-        return jsonify({"error": "new user_id already exists"}), 400
-
-    files = StorageService.list_files(old_user) or []
-    if not files:
-        return jsonify({"error": "user not found or no files"}), 404
-
-    moved, failed = [], []
-    for fname in files:
-        try:
-            tmp_path = StorageService.download_to_temp(old_user, fname)
-            ctype = mimetypes.guess_type(fname)[0] or "application/octet-stream"
-            StorageService.upload_from_path(new_user, tmp_path, fname, content_type=ctype)
-            StorageService.delete_file(old_user, fname)
-            moved.append(fname)
-        except Exception as e:
-            failed.append({"file": fname, "error": str(e)})
-
-    if moved and not failed:
-        try:
-            StorageService.delete_user(old_user)
-        except Exception:
-            pass
-
-    return jsonify({
-        "status": "user renamed",
-        "old_user_id": old_user,
-        "new_user_id": new_user,
-        "moved_files": moved,
-        "failed": failed
-    }), 200
-
-@admin_bp.route("/user/<user_id>", methods=["DELETE"])
-def delete_user(user_id):
-    ok = StorageService.delete_user(user_id)
-    if ok:
-        return jsonify({"status": "user deleted", "user_id": secure_part(user_id)}), 200
-    return jsonify({"error": "user not found"}), 404
-
-@admin_bp.route("/users", methods=["DELETE"])
-def delete_all_users():
-    deleted = StorageService.delete_all_users()
-    return jsonify({"status": "deleted all users", "deleted_users": deleted}), 200
+    return jsonify({"query": q, "matched_interviews": grouped}), 200

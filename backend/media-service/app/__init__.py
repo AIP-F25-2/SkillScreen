@@ -1,3 +1,5 @@
+# app.__init__.py
+
 import os
 from flask import Flask
 from .config import Config
@@ -13,10 +15,13 @@ def create_app() -> Flask:
     app = Flask(__name__, template_folder="templates")
     app.config.from_object(Config())
 
-    cors.init_app(app, resources={r"/*": {"origins": os.getenv("CORS_ORIGINS", "*")}}, 
+    cors.init_app(
+        app,
+        resources={r"/*": {"origins": os.getenv("CORS_ORIGINS", "http://localhost:8080")}},
         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
-        supports_credentials=True)
+        supports_credentials=False,  # Gateway handles credentials
+    )
     check_ffmpeg()
 
     app.register_blueprint(health_bp)

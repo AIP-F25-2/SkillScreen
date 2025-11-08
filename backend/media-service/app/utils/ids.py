@@ -1,6 +1,6 @@
 # app/utils/ids.py
 import uuid
-from typing import Optional, Union
+from typing import Optional
 
 def normalize_uuid(val: Optional[str]) -> Optional[uuid.UUID]:
     """
@@ -16,3 +16,15 @@ def normalize_uuid(val: Optional[str]) -> Optional[uuid.UUID]:
     except Exception:
         # Deterministic mapping so the same session string filters correctly later
         return uuid.uuid5(uuid.NAMESPACE_URL, val)
+
+
+def normalize_uuid_str(val: Optional[str]) -> Optional[str]:
+    normalized = normalize_uuid(val)
+    return str(normalized) if normalized else None
+
+
+def require_uuid_str(val: Optional[str], field_name: str = "value") -> str:
+    normalized = normalize_uuid_str(val)
+    if not normalized:
+        raise ValueError(f"{field_name} must be a valid UUID")
+    return normalized

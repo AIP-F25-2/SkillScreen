@@ -4,3 +4,4 @@ python-dotenv>=1.0.0
 sqlalchemy==2.0.23
 psycopg2-binary
 azure-storage-blob==12.*
+fastapi

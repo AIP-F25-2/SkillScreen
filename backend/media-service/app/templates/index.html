@@ -42,53 +42,38 @@
     <div id="loginResponse"></div>
   </div>
 
-  <!-- Recording Section -->
+  <!-- 🎥 Recording Section -->
   <div class="section recording-section">
     <h2>Recording Control</h2>
     <div class="flex-row">
-      <input type="text" id="recordUserId" placeholder="Enter User ID for Recording">
+      <input type="text" id="recordInterviewId" placeholder="Enter Interview ID (UUID)">
+      <input type="text" id="recordSessionId" placeholder="Enter Session ID (UUID)">
       <button id="startRecBtn">Start Recording</button>
       <button id="stopRecBtn" disabled>Stop Recording</button>
     </div>
     <video id="livePreview" autoplay muted playsinline style="display:none;"></video>
     <div class="hint">
-      Uses: <code class="mono">/reset_chunks</code>, <code class="mono">/upload_chunk</code>, <code class="mono">/chunks/status</code>, <code class="mono">/finalize_upload</code>
+      Uses: <code class="mono">/media/reset_chunks</code>, <code class="mono">/media/upload_chunk</code>, <code class="mono">/media/chunks/status</code>, <code class="mono">/media/finalize_upload</code>
     </div>
   </div>
 
-  <!-- Users -->
+  <!-- 🎞 Videos -->
   <div class="section">
-    <h2>Users Management</h2>
+    <h2>Videos Management</h2>
     <div class="flex-row">
-      <input type="text" id="newUserId" placeholder="New User ID">
-      <button onclick="createUser()">Create User</button>
-      <button onclick="loadUsers()">Load Users</button>
-      <button onclick="deleteAllUsers()" class="delete">Delete All Users</button>
-    </div>
-    <table id="usersTable">
-      <thead><tr><th>User ID</th><th>Actions</th><th>Videos</th><th>Files</th></tr></thead>
-      <tbody></tbody>
-    </table>
-  </div>
-
-  <!-- Videos -->
-  <div class="section">
-    <h2>Search Videos</h2>
-    <div class="flex-row">
-      <input type="text" id="videoQuery" placeholder="Search videos">
-      <button onclick="searchVideos()">Search</button>
+      <button onclick="loadAllVideos()">Load All Videos</button>
     </div>
     <table id="videosTable">
-      <thead><tr><th>User</th><th>Video</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Interview ID</th><th>Session ID</th><th>Blob Name</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
 
-  <!-- Files -->
+  <!-- 📂 Files -->
   <div class="section">
     <h2>General Files Management</h2>
     <div class="flex-row">
-      <input type="text" id="fileUserId" placeholder="User ID for Upload">
+      <input type="text" id="fileInterviewId" placeholder="Interview ID for Upload">
       <input type="file" id="generalFile">
       <button onclick="uploadGeneralFile()">Upload File</button>
     </div>
@@ -97,34 +82,25 @@
       <button onclick="searchFiles()">Search</button>
     </div>
     <table id="filesTable">
-      <thead><tr><th>User</th><th>File</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Interview</th><th>File</th><th>Actions</th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
 </div>
 
 <script>
-/* ==========================
-   🔐 TOKEN & LOGIN HANDLING
-   ========================== */
-
 let API_TOKEN = "";
 
-// Monkey-patch fetch to include Authorization header automatically
 const originalFetch = window.fetch;
 window.fetch = async (url, options = {}) => {
   options.headers = options.headers || {};
   if (API_TOKEN) {
-    if (!(options.headers instanceof Headers)) {
-      options.headers['Authorization'] = `Bearer ${API_TOKEN}`;
-    } else {
-      options.headers.append('Authorization', `Bearer ${API_TOKEN}`);
-    }
+    if (!(options.headers instanceof Headers)) options.headers['Authorization'] = `Bearer ${API_TOKEN}`;
+    else options.headers.append('Authorization', `Bearer ${API_TOKEN}`);
   }
   return originalFetch(url, options);
 };
 
-// Unified JSON fetch helper
 async function fetchJSON(url, options = {}) {
   options.headers = options.headers || {};
   if (API_TOKEN) options.headers['Authorization'] = `Bearer ${API_TOKEN}`;
@@ -132,20 +108,15 @@ async function fetchJSON(url, options = {}) {
   const text = await res.text();
   let data;
   try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
-  if (!res.ok) {
-    const msg = (data.error || data.message) ? (data.error || data.message) : `HTTP ${res.status}`;
-    throw new Error(msg);
-  }
+  if (!res.ok) throw new Error(data.error || data.message || `HTTP ${res.status}`);
   return data;
 }
 
-// Login function
 async function login() {
   const username = document.getElementById("loginUsername").value.trim();
   const password = document.getElementById("loginPassword").value.trim();
-  const responseBox = document.getElementById("loginResponse");
-  responseBox.textContent = "Logging in...";
-
+  const box = document.getElementById("loginResponse");
+  box.textContent = "Logging in...";
   try {
     const res = await fetch("http://localhost:8080/auth/login", {
       method: "POST",
@@ -153,494 +124,167 @@ async function login() {
       body: JSON.stringify({ username, password }),
     });
     const data = await res.json();
-    responseBox.textContent = JSON.stringify(data, null, 2);
-
+    box.textContent = JSON.stringify(data, null, 2);
     if (res.ok && data.token) {
       API_TOKEN = data.token;
       document.getElementById("tokenInput").value = API_TOKEN;
-      alert("✅ Login successful! Token set automatically.");
-    } else {
-      alert("Login failed — check response below.");
-    }
-  } catch (err) {
-    responseBox.textContent = `Error: ${err.message}`;
-  }
+      alert("✅ Login successful!");
+    } else alert("Login failed.");
+  } catch (err) { box.textContent = err.message; }
 }
 
-// Allow manual token entry
 function setManualToken() {
   const val = document.getElementById("tokenInput").value.trim();
-  if (!val) return alert("Enter a token first!");
+  if (!val) return alert("Enter token first!");
   API_TOKEN = val;
-  alert("✅ Token updated manually!");
+  alert("✅ Token set manually.");
 }
 
-/* ==========================
-   🎥 RECORDING & DASHBOARD
-   ========================== */
-
-let mediaRecorder, liveStream;
-let chunkIndex = 0;
-let requestTimer = null;
-let sessionId = null;
-let pendingUploads = []; // array of Promises for in-flight chunk uploads
-// Serial upload queue to improve reliability and retries
+/* ========================== RECORDING SECTION ========================== */
+let mediaRecorder, liveStream, chunkIndex = 0, requestTimer = null, sessionId = null;
+const pendingUploads = [];
 const uploadQueue = [];
 let uploadWorkerRunning = false;
-const UPLOAD_RETRIES = 3;
-const UPLOAD_BACKOFF_MS = 300; // base backoff
-const DEFAULT_UPLOAD_WAIT_MS = 10000;
+const CHUNK_MS = 1000, UPLOAD_RETRIES = 3, UPLOAD_BACKOFF_MS = 300;
 
-// Keep a temporary in-memory copy of recent blobs so we can re-upload missing chunks
-const recordedBlobs = {}; // idx -> Blob
-const MAX_STORED_BLOBS = 200; // cap to avoid blowing memory
+function chunkName(idx){ return `chunk-${(idx+1).toString().padStart(5,'0')}.webm`; }
 
-async function waitForPendingUploads(timeoutMs = DEFAULT_UPLOAD_WAIT_MS) {
-  const start = Date.now();
-  while (pendingUploads.length) {
-    const elapsed = Date.now() - start;
-    if (elapsed >= timeoutMs) {
-      console.warn('waitForPendingUploads timed out');
-      break;
-    }
-    const remaining = timeoutMs - elapsed;
-    const snapshot = pendingUploads.slice();
-    try {
-      await Promise.race([
-        Promise.all(snapshot),
-        new Promise((resolve) => setTimeout(resolve, Math.min(remaining, 1000)))
-      ]);
-    } catch (err) {
-      console.warn('waitForPendingUploads encountered an error', err);
-      break;
-    }
-  }
-}
-
-function enqueueUpload(form) {
-  return new Promise((resolve, reject) => {
-    uploadQueue.push({ form, resolve, reject, attempts: 0 });
-    if (!uploadWorkerRunning) processUploadQueue();
+function enqueueUpload(form){
+  return new Promise((resolve,reject)=>{
+    uploadQueue.push({form,resolve,reject,attempts:0});
+    if(!uploadWorkerRunning) processUploadQueue();
   });
 }
 
-async function processUploadQueue() {
+async function processUploadQueue(){
   uploadWorkerRunning = true;
-  while (uploadQueue.length) {
+  while(uploadQueue.length){
     const job = uploadQueue.shift();
-    let ok = false;
-    let lastErr = null;
-    while (job.attempts < UPLOAD_RETRIES && !ok) {
-      try {
-        job.attempts += 1;
-        const res = await fetch('/media/upload_chunk', { method: 'POST', body: job.form });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        ok = true;
-        const data = await res.text();
-        job.resolve(data);
-      } catch (err) {
-        lastErr = err;
-        // exponential backoff
-        const wait = UPLOAD_BACKOFF_MS * Math.pow(2, job.attempts - 1);
-        await new Promise(r => setTimeout(r, wait));
-      }
+    let ok=false,lastErr=null;
+    while(job.attempts<UPLOAD_RETRIES && !ok){
+      try{
+        job.attempts++;
+        const res = await fetch('/media/upload_chunk',{method:'POST',body:job.form});
+        if(!res.ok) throw new Error(`HTTP ${res.status}`);
+        ok=true; job.resolve(await res.text());
+      }catch(e){lastErr=e; await new Promise(r=>setTimeout(r,UPLOAD_BACKOFF_MS*Math.pow(2,job.attempts-1)));}
     }
-    if (!ok) {
-      job.reject(lastErr);
-    }
+    if(!ok) job.reject(lastErr);
   }
-  uploadWorkerRunning = false;
+  uploadWorkerRunning=false;
 }
 
-const CHUNK_MS = 1000;
+document.getElementById('startRecBtn').addEventListener('click',async()=>{
+  const interviewId=document.getElementById('recordInterviewId').value.trim();
+  sessionId=document.getElementById('recordSessionId').value.trim();
+  if(!interviewId) return alert('Enter Interview ID');
+  if(!sessionId) return alert('Enter Session ID');
 
-function chunkName(idx) {
-  const n = (idx + 1).toString().padStart(5, "0");
-  return `chunk-${n}.webm`;
-}
-
-document.getElementById('startRecBtn').addEventListener('click', async () => {
-  const userId = document.getElementById('recordUserId').value.trim();
-  if (!userId) return alert('Enter User ID');
-
-  // Create a session ID once per recording
-  sessionId = Date.now().toString(36);
-
-  // Tell backend to reset using THIS session id
-  await fetchJSON('/media/reset_chunks', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ user_id: userId, session_id: sessionId })
-  });
-
-  try {
-    // Ask permissions
-    liveStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-  } catch (err) {
-    alert('Camera/Mic permission denied or unavailable. Please allow access and try again.');
-    return;
-  }
-
-  const preview = document.getElementById('livePreview');
-  preview.srcObject = liveStream;
-  preview.style.display = 'block';
-
-  chunkIndex = 0;
-
-  // Pick a supported mimeType (fallback if needed)
-  let mime = 'video/webm;codecs=vp8,opus';
-  if (!MediaRecorder.isTypeSupported(mime)) {
-    mime = 'video/webm;codecs=vp9,opus';
-  }
-  if (!MediaRecorder.isTypeSupported(mime)) {
-    mime = 'video/webm';
-  }
-
-  mediaRecorder = new MediaRecorder(liveStream, { mimeType: mime });
-
-  mediaRecorder.ondataavailable = async (e) => {
-    if (!e.data || e.data.size === 0) return;
-    const idx = chunkIndex++;
-    const filename = chunkName(idx);
-    const blob = new Blob([e.data], { type: 'video/webm' });
-    // store blob for possible re-uploads
-    try {
-      recordedBlobs[idx] = blob;
-      // simple cap: delete oldest if too many
-      const keys = Object.keys(recordedBlobs);
-      if (keys.length > MAX_STORED_BLOBS) delete recordedBlobs[keys[0]];
-    } catch (err) {}
-
-    const form = new FormData();
-    form.append('file', blob, filename);
-    form.append('user_id', userId);
-    form.append('chunk_index', String(idx));
-    form.append('session_id', sessionId);
-
-    try {
-      // enqueue upload into serial queue with retries
-      let p = enqueueUpload(form)
-        .catch(err => { console.error('Chunk upload failed (enqueue):', err); throw err; });
-      pendingUploads.push(p);
-      p.then(() => {
-        // on success, remove stored blob to free memory
-        try { delete recordedBlobs[idx]; } catch (e) {}
-      });
-      p.finally(() => {
-        const i = pendingUploads.indexOf(p);
-        if (i !== -1) pendingUploads.splice(i, 1);
-      });
-      await p;
-    } catch (err) {
-      console.error('Chunk upload failed (outer):', err);
-    }
+  chunkIndex=0;
+  await fetchJSON('/media/reset_chunks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({interview_id:interviewId,session_id:sessionId})});
+  try{liveStream=await navigator.mediaDevices.getUserMedia({video:true,audio:true});}catch{alert('Permission denied');return;}
+  const preview=document.getElementById('livePreview');preview.srcObject=liveStream;preview.style.display='block';
+  const mime='video/webm;codecs=vp8,opus';mediaRecorder=new MediaRecorder(liveStream,{mimeType:mime});
+  mediaRecorder.ondataavailable=async(e)=>{
+    if(!e.data||e.data.size===0)return;
+    const idx=chunkIndex++;const blob=new Blob([e.data],{type:'video/webm'});
+    const form=new FormData();form.append('file',blob,chunkName(idx));form.append('interview_id',interviewId);form.append('session_id',sessionId);form.append('chunk_index',idx);
+    const p=enqueueUpload(form);pendingUploads.push(p);p.finally(()=>pendingUploads.splice(pendingUploads.indexOf(p),1));
   };
-
-  mediaRecorder.start();
-  requestTimer = setInterval(() => {
-    if (mediaRecorder && mediaRecorder.state === 'recording') {
-      try { mediaRecorder.requestData(); } catch (e) {}
-    }
-  }, CHUNK_MS);
-
-  document.getElementById('startRecBtn').disabled = true;
-  document.getElementById('stopRecBtn').disabled = false;
+  mediaRecorder.start();requestTimer=setInterval(()=>{if(mediaRecorder.state==='recording')mediaRecorder.requestData();},CHUNK_MS);
+  document.getElementById('startRecBtn').disabled=true;document.getElementById('stopRecBtn').disabled=false;
 });
 
-document.getElementById('stopRecBtn').addEventListener('click', async () => {
-  const userId = document.getElementById('recordUserId').value.trim();
-  if (!userId) return alert('Enter User ID');
+document.getElementById('stopRecBtn').addEventListener('click',async()=>{
+  const interviewId=document.getElementById('recordInterviewId').value.trim();
+  if(!interviewId)return alert('Enter Interview ID');
+  clearInterval(requestTimer);requestTimer=null;
+  try{mediaRecorder.stop();}catch{}
+  liveStream?.getTracks().forEach(t=>t.stop());
+  document.getElementById('livePreview').style.display='none';
+  // Wait until all uploads finish
+  await Promise.allSettled(pendingUploads);
 
-  const uploadTimeoutMs = DEFAULT_UPLOAD_WAIT_MS;
+  // ⏳ Add adaptive delay before finalization
+  const DELAY_AFTER_LAST_UPLOAD_MS = Math.max(2000, uploadQueue.length * 500);
+  console.log(`Waiting ${DELAY_AFTER_LAST_UPLOAD_MS}ms before finalizing...`);
+  await new Promise(r => setTimeout(r, DELAY_AFTER_LAST_UPLOAD_MS));
 
-  try { clearInterval(requestTimer); } catch(e) {}
-  requestTimer = null;
-
-  // First request final data before stopping
-  try { mediaRecorder && mediaRecorder.requestData(); } catch(e) {}
-  
-  // Create a promise for the final chunk
-  const finalChunkPromise = new Promise(resolve => {
-    mediaRecorder.ondataavailable = async (e) => {
-      if (!e.data || e.data.size === 0) {
-        resolve();
-        return;
-      }
-      const idx = chunkIndex++;
-      const filename = chunkName(idx);
-      const blob = new Blob([e.data], { type: 'video/webm' });
-      try {
-        recordedBlobs[idx] = blob;
-      } catch (err) {}
-
-      const form = new FormData();
-      form.append('file', blob, filename);
-      form.append('user_id', userId);
-      form.append('chunk_index', String(idx));
-      form.append('session_id', sessionId);
-      form.append('is_final', 'true'); // Mark this as final chunk
-
-      try {
-        let p = enqueueUpload(form)
-          .catch(err => { console.error('Final chunk upload failed:', err); throw err; });
-        pendingUploads.push(p);
-        p.finally(() => {
-          const i = pendingUploads.indexOf(p);
-          if (i !== -1) pendingUploads.splice(i, 1);
-          resolve();
-        });
-      } catch (err) {
-        console.error('Final chunk upload failed:', err);
-        resolve();
-      }
-    };
-  });
-
-  // Ensure all in-flight chunks finish uploading before we trigger stop
-  await waitForPendingUploads(uploadTimeoutMs);
-
-  // Now stop the recorder
-  try { mediaRecorder && mediaRecorder.stop(); } catch (e) {}
-  
-  // Wait for the final chunk upload to resolve, then drain any remaining uploads
-  await finalChunkPromise;
-  await waitForPendingUploads(uploadTimeoutMs);
-
-  // If server reports missing chunks, try to re-upload them from our in-memory blobs
-  try {
-    const stat = await fetchJSON(`/media/chunks/status?user_id=${encodeURIComponent(userId)}&session_id=${encodeURIComponent(sessionId)}`);
-    if (stat.missing && stat.missing.length) {
-      const toRetry = stat.missing.filter(i => recordedBlobs[i]);
-      // enqueue retries
-      for (const idx of toRetry) {
-        const filename = chunkName(idx);
-        const form = new FormData();
-        form.append('file', recordedBlobs[idx], filename);
-        form.append('user_id', userId);
-        form.append('chunk_index', String(idx));
-        form.append('session_id', sessionId);
-        const p = enqueueUpload(form).catch(err => console.error('Retry upload failed', idx, err));
-        pendingUploads.push(p);
-        p.finally(() => {
-          const i = pendingUploads.indexOf(p);
-          if (i !== -1) pendingUploads.splice(i, 1);
-        });
-      }
-
-      // wait again for retries (short timeout)
-      await waitForPendingUploads(5000);
-
-      // Re-check missing after retries
-      const stat2 = await fetchJSON(`/media/chunks/status?user_id=${encodeURIComponent(userId)}&session_id=${encodeURIComponent(sessionId)}`);
-      if (stat2.missing && stat2.missing.length) {
-        alert(`Server still missing ${stat2.missing.length} chunks after retries: [${stat2.missing.join(', ')}]. Cannot merge.`);
-        return;
-      }
-    }
-  } catch (e) {
-    console.warn('Status check / retry stage failed, proceeding to finalize:', e.message);
+  // Check if any chunks are missing
+  const stat = await fetchJSON(`/media/chunks/status?interview_id=${encodeURIComponent(interviewId)}&session_id=${encodeURIComponent(sessionId)}`);
+  if (stat.missing && stat.missing.length) {
+    return alert(`Missing: ${stat.missing.join(',')}`);
   }
 
-  // Now it's safe to stop camera tracks and hide preview
-  try { liveStream && liveStream.getTracks().forEach(t => t.stop()); } catch (e) {}
-  document.getElementById('livePreview').style.display = 'none';
+  // ✅ Finalize after delay + verification
+  const finalize = await fetchJSON('/media/finalize_upload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ interview_id: interviewId, session_id: sessionId })
+  });
+
+  alert(`✅ Finalized!\nURL: ${finalize.storage_uri}`);
   document.getElementById('startRecBtn').disabled = false;
   document.getElementById('stopRecBtn').disabled = true;
 
-  // Check missing with SAME session
-  try {
-    const stat = await fetchJSON(`/media/chunks/status?user_id=${encodeURIComponent(userId)}&session_id=${encodeURIComponent(sessionId)}`);
-    if (stat.missing && stat.missing.length) {
-      alert(`Server is missing ${stat.missing.length} chunks: [${stat.missing.join(', ')}]. Cannot merge.`);
-      return;
-    }
-  } catch (e) {
-    console.warn('Status check failed (continuing to finalize):', e.message);
-  }
-
-  // Finalize with SAME session
-  try {
-    const data = await fetchJSON('/media/finalize_upload', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ user_id: userId, session_id: sessionId })
-    });
-    alert(`Recording finalized: ${data.file}`);
-    loadUserVideos(userId);
-  } catch (e) {
-    alert('Finalize failed: ' + e.message);
-  }
+  document.getElementById('startRecBtn').disabled=false;document.getElementById('stopRecBtn').disabled=true;
 });
 
-/* ==========================
-   👥 USERS / FILES / VIDEOS
-   ========================== */
-
-async function loadUsers() {
-  const data = await fetchJSON('/media/admin/users');
-  const tbody = document.querySelector('#usersTable tbody');
-  tbody.innerHTML = '';
-  (data.users || []).forEach(user => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${user}</td>
-      <td>
-        <button onclick="renameUser('${user}')">Rename</button>
-        <button onclick="deleteUser('${user}')" class="delete">Delete</button>
-      </td>
-      <td><div id="videos-${user}">Loading...</div></td>
-      <td><div id="files-${user}">Loading...</div></td>`;
-    tbody.appendChild(tr);
-    loadUserVideos(user);
-    loadUserFiles(user);
+/* ========================== VIDEO MANAGEMENT ========================== */
+async function loadAllVideos(){
+  const data=await fetchJSON('/media/admin/videos');
+  const tb=document.querySelector('#videosTable tbody');tb.innerHTML='';
+  (data.videos||[]).forEach(v=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${v.interview_id}</td><td>${v.session_id}</td><td>${v.blob_name||'-'}</td><td>${v.status||'-'}</td>
+    <td><button class="preview" onclick="previewVideo('${v.interview_id}','${v.blob_name}')">Preview</button>
+    <button class="delete" onclick="deleteVideo('${v.interview_id}','${v.blob_name}')">Delete</button></td>`;
+    tb.appendChild(tr);
   });
 }
+function previewVideo(id,file){window.open(`/media/video/${id}/${file}`,'_blank');}
+async function deleteVideo(id,file){if(!confirm('Delete '+file+'?'))return;await fetchJSON(`/media/admin/video/${id}/${file}`,{method:'DELETE'});loadAllVideos();}
 
-async function createUser() {
-  const userId = document.getElementById('newUserId').value.trim();
-  if (!userId) return alert('Enter User ID');
-  await fetchJSON('/media/admin/user', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({user_id: userId})
-  });
-  loadUsers();
+/* ========================== FILE MANAGEMENT ========================== */
+async function uploadGeneralFile(){
+  const iid=document.getElementById('fileInterviewId').value.trim();
+  const f=document.getElementById('generalFile').files[0];
+  if(!iid||!f)return alert('Select Interview and File');
+  const fd=new FormData();fd.append('interview_id',iid);fd.append('file',f);
+  const r=await fetch('/media/files/upload',{method:'POST',body:fd});
+  const d=await r.json();
+  if(!r.ok)alert('Upload failed');else alert('✅ File uploaded: '+d.file_path);
 }
+async function searchFiles(){
+  const q = document.getElementById('fileQuery').value.trim();
+  const data = await fetchJSON(`/media/admin/search/interviews?q=${encodeURIComponent(q)}`);
+  const tb = document.querySelector('#filesTable tbody');
+  tb.innerHTML = '';
 
-async function renameUser(oldId) {
-  const newId = prompt('New User ID for ' + oldId);
-  if (!newId) return;
-  await fetchJSON(`/media/admin/user/${oldId}`, {
-    method:'PUT',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({new_user_id: newId})
-  });
-  loadUsers();
-}
-
-async function deleteUser(userId) {
-  if (!confirm(`Delete user ${userId}?`)) return;
-  await fetchJSON(`/media/admin/user/${userId}`, { method:'DELETE' });
-  loadUsers();
-}
-
-async function deleteAllUsers() {
-  if (!confirm('Delete ALL users?')) return;
-  await fetchJSON('/media/admin/users', { method:'DELETE' });
-  loadUsers();
-}
-
-async function loadUserVideos(userId) {
-  const div = document.getElementById(`videos-${userId}`);
-  const data = await fetchJSON(`/media/admin/videos/${userId}`);
-  if (!data.videos || data.videos.length === 0) {
-    div.innerHTML = 'No videos';
-    return;
-  }
-  div.innerHTML = '';
-  data.videos.forEach(video => {
-    const videoDiv = document.createElement('div');
-    videoDiv.innerHTML = `${video} 
-      <button class="preview" onclick="previewVideo('${userId}','${video}')">Preview</button>
-      <button class="delete" onclick="deleteVideo('${userId}','${video}')">Delete</button>`;
-    div.appendChild(videoDiv);
-  });
-}
-
-async function deleteVideo(userId, filename) {
-  if (!confirm(`Delete video ${filename}?`)) return;
-  await fetchJSON(`/media/admin/video/${userId}/${filename}`, { method:'DELETE' });
-  loadUserVideos(userId);
-}
-
-function previewVideo(userId, filename) {
-  const win = window.open(`/media/admin/video/${userId}/preview/${filename}`, '_blank');
-  if (!win) alert('Popup blocked, enable popups to preview');
-}
-
-async function searchVideos() {
-  const query = document.getElementById('videoQuery').value.trim();
-  const data = await fetchJSON(`/media/admin/search/videos?q=${encodeURIComponent(query)}`);
-  const tbody = document.querySelector('#videosTable tbody');
-  tbody.innerHTML = '';
-  for (let user in data.matched_videos) {
-    data.matched_videos[user].forEach(video => {
+  const results = data.matched_interviews || {};
+  for (let interviewId in results) {
+    results[interviewId].forEach(file => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${user}</td>
-        <td>${video}</td>
+      tr.innerHTML = `
+        <td>${interviewId}</td>
+        <td>${file}</td>
         <td>
-          <button class="preview" onclick="previewVideo('${user}','${video}')">Preview</button>
-          <button class="delete" onclick="deleteVideo('${user}','${video}')">Delete</button>
+          <button class="preview" onclick="previewFile('${interviewId}','${file}')">Open</button>
+          <button class="delete" onclick="deleteFile('${interviewId}','${file}')">Delete</button>
         </td>`;
-      tbody.appendChild(tr);
+      tb.appendChild(tr);
     });
   }
-}
 
-async function uploadGeneralFile() {
-  const userId = document.getElementById('fileUserId').value.trim();
-  const fileInput = document.getElementById('generalFile');
-  if (!userId || fileInput.files.length === 0) return alert('Select user and file');
-
-  const formData = new FormData();
-  formData.append('user_id', userId);
-  formData.append('file', fileInput.files[0]);
-
-  const res = await fetch('/media/files/upload', { method:'POST', body:formData });
-  const data = await res.json();
-
-  if (!res.ok) {
-    alert('Upload failed: ' + (data.error || res.status));
-    return;
-  }
-  alert(`File uploaded successfully!\n\nPath: ${data.file_path}`);
-  loadUserFiles(userId);
-}
-
-async function loadUserFiles(userId) {
-  const div = document.getElementById(`files-${userId}`);
-  const data = await fetchJSON(`/media/admin/files/${userId}`);
-  if (!data.files || data.files.length === 0) {
-    div.innerHTML = 'No files';
-    return;
-  }
-  div.innerHTML = '';
-  data.files.forEach(file => {
-    const fileDiv = document.createElement('div');
-    fileDiv.innerHTML = `${file}
-      <button class="preview" onclick="previewFile('${userId}','${file}')">Open</button>
-      <button class="delete" onclick="deleteFile('${userId}','${file}')">Delete</button>`;
-    div.appendChild(fileDiv);
-  });
-}
-
-async function deleteFile(userId, filename) {
-  if (!confirm(`Delete file ${filename}?`)) return;
-  await fetchJSON(`/media/admin/file/${userId}/${filename}`, { method:'DELETE' });
-  loadUserFiles(userId);
-}
-
-function previewFile(userId, filename) {
-  window.open(`/media/file/${userId}/${filename}`, '_blank');
-}
-
-async function searchFiles() {
-  const query = document.getElementById('fileQuery').value.trim();
-  const data = await fetchJSON(`/media/admin/search/files?q=${encodeURIComponent(query)}`);
-  const tbody = document.querySelector('#filesTable tbody');
-  tbody.innerHTML = '';
-  for (let user in data.matched_files) {
-    data.matched_files[user].forEach(file => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${user}</td><td>${file}</td>
-        <td><button class="preview" onclick="previewFile('${user}','${file}')">Open</button>
-        <button class="delete" onclick="deleteFile('${user}','${file}')">Delete</button></td>`;
-      tbody.appendChild(tr);
-    });
+  if (Object.keys(results).length === 0) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td colspan="3" style="text-align:center;color:#888;">No matches found</td>`;
+    tb.appendChild(tr);
   }
 }
 
-// Auto-load users on page load
-loadUsers();
+function previewFile(id,f){window.open(`/media/file/${id}/${f}`,'_blank');}
+async function deleteFile(id,f){if(!confirm('Delete '+f+'?'))return;await fetchJSON(`/media/admin/file/${id}/${f}`,{method:'DELETE'});searchFiles();}
 </script>
 </body>
 </html>

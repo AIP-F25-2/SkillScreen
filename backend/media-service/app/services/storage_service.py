@@ -1,82 +1,93 @@
-# app/services/storage_service.py
 """Storage service implementation that routes to either Azure or local storage."""
 
-from typing import List
+import os
+from typing import List, Optional, Tuple
 from flask import current_app
-from .azure_storage_service import AzureStorageService as _Cloud
-from .local_storage_service import LocalStorageService
+from app.services.azure_storage_service import AzureStorageService as _Cloud
+from app.services.local_storage_service import LocalStorageService
 
 def _use_azure() -> bool:
-    """Get storage mode from config"""
+    """Determine backend from Flask config."""
     return current_app.config.get("USE_AZURE_STORAGE", True)
 
+
 class StorageService:
-    """Storage service that routes to Azure or local storage based on config."""
-    
-    @staticmethod
-    def user_folder(user_id: str) -> str:
-        return _Cloud.user_folder(user_id) if _use_azure() else LocalStorageService.user_folder(user_id)
+    """
+    Unified interface for storage operations.
+    Routes all calls to either Azure or Local implementation.
+    Now chunk-aware and interview_id-based.
+    """
 
+    # -------------------------------------------------------------------
+    # 📁 Folder utilities
+    # -------------------------------------------------------------------
     @staticmethod
-    def list_users() -> List[str]:
-        return _Cloud.list_users() if _use_azure() else LocalStorageService.list_users()
+    def interview_folder(interview_id: str) -> str:
+        """Return or create interview-specific folder path/prefix."""
+        return _Cloud.interview_folder(interview_id) if _use_azure() else LocalStorageService.interview_folder(interview_id)
 
+    # -------------------------------------------------------------------
+    # 🧩 Chunked upload helpers
+    # -------------------------------------------------------------------
     @staticmethod
-    def list_files(user_id: str, include_exts: List[str] | None = None, exclude_exts: List[str] | None = None) -> List[str]:
-        return _Cloud.list_files(user_id, include_exts, exclude_exts) if _use_azure() else LocalStorageService.list_files(user_id, include_exts, exclude_exts)
-
-    @staticmethod
-    def delete_file(user_id: str, filename: str) -> bool:
-        return _Cloud.delete_file(user_id, filename) if _use_azure() else LocalStorageService.delete_file(user_id, filename)
-
-    @staticmethod
-    def delete_all(user_id: str, include_exts: List[str] | None = None, exclude_exts: List[str] | None = None) -> List[str]:
-        return _Cloud.delete_all(user_id, include_exts, exclude_exts) if _use_azure() else LocalStorageService.delete_all(user_id, include_exts, exclude_exts)
-
-    @staticmethod
-    def delete_user(user_id: str) -> bool:
-        return _Cloud.delete_user(user_id) if _use_azure() else LocalStorageService.delete_user(user_id)
-
-    @staticmethod
-    def delete_all_users() -> List[str]:
-        return _Cloud.delete_all_users() if _use_azure() else LocalStorageService.delete_all_users()
-
-    @staticmethod
-    def manifest_path(user_id: str) -> str:
-        return _Cloud.manifest_blob_name(user_id) if _use_azure() else LocalStorageService.manifest_path(user_id)
-
-    @staticmethod
-    def load_manifest(user_id: str) -> dict:
-        return _Cloud.load_manifest(user_id) if _use_azure() else LocalStorageService.load_manifest(user_id)
-
-    @staticmethod
-    def save_manifest(user_id: str, data: dict, **kwargs) -> None:
+    def save_chunk(interview_id: str, blob_name: str, chunk_index: int, data: bytes) -> str:
+        """Save a single chunk to backend under videos/<interview_id>/chunks/."""
         if _use_azure():
-            _Cloud.save_manifest(user_id, data, **kwargs)
+            return _Cloud.save_chunk(interview_id, blob_name, chunk_index, data)
+        return LocalStorageService.save_chunk(interview_id, blob_name, chunk_index, data)
+
+    @staticmethod
+    def merge_chunks(interview_id: str, blob_name: str, total_chunks: int) -> Tuple[str, str]:
+        """
+        Merge all chunks and return (final_path, final_uri).
+        The final merged file is stored under videos/<interview_id>/<final_filename>.
+        """
+        if _use_azure():
+            return _Cloud.merge_chunks(interview_id, blob_name, total_chunks)
+        return LocalStorageService.merge_chunks(interview_id, blob_name, total_chunks)
+
+    # -------------------------------------------------------------------
+    # 🧹 Cleanup helpers
+    # -------------------------------------------------------------------
+    @staticmethod
+    def delete_folder(prefix: str) -> None:
+        """Delete all blobs or files under a given prefix/path."""
+        if _use_azure():
+            _Cloud.delete_folder(prefix)
         else:
-            LocalStorageService.save_manifest(user_id, data)
-
-    # Additional Azure-specific methods (only available when USE_AZURE_STORAGE=true)
-    @staticmethod
-    def save_chunk_to_cloud(user_id: str, filename: str, fileobj, **kwargs) -> str:
-        if not _use_azure():
-            raise RuntimeError("Azure storage not configured")
-        return _Cloud.save_chunk(user_id, filename, fileobj, **kwargs)
+            LocalStorageService.delete_folder(prefix)
 
     @staticmethod
-    def download_to_temp(user_id: str, filename: str) -> str:
-        if not _use_azure():
-            raise RuntimeError("Azure storage not configured")
-        return _Cloud.download_to_temp(user_id, filename)
+    def delete_file(interview_id: str, filename: str) -> bool:
+        if _use_azure():
+            return _Cloud.delete_file(interview_id, filename)
+        return LocalStorageService.delete_file(interview_id, filename)
 
+    # -------------------------------------------------------------------
+    # 📥 Download utilities
+    # -------------------------------------------------------------------
     @staticmethod
-    def upload_from_path(user_id: str, local_path: str, dest_filename: str, content_type: str, **kwargs) -> str:
-        if not _use_azure():
-            raise RuntimeError("Azure storage not configured")
-        return _Cloud.upload_from_path(user_id, local_path, dest_filename, content_type, **kwargs)
+    def download_to_temp(interview_id: str, filename: str) -> str:
+        """Download a blob/file temporarily to local disk."""
+        if _use_azure():
+            return _Cloud.download_to_temp(interview_id, filename)
+        return LocalStorageService.download_to_temp(interview_id, filename)
 
+    # -------------------------------------------------------------------
+    # 📋 Listing helpers
+    # -------------------------------------------------------------------
     @staticmethod
-    def list_chunk_filenames(user_id: str, ext: str = ".webm") -> List[str]:
-        if not _use_azure():
-            raise RuntimeError("Azure storage not configured")
-        return _Cloud.list_chunk_filenames(user_id, ext)
+    def list_files(interview_id: Optional[str] = None) -> List[str]:
+        if _use_azure():
+            return _Cloud.list_files(interview_id)
+        return LocalStorageService.list_files(interview_id)
+
+    # -------------------------------------------------------------------
+    # 🔄 Generic file upload (non-chunked)
+    # -------------------------------------------------------------------
+    @staticmethod
+    def upload_from_path(interview_id: str, local_path: str, dest_filename: str, content_type: str) -> str:
+        """Upload a full file (e.g. merged video) from local disk to backend."""
+        if _use_azure():
+            return _Cloud.upload_from_path(interview_id, local_path, dest_filename, content_type)
+        return LocalStorageService.upload_from_path(interview_id, local_path, dest_filename, content_type)

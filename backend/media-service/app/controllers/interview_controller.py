@@ -1,101 +1,70 @@
 import os
 from datetime import datetime
-
 from flask import Blueprint, request, jsonify, current_app
 from dotenv import load_dotenv
-from azure.storage.blob import ContainerClient, ContentSettings
 
-# DB
-from sqlalchemy import select, update, desc
+from app.services.storage_service import StorageService
 from db import UnitOfWork
 from app.db.schema import media as media_table
 from app.repositories.media_repository import MediaRepository
+from sqlalchemy import select, update, desc
 
-load_dotenv()  # load environment variables from .env
+load_dotenv()
 
 interview_bp = Blueprint("interview", __name__)
 
-# =========================================================
-# 🔧 Azure helpers
-# =========================================================
-def _container_client() -> ContainerClient:
-    """
-    Expect AZURE_BLOB_CONTAINER_URL to be a full container SAS URL, e.g.:
-    https://<acct>.blob.core.windows.net/<container>?sv=...&sp=rwlac...&sig=...
-    """
-    url = os.getenv("AZURE_BLOB_CONTAINER_URL")
-    if not url:
-        raise RuntimeError("AZURE_BLOB_CONTAINER_URL not configured")
-    return ContainerClient.from_container_url(url)
-
-def _resume_blob_name(candidate_id: str) -> str:
-    # Keep a tidy prefix layout in the container
-    return f"resumes/{candidate_id}/{candidate_id}_resume.pdf"
-
 
 # =========================================================
-# 📄 RESUME & CANDIDATE MANAGEMENT (DB-backed in `media`)
+# 📄 RESUME & CANDIDATE MANAGEMENT (DB-backed)
 # =========================================================
 
 @interview_bp.route("/api/resumes/upload", methods=["POST"])
 def upload_resume():
     """
-    Upload a PDF resume for a candidate (stores in Azure) and persist a row in `media`:
-      media_type="resume", candidate_id, assigned_user, extra={candidate_name, resume_url, uploaded_at}
+    Upload a candidate's PDF resume into Azure/local storage,
+    and persist metadata in media_files table.
     """
     file = request.files.get("file")
     candidate_name = request.form.get("candidate_name", "Unknown Candidate")
-    assigned_user = request.form.get("assigned_user", "ashish")  # keep your default
-    user_id = request.form.get("user_id") or assigned_user       # optional linkage
-
+    assigned_user = request.form.get("assigned_user", "ashish")
     if not file:
         return jsonify({"error": "Missing file"}), 400
     if not file.filename.lower().endswith(".pdf"):
         return jsonify({"error": "Only PDF files are allowed"}), 400
 
-    # Generate candidate ID
     candidate_id = f"cand_{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')[:17]}"
+    safe_name = f"{candidate_id}_resume.pdf"
 
-    # Upload to Azure
     try:
-        cc = _container_client()
-        blob_name = _resume_blob_name(candidate_id)
-        bc = cc.get_blob_client(blob=blob_name)
-        stream = getattr(file, "stream", file)
-        bc.upload_blob(
-            stream,
-            overwrite=True,
-            content_settings=ContentSettings(content_type="application/pdf"),
-        )
-        resume_url = bc.url  # SAS is preserved from container URL
+        with StorageService as storage:
+            resume_uri = storage.upload_from_path(
+                candidate_id,
+                file.stream.name if hasattr(file, "stream") else file,
+                safe_name,
+                "application/pdf",
+            )
     except Exception as e:
-        current_app.logger.exception("Azure upload failed")
-        return jsonify({"error": f"Azure upload failed: {e}"}), 500
+        current_app.logger.exception("Resume upload failed")
+        return jsonify({"error": f"Upload failed: {e}"}), 500
 
-    # Persist to DB
     with UnitOfWork() as uow:
         repo = MediaRepository(uow)
         media_id = repo.insert_file(
-            user_id=user_id,
             media_type="resume",
-            file_name=os.path.basename(blob_name),  # kept for backward compatibility
-            file_path=blob_name,
-            blob_name=blob_name,
-            content_type="application/pdf",
+            interview_id=None,
+            blob_name=f"resumes/{safe_name}",
+            mime_type="application/pdf",
             status="uploaded",
-            candidate_id=candidate_id,
-            assigned_user=assigned_user,
-            extra={
+            metadata={
                 "candidate_name": candidate_name,
-                "resume_url": resume_url,
+                "resume_url": resume_uri,
+                "assigned_user": assigned_user,
                 "uploaded_at": datetime.utcnow().isoformat(),
             },
         )
-        # return the inserted row
         row = uow.session.execute(
             select(media_table).where(media_table.c.id == media_id)
         ).mappings().one()
-        # uow.commit()
 
     return jsonify({
         "success": True,
@@ -110,65 +79,29 @@ def upload_resume():
 
 @interview_bp.route("/api/candidates", methods=["GET"])
 def get_all_candidates():
-    """Return all resumes from media (media_type='resume')."""
+    """Return all candidate resumes."""
     with UnitOfWork() as uow:
         rows = uow.session.execute(
             select(media_table)
-            .where(media_table.c.media_type == "resume")
+            .where(media_table.c.file_type == "resume")
             .order_by(desc(media_table.c.created_at))
         ).mappings().all()
 
     return jsonify({
         "success": True,
-        "data": {
-            "candidates": [dict(r) for r in rows],
-            "count": len(rows),
-        },
-        "meta": {
-            "timestamp": datetime.utcnow().isoformat(),
-            "request_id": "req_" + datetime.utcnow().strftime('%Y%m%d%H%M%S'),
-            "version": "1.0",
-        },
-    }), 200
-
-
-@interview_bp.route("/api/candidates/user/<user_id>", methods=["GET"])
-def get_user_candidates(user_id):
-    """Return resumes assigned to a specific user from media."""
-    with UnitOfWork() as uow:
-        rows = uow.session.execute(
-            select(media_table)
-            .where(
-                media_table.c.media_type == "resume",
-                media_table.c.assigned_user == user_id
-            )
-            .order_by(desc(media_table.c.created_at))
-        ).mappings().all()
-
-    return jsonify({
-        "success": True,
-        "data": {
-            "candidates": [dict(r) for r in rows],
-            "count": len(rows),
-        },
-        "meta": {
-            "timestamp": datetime.utcnow().isoformat(),
-            "request_id": "req_" + datetime.utcnow().strftime('%Y%m%d%H%M%S'),
-            "version": "1.0",
-        },
+        "data": {"candidates": [dict(r) for r in rows], "count": len(rows)},
+        "meta": {"timestamp": datetime.utcnow().isoformat()},
     }), 200
 
 
 @interview_bp.route("/api/candidates/<candidate_id>", methods=["GET"])
 def get_candidate(candidate_id):
-    """Get a specific candidate by candidate_id from media (resume row)."""
+    """Return a single candidate by ID."""
     with UnitOfWork() as uow:
         row = uow.session.execute(
             select(media_table)
-            .where(
-                media_table.c.media_type == "resume",
-                media_table.c.candidate_id == candidate_id
-            )
+            .where(media_table.c.file_type == "resume",
+                   media_table.c.metadata["resume_url"].astext.like(f"%{candidate_id}%"))
             .limit(1)
         ).mappings().one_or_none()
 
@@ -178,223 +111,133 @@ def get_candidate(candidate_id):
     return jsonify({
         "success": True,
         "data": dict(row),
-        "meta": {
-            "timestamp": datetime.utcnow().isoformat(),
-            "request_id": candidate_id,
-            "version": "1.0",
-        },
+        "meta": {"timestamp": datetime.utcnow().isoformat()},
     }), 200
 
+
+# =========================================================
+# 🧑‍💼 INTERVIEW MANAGEMENT
+# =========================================================
 
 @interview_bp.route("/api/candidates/<candidate_id>/schedule", methods=["POST"])
 def schedule_candidate(candidate_id):
     """
-    Create an interview row in media:
-      media_type="interview", interview_id, candidate_id, assigned_user, status="scheduled"
+    Schedule an interview for a candidate.
     """
     payload = request.get_json() or {}
     assigned_user = payload.get("assigned_user", "ashish")
+    candidate_name = payload.get("candidate_name", "Unknown Candidate")
 
-    # Fetch candidate to carry over name, etc.
+    interview_id = f"interview_{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')[:20]}"
+
     with UnitOfWork() as uow:
-        cand = uow.session.execute(
-            select(media_table)
-            .where(
-                media_table.c.media_type == "resume",
-                media_table.c.candidate_id == candidate_id
-            )
-            .limit(1)
-        ).mappings().one_or_none()
-
-        if not cand:
-            return jsonify({"error": "Candidate not found"}), 404
-
-        candidate_name = (cand.get("extra") or {}).get("candidate_name") or "Unknown Candidate"
-
-        interview_id = f"interview_{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')[:20]}"
-
         repo = MediaRepository(uow)
         new_id = repo.insert_file(
-            user_id=cand.get("user_id"),
-            file_name="",  # kept for backward compatibility
-            blob_path="",
-            content_type=None,
-            status="scheduled",
-            candidate_id=candidate_id,
+            media_type="interview",
             interview_id=interview_id,
-            assigned_user=assigned_user,
-            extra={
+            blob_name=None,
+            mime_type=None,
+            status="scheduled",
+            metadata={
                 "candidate_name": candidate_name,
+                "candidate_id": candidate_id,
+                "assigned_user": assigned_user,
                 "scheduled_at": datetime.utcnow().isoformat(),
-                "created_at": datetime.utcnow().isoformat(),
             },
         )
-
         row = uow.session.execute(
             select(media_table).where(media_table.c.id == new_id)
         ).mappings().one()
-        # uow.commit()
 
     return jsonify({
         "success": True,
         "data": dict(row),
-        "meta": {
-            "timestamp": datetime.utcnow().isoformat(),
-            "request_id": interview_id,
-            "version": "1.0",
-        },
+        "meta": {"timestamp": datetime.utcnow().isoformat()},
     }), 200
 
 
 @interview_bp.route("/api/interviews", methods=["GET"])
 def get_all_interviews():
-    """Return all interviews from media (media_type='interview')."""
+    """Return all interviews."""
     with UnitOfWork() as uow:
         rows = uow.session.execute(
             select(media_table)
-            .where(media_table.c.media_type == "interview")
+            .where(media_table.c.file_type == "interview")
             .order_by(desc(media_table.c.created_at))
         ).mappings().all()
 
     return jsonify({
         "success": True,
-        "data": {
-            "interviews": [dict(r) for r in rows],
-            "count": len(rows),
-        },
-        "meta": {
-            "timestamp": datetime.utcnow().isoformat(),
-            "request_id": "req_" + datetime.utcnow().strftime('%Y%m%d%H%M%S'),
-            "version": "1.0",
-        },
+        "data": {"interviews": [dict(r) for r in rows], "count": len(rows)},
+        "meta": {"timestamp": datetime.utcnow().isoformat()},
     }), 200
 
 
 @interview_bp.route("/api/interviews/<interview_id>", methods=["GET"])
-def get_interview_details(interview_id):
-    """Get a specific interview by interview_id from media."""
+def get_interview(interview_id):
+    """Get one interview."""
     with UnitOfWork() as uow:
         row = uow.session.execute(
             select(media_table)
-            .where(
-                media_table.c.media_type == "interview",
-                media_table.c.interview_id == interview_id
-            )
+            .where(media_table.c.file_type == "interview",
+                   media_table.c.interview_id == interview_id)
             .limit(1)
         ).mappings().one_or_none()
 
     if not row:
         return jsonify({"error": "Interview not found"}), 404
 
-    return jsonify({
-        "success": True,
-        "data": dict(row),
-        "meta": {
-            "timestamp": datetime.utcnow().isoformat(),
-            "request_id": interview_id,
-            "version": "1.0",
-        },
-    }), 200
+    return jsonify({"success": True, "data": dict(row)}), 200
 
 
 @interview_bp.route("/api/interviews/<interview_id>/status", methods=["PATCH"])
 def update_interview_status(interview_id):
-    """Update interview status in media."""
+    """Update status of interview."""
     data = request.get_json() or {}
-    status = data.get("status")
-    if not status:
+    new_status = data.get("status")
+    if not new_status:
         return jsonify({"error": "Missing status"}), 400
 
     with UnitOfWork() as uow:
         res = uow.session.execute(
             update(media_table)
-            .where(
-                media_table.c.media_type == "interview",
-                media_table.c.interview_id == interview_id
-            )
-            .values(status=status, updated_at=datetime.utcnow())
+            .where(media_table.c.file_type == "interview",
+                   media_table.c.interview_id == interview_id)
+            .values(status=new_status, updated_at=datetime.utcnow())
             .returning(media_table)
-        )
-        row = res.mappings().one_or_none()
-        if not row:
-            return jsonify({"error": "Interview not found"}), 404
-        # uow.commit()
+        ).mappings().one_or_none()
 
-    return jsonify({
-        "success": True,
-        "data": dict(row),
-        "meta": {
-            "timestamp": datetime.utcnow().isoformat(),
-            "request_id": interview_id,
-            "version": "1.0",
-        },
-    }), 200
+    if not res:
+        return jsonify({"error": "Interview not found"}), 404
+
+    return jsonify({"success": True, "data": dict(res)}), 200
 
 
 @interview_bp.route("/api/interviews/<interview_id>/transcript", methods=["POST"])
-def update_interview_transcript(interview_id):
-    """Merge/update transcript into the interview's extra JSON."""
+def update_transcript(interview_id):
+    """Update or insert transcript JSON."""
     payload = request.get_json() or {}
 
     with UnitOfWork() as uow:
         cur = uow.session.execute(
-            select(media_table.c.id, media_table.c.extra)
-            .where(
-                media_table.c.media_type == "interview",
-                media_table.c.interview_id == interview_id
-            )
+            select(media_table.c.id, media_table.c.metadata)
+            .where(media_table.c.file_type == "interview",
+                   media_table.c.interview_id == interview_id)
             .limit(1)
         ).mappings().one_or_none()
 
         if not cur:
             return jsonify({"error": "Interview not found"}), 404
 
-        extra = dict(cur["extra"] or {})
-        extra["transcript"] = payload
-        extra["updated_at"] = datetime.utcnow().isoformat()
+        metadata = dict(cur["metadata"] or {})
+        metadata["transcript"] = payload
+        metadata["updated_at"] = datetime.utcnow().isoformat()
 
-        res = uow.session.execute(
+        row = uow.session.execute(
             update(media_table)
             .where(media_table.c.id == cur["id"])
-            .values(extra=extra, updated_at=datetime.utcnow())
+            .values(metadata=metadata, updated_at=datetime.utcnow())
             .returning(media_table)
-        )
-        row = res.mappings().one()
-        # uow.commit()
+        ).mappings().one()
 
-    return jsonify({
-        "success": True,
-        "data": dict(row),
-        "meta": {
-            "timestamp": datetime.utcnow().isoformat(),
-            "request_id": interview_id,
-            "version": "1.0",
-        },
-    }), 200
-
-
-@interview_bp.route("/api/interviews/user/<user_id>", methods=["GET"])
-def get_user_interviews(user_id):
-    """List interviews assigned to a user (from media.assigned_user)."""
-    with UnitOfWork() as uow:
-        rows = uow.session.execute(
-            select(media_table)
-            .where(
-                media_table.c.media_type == "interview",
-                media_table.c.assigned_user == user_id
-            )
-            .order_by(desc(media_table.c.created_at))
-        ).mappings().all()
-
-    return jsonify({
-        "success": True,
-        "data": {
-            "interviews": [dict(r) for r in rows],
-            "count": len(rows),
-        },
-        "meta": {
-            "timestamp": datetime.utcnow().isoformat(),
-            "request_id": "req_" + datetime.utcnow().strftime('%Y%m%d%H%M%S'),
-            "version": "1.0",
-        },
-    }), 200
+    return jsonify({"success": True, "data": dict(row)}), 200
