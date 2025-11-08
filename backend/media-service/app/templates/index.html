@@ -89,13 +89,24 @@
 </div>
 
 <script>
-let API_TOKEN = "";
+/* ========================== CONFIG ========================== */
+let API_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsInJvbGUiOiJhZG1pbiIsImV4cCI6MTc2MjYzMTE1N30.w5tEDMZjaNTOby-MDRVE6mmaRQl1LeDHQ-Qd-wmXEV0";
+const DEFAULT_INTERVIEW_ID = "95b53dfd-9416-4f30-9bb8-2a235dcfe838";
+const DEFAULT_SESSION_ID = "78e57fdf-5911-4944-96ff-a55c389defa8";
 
+/* ========================== AUTO-FILL DEFAULTS ========================== */
+window.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("recordInterviewId").value = DEFAULT_INTERVIEW_ID;
+  document.getElementById("recordSessionId").value = DEFAULT_SESSION_ID;
+});
+
+/* ========================== AUTH WRAPPER ========================== */
 const originalFetch = window.fetch;
 window.fetch = async (url, options = {}) => {
   options.headers = options.headers || {};
   if (API_TOKEN) {
-    if (!(options.headers instanceof Headers)) options.headers['Authorization'] = `Bearer ${API_TOKEN}`;
+    if (!(options.headers instanceof Headers))
+      options.headers['Authorization'] = `Bearer ${API_TOKEN}`;
     else options.headers.append('Authorization', `Bearer ${API_TOKEN}`);
   }
   return originalFetch(url, options);
@@ -112,6 +123,7 @@ async function fetchJSON(url, options = {}) {
   return data;
 }
 
+/* ========================== LOGIN ========================== */
 async function login() {
   const username = document.getElementById("loginUsername").value.trim();
   const password = document.getElementById("loginPassword").value.trim();
@@ -140,7 +152,7 @@ function setManualToken() {
   alert("✅ Token set manually.");
 }
 
-/* ========================== RECORDING SECTION ========================== */
+/* ========================== RECORDING ========================== */
 let mediaRecorder, liveStream, chunkIndex = 0, requestTimer = null, sessionId = null;
 const pendingUploads = [];
 const uploadQueue = [];
@@ -175,11 +187,8 @@ async function processUploadQueue(){
 }
 
 document.getElementById('startRecBtn').addEventListener('click',async()=>{
-  const interviewId=document.getElementById('recordInterviewId').value.trim();
-  sessionId=document.getElementById('recordSessionId').value.trim();
-  if(!interviewId) return alert('Enter Interview ID');
-  if(!sessionId) return alert('Enter Session ID');
-
+  const interviewId=document.getElementById('recordInterviewId').value.trim() || DEFAULT_INTERVIEW_ID;
+  sessionId=document.getElementById('recordSessionId').value.trim() || DEFAULT_SESSION_ID;
   chunkIndex=0;
   await fetchJSON('/media/reset_chunks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({interview_id:interviewId,session_id:sessionId})});
   try{liveStream=await navigator.mediaDevices.getUserMedia({video:true,audio:true});}catch{alert('Permission denied');return;}
@@ -196,37 +205,24 @@ document.getElementById('startRecBtn').addEventListener('click',async()=>{
 });
 
 document.getElementById('stopRecBtn').addEventListener('click',async()=>{
-  const interviewId=document.getElementById('recordInterviewId').value.trim();
-  if(!interviewId)return alert('Enter Interview ID');
+  const interviewId=document.getElementById('recordInterviewId').value.trim() || DEFAULT_INTERVIEW_ID;
+  const sid=document.getElementById('recordSessionId').value.trim() || DEFAULT_SESSION_ID;
   clearInterval(requestTimer);requestTimer=null;
   try{mediaRecorder.stop();}catch{}
   liveStream?.getTracks().forEach(t=>t.stop());
   document.getElementById('livePreview').style.display='none';
-  // Wait until all uploads finish
   await Promise.allSettled(pendingUploads);
-
-  // ⏳ Add adaptive delay before finalization
   const DELAY_AFTER_LAST_UPLOAD_MS = Math.max(2000, uploadQueue.length * 500);
   console.log(`Waiting ${DELAY_AFTER_LAST_UPLOAD_MS}ms before finalizing...`);
   await new Promise(r => setTimeout(r, DELAY_AFTER_LAST_UPLOAD_MS));
-
-  // Check if any chunks are missing
-  const stat = await fetchJSON(`/media/chunks/status?interview_id=${encodeURIComponent(interviewId)}&session_id=${encodeURIComponent(sessionId)}`);
-  if (stat.missing && stat.missing.length) {
-    return alert(`Missing: ${stat.missing.join(',')}`);
-  }
-
-  // ✅ Finalize after delay + verification
+  const stat = await fetchJSON(`/media/chunks/status?interview_id=${encodeURIComponent(interviewId)}&session_id=${encodeURIComponent(sid)}`);
+  if (stat.missing && stat.missing.length) return alert(`Missing: ${stat.missing.join(',')}`);
   const finalize = await fetchJSON('/media/finalize_upload', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ interview_id: interviewId, session_id: sessionId })
+    body: JSON.stringify({ interview_id: interviewId, session_id: sid })
   });
-
   alert(`✅ Finalized!\nURL: ${finalize.storage_uri}`);
-  document.getElementById('startRecBtn').disabled = false;
-  document.getElementById('stopRecBtn').disabled = true;
-
   document.getElementById('startRecBtn').disabled=false;document.getElementById('stopRecBtn').disabled=true;
 });
 
@@ -247,7 +243,7 @@ async function deleteVideo(id,file){if(!confirm('Delete '+file+'?'))return;await
 
 /* ========================== FILE MANAGEMENT ========================== */
 async function uploadGeneralFile(){
-  const iid=document.getElementById('fileInterviewId').value.trim();
+  const iid=document.getElementById('fileInterviewId').value.trim() || DEFAULT_INTERVIEW_ID;
   const f=document.getElementById('generalFile').files[0];
   if(!iid||!f)return alert('Select Interview and File');
   const fd=new FormData();fd.append('interview_id',iid);fd.append('file',f);
@@ -256,33 +252,26 @@ async function uploadGeneralFile(){
   if(!r.ok)alert('Upload failed');else alert('✅ File uploaded: '+d.file_path);
 }
 async function searchFiles(){
-  const q = document.getElementById('fileQuery').value.trim();
-  const data = await fetchJSON(`/media/admin/search/interviews?q=${encodeURIComponent(q)}`);
-  const tb = document.querySelector('#filesTable tbody');
-  tb.innerHTML = '';
-
-  const results = data.matched_interviews || {};
-  for (let interviewId in results) {
-    results[interviewId].forEach(file => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${interviewId}</td>
-        <td>${file}</td>
-        <td>
-          <button class="preview" onclick="previewFile('${interviewId}','${file}')">Open</button>
-          <button class="delete" onclick="deleteFile('${interviewId}','${file}')">Delete</button>
-        </td>`;
+  const q=document.getElementById('fileQuery').value.trim();
+  const data=await fetchJSON(`/media/admin/search/interviews?q=${encodeURIComponent(q)}`);
+  const tb=document.querySelector('#filesTable tbody');
+  tb.innerHTML='';
+  const results=data.matched_interviews||{};
+  for(let interviewId in results){
+    results[interviewId].forEach(file=>{
+      const tr=document.createElement('tr');
+      tr.innerHTML=`<td>${interviewId}</td><td>${file}</td>
+      <td><button class="preview" onclick="previewFile('${interviewId}','${file}')">Open</button>
+      <button class="delete" onclick="deleteFile('${interviewId}','${file}')">Delete</button></td>`;
       tb.appendChild(tr);
     });
   }
-
-  if (Object.keys(results).length === 0) {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td colspan="3" style="text-align:center;color:#888;">No matches found</td>`;
+  if(Object.keys(results).length===0){
+    const tr=document.createElement('tr');
+    tr.innerHTML='<td colspan="3" style="text-align:center;color:#888;">No matches found</td>';
     tb.appendChild(tr);
   }
 }
-
 function previewFile(id,f){window.open(`/media/file/${id}/${f}`,'_blank');}
 async function deleteFile(id,f){if(!confirm('Delete '+f+'?'))return;await fetchJSON(`/media/admin/file/${id}/${f}`,{method:'DELETE'});searchFiles();}
 </script>

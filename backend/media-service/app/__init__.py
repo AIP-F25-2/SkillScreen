@@ -18,7 +18,10 @@ def create_app() -> Flask:
     app = Flask(__name__)
     app.config.from_object(Config())
 
-    configure_csrf(app)
+    if os.getenv("ENABLE_CSRF", "false").lower() == "true":
+        csrf = CSRFProtect()
+        csrf.init_app(app)
+        app.logger.info("CSRF protection enabled.")
 
     # ---- CORS ----
     cors.init_app(
