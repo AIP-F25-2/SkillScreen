@@ -11,7 +11,6 @@ from .controllers.admin_controller import admin_bp
 from .controllers.files_controller import files_bp
 from .controllers.health_controller import health_bp
 from .controllers.interview_controller import interview_bp
-from app.utils.security import configure_csrf
 
 
 def create_app() -> Flask:
