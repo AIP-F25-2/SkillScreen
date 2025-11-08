@@ -13,6 +13,4 @@ def index():
 
 @health_bp.route("/healthz")
 def healthz():
-    # results = repos.get_all_media_files()
-    # return jsonify({"status": "ok","results":dict(results)}), 200
     return jsonify({"status": "ok"}), 200

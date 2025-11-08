@@ -78,9 +78,13 @@ class StorageService:
     # -------------------------------------------------------------------
     @staticmethod
     def list_files(interview_id: Optional[str] = None) -> List[str]:
+        if interview_id is None:
+            raise ValueError("interview_id is required to list files")
+
         if _use_azure():
             return _Cloud.list_files(interview_id)
         return LocalStorageService.list_files(interview_id)
+
 
     # -------------------------------------------------------------------
     # 🔄 Generic file upload (non-chunked)

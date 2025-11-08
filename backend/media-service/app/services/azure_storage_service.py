@@ -1,6 +1,6 @@
 import os
 import tempfile
-from typing import Tuple
+from typing import Tuple, Optional
 from flask import current_app
 from azure.storage.blob import ContainerClient, ContentSettings
 
@@ -52,15 +52,14 @@ class AzureStorageService:
         cc = _container_client()
         prefix = _prefix_for_interview(interview_id)
         final_name = os.path.basename(blob_name).replace(".webm", "_merged.mp4")
-        final_local = tempfile.mktemp(prefix="merge_", suffix=".webm")
-
-        # Merge locally
-        with open(final_local, "wb") as merged:
+        with tempfile.NamedTemporaryFile(prefix="merge_", suffix=".webm", delete=False) as tmp:
+            final_local = tmp.name
+            # Merge locally into the safe temporary file
             for i in range(total_chunks):
                 chunk_blob = f"{prefix}chunks/chunk_{i:05d}.webm"
                 bc = cc.get_blob_client(chunk_blob)
                 stream = bc.download_blob()
-                merged.write(stream.readall())
+                tmp.write(stream.readall())
 
         # Upload final merged blob
         final_blob = f"{prefix}{final_name}"
@@ -127,7 +126,7 @@ class AzureStorageService:
         return cc.get_blob_client(blob).url
 
     @staticmethod
-    def list_files(interview_id: str = None) -> list[str]:
+    def list_files(interview_id: Optional[str] = None) -> list[str]:
         """List blobs from the Azure container. Optionally filter by interview_id prefix."""
         cc = _container_client()
         prefix = f"videos/{interview_id}/" if interview_id else "videos/"

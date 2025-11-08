@@ -8,16 +8,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
-# ---- System dependencies ----
+# ---- System dependencies + user creation ----
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        ffmpeg \
         ca-certificates \
-        curl && \
+        curl \
+        ffmpeg && \
+    useradd -m -u 10001 appuser && \
     rm -rf /var/lib/apt/lists/*
-
-# ---- Create non-root user ----
-RUN useradd -m -u 10001 appuser
 
 # ---- App setup ----
 WORKDIR /app
@@ -31,16 +29,16 @@ RUN pip install --no-cache-dir -r requirements.txt && \
 
 # ---- Copy application code ----
 # NOTE: Sensitive files (.env, .git, build artifacts) are excluded via .dockerignore
-COPY . /app
+COPY app /app
+COPY media_service.py /app/
 
-# ---- File permissions ----
+# ---- File permissions & uploads dir ----
 RUN mkdir -p /app/uploads && \
     chown -R appuser:appuser /app
 
 USER appuser
 
 # ---- Environment variables ----
-# Avoid "*" in production; restrict via CORS_ORIGINS env
 ENV SERVER_HOST=0.0.0.0 \
     SERVER_PORT=8080 \
     UPLOAD_FOLDER=/app/temp/uploads \
@@ -52,12 +50,12 @@ EXPOSE 8080
 
 # ---- Health check ----
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD curl -fsS http://127.0.0.1:8080/healthz || exit 1
+    CMD ["curl", "-fsS", "http://127.0.0.1:8080/healthz"]
 
 # ---- Start Gunicorn ----
-CMD sh -c 'exec gunicorn \
+CMD ["/bin/sh", "-c", "exec gunicorn \
     --workers ${GUNICORN_WORKERS:-3} \
     --threads ${GUNICORN_THREADS:-2} \
     --timeout ${GUNICORN_TIMEOUT:-120} \
     --bind 0.0.0.0:${SERVER_PORT} \
-    media_service:app'
+    media_service:app"]

@@ -6,8 +6,9 @@ from app.repositories.media_repository import MediaRepository
 from common.db import UnitOfWork
 from app.db.schema import media
 from app.utils.filename import secure_part
+from typing import Optional
 from app.utils.ids import require_uuid_str
-
+import app.utils.constants as CONSTANTS
 upload_bp = Blueprint("upload", __name__)
 storage_service = StorageService()
 
@@ -16,7 +17,7 @@ def _server_chunk_name(idx_zero_based: int) -> str:
     return f"chunk-{idx_zero_based + 1:05d}.webm"
 
 
-def _get_session_id(src: dict, *, required: bool = True) -> str:
+def _get_session_id(src: dict, *, required: bool = True) -> Optional[str]:
     sid = src.get("session_id") if hasattr(src, "get") else None
     if not sid:
         if required:
@@ -88,7 +89,9 @@ def upload_chunk():
     if not file or not interview_id or chunk_index is None:
         return jsonify({"error": "Missing file, interview_id, or chunk_index"}), 400
 
-    short_hash = hashlib.md5(f"{interview_id}{session_id}{time.time()}".encode()).hexdigest()[:6]
+
+    data = f"{interview_id}{session_id}{time.time()}".encode()
+    short_hash = hashlib.sha256(data).hexdigest()[:8]  # longer but safe
     blob_name = f"{interview_id}_{short_hash}_recording.webm"
     server_filename = _server_chunk_name(chunk_index)
 
@@ -120,14 +123,23 @@ def upload_chunk():
 
         # Merge when all chunks received
         if expected_total and len(received) == expected_total:
-            current_app.logger.info(f"All {expected_total} chunks received. Merging for {interview_id}/{session_id}")
+            current_app.logger.info(
+                "All chunks received and merging started.",
+                extra={
+                    "expected_total": expected_total,
+                    "interview_id": str(interview_id),
+                    "session_id": str(session_id),
+                },
+            )
             final_path, final_uri = storage_service.merge_chunks(interview_id, blob_name, expected_total)
 
             checksum = size = None
             if final_path and os.path.exists(final_path):
                 size = os.path.getsize(final_path)
+                
                 with open(final_path, "rb") as f:
-                    checksum = hashlib.md5(f.read()).hexdigest()
+                    file_data = f.read()
+                    checksum = hashlib.sha256(file_data).hexdigest()
 
             with UnitOfWork() as uow2:
                 repo2 = MediaRepository(uow2)
@@ -138,7 +150,7 @@ def upload_chunk():
                     checksum=checksum,
                     blob_name=blob_name.replace(".webm", ".mp4"),
                     file_type="video",
-                    mime_type="video/webm"
+                    mime_type=CONSTANTS.VIDEO_WEBM_FORMAT
                 )
                 uow2.session.commit()
 
@@ -174,7 +186,7 @@ def reset_chunks():
         return jsonify({"error": str(exc)}), 400
 
     if not interview_id:
-        return jsonify({"error": "Missing interview_id"}), 400
+        return jsonify({"error": CONSTANTS.ERROR_MISSING_INTERVIEW_ID}), 400
 
     try:
         storage_service.delete_folder(f"videos/{interview_id}/chunks")
@@ -213,7 +225,7 @@ def finalize_upload():
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     if not interview_id:
-        return jsonify({"error": "Missing interview_id"}), 400
+        return jsonify({"error": CONSTANTS.ERROR_MISSING_INTERVIEW_ID}), 400
 
     with UnitOfWork() as uow:
         repo = MediaRepository(uow)
@@ -229,8 +241,10 @@ def finalize_upload():
         return jsonify({"error": "Missing chunks", "missing": missing}), 409
 
     record_id = status.get("id")
-    short_hash = hashlib.md5(f"{interview_id}{session_id}{time.time()}".encode()).hexdigest()[:6]
+    data = f"{interview_id}{session_id}{time.time()}".encode()
+    short_hash = hashlib.sha256(data).hexdigest()[:8]  # slightly longer but secure
     blob_name = f"{interview_id}_{short_hash}_recording.webm"
+
 
     try:
         final_path, final_uri = storage_service.merge_chunks(interview_id, blob_name, expected_total)
@@ -243,9 +257,10 @@ def finalize_upload():
         try:
             size = os.path.getsize(final_path)
             with open(final_path, "rb") as f:
-                checksum = hashlib.md5(f.read()).hexdigest()
+                checksum = hashlib.sha256(f.read()).hexdigest()  # ✅ Secure replacement
         except Exception as e:
             current_app.logger.warning(f"Checksum failed: {e}")
+
 
     with UnitOfWork() as uow2:
         repo2 = MediaRepository(uow2)
@@ -256,7 +271,7 @@ def finalize_upload():
             checksum=checksum,
             blob_name=blob_name.replace(".webm", "_merged.mp4"),
             file_type="video",
-            mime_type="video/webm"
+            mime_type=CONSTANTS.VIDEO_WEBM_FORMAT
         )
         uow2.session.commit()
 
@@ -280,7 +295,7 @@ def serve_video(interview_id, filename):
     except Exception:
         return jsonify({"error": "file not found"}), 404
     ext = os.path.splitext(filename)[1].lower()
-    mimetype = "video/mp4" if ext == ".mp4" else "video/webm"
+    mimetype = "video/mp4" if ext == ".mp4" else CONSTANTS.VIDEO_WEBM_FORMAT
     return send_file(tmp_path, mimetype=mimetype, as_attachment=False, download_name=filename, conditional=True)
 
 
@@ -295,7 +310,7 @@ def chunks_status():
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
     if not interview_id:
-        return jsonify({"error": "Missing interview_id"}), 400
+        return jsonify({"error": CONSTANTS.ERROR_MISSING_INTERVIEW_ID}), 400
 
     with UnitOfWork() as uow:
         repo = MediaRepository(uow)

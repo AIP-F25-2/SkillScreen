@@ -5,3 +5,4 @@ sqlalchemy==2.0.23
 psycopg2-binary
 azure-storage-blob==12.*
 fastapi
+Flask-WTF==1.2.1

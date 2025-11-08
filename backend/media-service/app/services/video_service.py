@@ -1,9 +1,10 @@
 from __future__ import annotations
 import os, re, subprocess, shutil, tempfile, logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 from app.services.storage_service import StorageService
 from app.utils.filename import secure_part
+import app.utils.constants as CONSTANTS
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ def save_chunk(interview_id: str, chunk_index: int, fileobj) -> str:
 # 🎬 Local merge + encode helper
 # -----------------------------------------------------------------
 def _binary_concat_to_webm(folder: str, chunks_sorted: List[str]) -> str:
-    merged_path = os.path.join(folder, "merged.webm")
+    merged_path = os.path.join(folder, CONSTANTS.MERGED_WEBM_NAMING)
     with open(merged_path, "wb") as out:
         for fn in chunks_sorted:
             with open(os.path.join(folder, fn), "rb") as inp:
@@ -79,7 +80,7 @@ def finalize_concat_then_encode(
     *,
     keep_merged: bool = False,
     session_id: Optional[str] = None,
-) -> Tuple[str, Optional[str], List[str]]:
+) -> Tuple[str, Optional[str], List[str], Optional[int]]:
     """
     Merge .webm chunks in `workdir`, encode to mp4, upload final to Azure/local storage,
     and optionally keep merged.webm.
@@ -92,7 +93,7 @@ def finalize_concat_then_encode(
 
     merged_webm_path = _binary_concat_to_webm(workdir, chunks)
 
-    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     out_name_mp4 = f"{secure_part(interview_id)}_{ts}.mp4"
     out_path_mp4 = os.path.join(workdir, out_name_mp4)
 
@@ -115,9 +116,9 @@ def finalize_concat_then_encode(
     if keep_merged:
         try:
             StorageService.upload_from_path(
-                interview_id, merged_webm_path, "merged.webm", "video/webm"
+                interview_id, merged_webm_path, CONSTANTS.MERGED_WEBM_NAMING, CONSTANTS.VIDEO_WEBM_FORMAT
             )
-            merged_name = "merged.webm"
+            merged_name = CONSTANTS.MERGED_WEBM_NAMING
         except Exception:
             pass
 
@@ -133,7 +134,7 @@ def finalize_concat_then_encode(
         except Exception:
             pass
 
-    return out_name_mp4, merged_name, chunks
+    return out_name_mp4, merged_name, chunks, duration_ms
 
 
 # -----------------------------------------------------------------

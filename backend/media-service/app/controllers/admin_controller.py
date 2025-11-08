@@ -61,7 +61,6 @@ def delete_video(interview_id, filename):
     # 2️⃣ Delete from DB
     try:
         with UnitOfWork() as uow:
-            repo = MediaRepository(uow)
             uow.session.execute(
                 text("""
                     DELETE FROM media_files

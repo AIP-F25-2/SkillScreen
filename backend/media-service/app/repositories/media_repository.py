@@ -122,15 +122,16 @@ class MediaRepository:
         mime_type: Optional[str] = None,
         status: Optional[str] = None,
         metadata: Optional[dict] = None,
+        duration_ms: Optional[int] = None,
     ) -> str:
         """Insert a general file (non-video) into media_files table."""
         meta_json = json.dumps(metadata or {})
         q = text("""
             INSERT INTO media_files (
-                interview_id, file_type, storage_uri, mime_type,
-                status, metadata, created_at, updated_at
+                interview_id, file_type, storage_uri, mime_type
+                status, metadata, duration, created_at, updated_at
             )
-            VALUES (:iid, :ftype, :blob, :mime, :status, CAST(:meta AS jsonb), NOW(), NOW())
+            VALUES (:iid, :ftype, :blob, :mime, :status, CAST(:meta AS jsonb), :duration,NOW(), NOW())
             RETURNING id;
         """)
         res = self.session.execute(q, {
@@ -140,6 +141,7 @@ class MediaRepository:
             "mime": mime_type,
             "status": status or "uploaded",
             "meta": meta_json,
+            "duration": duration_ms,
         })
         self.session.commit()
         return res.scalar_one()
@@ -212,7 +214,7 @@ class MediaRepository:
 
 
     def finalize_upload_by_id(self, record_id, storage_uri, file_size, checksum,
-                            blob_name, file_type, mime_type):
+                            blob_name, file_type, mime_type,duration_ms: Optional[int] = None):
         self.session.execute(
             text("""
                 UPDATE media_files
@@ -222,6 +224,7 @@ class MediaRepository:
                     blob_name = :blob,
                     file_type = :ftype,
                     mime_type = :mtype,
+                    duration = COALESCE(:duration, duration),
                     status = 'completed',
                     updated_at = NOW()
                 WHERE id = CAST(:rid AS uuid)
@@ -233,6 +236,7 @@ class MediaRepository:
                 "blob": blob_name,
                 "ftype": file_type,
                 "mtype": mime_type,
+                "duration": duration_ms,
                 "rid": record_id,
             }
         )

@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, current_app
 from dotenv import load_dotenv
 
@@ -8,6 +8,7 @@ from db import UnitOfWork
 from app.db.schema import media as media_table
 from app.repositories.media_repository import MediaRepository
 from sqlalchemy import select, update, desc
+import app.utils.constants as CONSTANTS
 
 load_dotenv()
 
@@ -32,7 +33,7 @@ def upload_resume():
     if not file.filename.lower().endswith(".pdf"):
         return jsonify({"error": "Only PDF files are allowed"}), 400
 
-    candidate_id = f"cand_{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')[:17]}"
+    candidate_id = f"cand_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')[:17]}"
     safe_name = f"{candidate_id}_resume.pdf"
 
     try:
@@ -59,7 +60,7 @@ def upload_resume():
                 "candidate_name": candidate_name,
                 "resume_url": resume_uri,
                 "assigned_user": assigned_user,
-                "uploaded_at": datetime.utcnow().isoformat(),
+                "uploaded_at": datetime.now(timezone.utc).isoformat(),
             },
         )
         row = uow.session.execute(
@@ -70,7 +71,7 @@ def upload_resume():
         "success": True,
         "data": dict(row),
         "meta": {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "request_id": candidate_id,
             "version": "1.0",
         },
@@ -90,7 +91,7 @@ def get_all_candidates():
     return jsonify({
         "success": True,
         "data": {"candidates": [dict(r) for r in rows], "count": len(rows)},
-        "meta": {"timestamp": datetime.utcnow().isoformat()},
+        "meta": {"timestamp": datetime.now(timezone.utc).isoformat()},
     }), 200
 
 
@@ -111,7 +112,7 @@ def get_candidate(candidate_id):
     return jsonify({
         "success": True,
         "data": dict(row),
-        "meta": {"timestamp": datetime.utcnow().isoformat()},
+        "meta": {"timestamp": datetime.now(timezone.utc).isoformat()},
     }), 200
 
 
@@ -128,7 +129,7 @@ def schedule_candidate(candidate_id):
     assigned_user = payload.get("assigned_user", "ashish")
     candidate_name = payload.get("candidate_name", "Unknown Candidate")
 
-    interview_id = f"interview_{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')[:20]}"
+    interview_id = f"interview_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')[:20]}"
 
     with UnitOfWork() as uow:
         repo = MediaRepository(uow)
@@ -142,7 +143,7 @@ def schedule_candidate(candidate_id):
                 "candidate_name": candidate_name,
                 "candidate_id": candidate_id,
                 "assigned_user": assigned_user,
-                "scheduled_at": datetime.utcnow().isoformat(),
+                "scheduled_at": datetime.now(timezone.utc).isoformat(),
             },
         )
         row = uow.session.execute(
@@ -152,7 +153,7 @@ def schedule_candidate(candidate_id):
     return jsonify({
         "success": True,
         "data": dict(row),
-        "meta": {"timestamp": datetime.utcnow().isoformat()},
+        "meta": {"timestamp": datetime.now(timezone.utc).isoformat()},
     }), 200
 
 
@@ -169,7 +170,7 @@ def get_all_interviews():
     return jsonify({
         "success": True,
         "data": {"interviews": [dict(r) for r in rows], "count": len(rows)},
-        "meta": {"timestamp": datetime.utcnow().isoformat()},
+        "meta": {"timestamp": datetime.now(timezone.utc).isoformat()},
     }), 200
 
 
@@ -185,7 +186,7 @@ def get_interview(interview_id):
         ).mappings().one_or_none()
 
     if not row:
-        return jsonify({"error": "Interview not found"}), 404
+        return jsonify({"error": CONSTANTS.ERROR_INTERVIEW_NOT_FOUND}), 404
 
     return jsonify({"success": True, "data": dict(row)}), 200
 
@@ -203,12 +204,12 @@ def update_interview_status(interview_id):
             update(media_table)
             .where(media_table.c.file_type == "interview",
                    media_table.c.interview_id == interview_id)
-            .values(status=new_status, updated_at=datetime.utcnow())
+            .values(status=new_status, updated_at=datetime.now(timezone.utc))
             .returning(media_table)
         ).mappings().one_or_none()
 
     if not res:
-        return jsonify({"error": "Interview not found"}), 404
+        return jsonify({"error": CONSTANTS.ERROR_INTERVIEW_NOT_FOUND}), 404
 
     return jsonify({"success": True, "data": dict(res)}), 200
 
@@ -227,16 +228,16 @@ def update_transcript(interview_id):
         ).mappings().one_or_none()
 
         if not cur:
-            return jsonify({"error": "Interview not found"}), 404
+            return jsonify({"error": CONSTANTS.ERROR_INTERVIEW_NOT_FOUND}), 404
 
         metadata = dict(cur["metadata"] or {})
         metadata["transcript"] = payload
-        metadata["updated_at"] = datetime.utcnow().isoformat()
+        metadata["updated_at"] = datetime.now(timezone.utc).isoformat()
 
         row = uow.session.execute(
             update(media_table)
             .where(media_table.c.id == cur["id"])
-            .values(metadata=metadata, updated_at=datetime.utcnow())
+            .values(metadata=metadata, updated_at=datetime.now(timezone.utc))
             .returning(media_table)
         ).mappings().one()
 

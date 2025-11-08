@@ -3,7 +3,7 @@
 import os
 import mimetypes
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, send_file
 
 from app.services.storage_service import StorageService
@@ -64,7 +64,7 @@ def upload_general_file():
             blob_name=db_blob_path,
             mime_type=content_type,
             status="uploaded",
-            metadata={"source": "general-file-upload", "uploaded_at": datetime.utcnow().isoformat()},
+            metadata={"source": "general-file-upload", "uploaded_at": datetime.now(timezone.utc).isoformat()},
         )
 
     return jsonify({

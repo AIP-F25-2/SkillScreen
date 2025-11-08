@@ -2,6 +2,7 @@
 
 import os
 from flask import Flask
+from flask_wtf.csrf import CSRFProtect
 from .config import Config
 from .extensions import cors
 from .utils.ffmpeg import check_ffmpeg
@@ -11,19 +12,33 @@ from .controllers.files_controller import files_bp
 from .controllers.health_controller import health_bp
 from .controllers.interview_controller import interview_bp
 
+
 def create_app() -> Flask:
-    app = Flask(__name__, template_folder="templates")
+    app = Flask(__name__)
     app.config.from_object(Config())
 
+    # ---- CSRF Protection ----
+    # If the app serves forms or uses session-based auth, enable CSRF.
+    # For stateless APIs (JWT, OAuth2, etc.), you can safely skip CSRF.
+    if os.getenv("ENABLE_CSRF", "false").lower() == "true":
+        csrf = CSRFProtect()
+        csrf.init_app(app)
+    else:
+        app.config["WTF_CSRF_ENABLED"] = False  # Explicitly disable for API mode
+
+    # ---- CORS ----
     cors.init_app(
         app,
-        resources={r"/*": {"origins": os.getenv("CORS_ORIGINS", "http://localhost:8080")}},
+        resources={r"/*": {"origins": os.getenv("CORS_ORIGINS", "https://your-frontend.com")}},
         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
-        supports_credentials=False,  # Gateway handles credentials
+        supports_credentials=False,  # No cookies — CSRF not applicable
     )
+
+    # ---- System check ----
     check_ffmpeg()
 
+    # ---- Register Blueprints ----
     app.register_blueprint(health_bp)
     app.register_blueprint(upload_bp)
     app.register_blueprint(files_bp)
