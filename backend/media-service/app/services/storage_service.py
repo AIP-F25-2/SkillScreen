@@ -78,12 +78,18 @@ class StorageService:
     # -------------------------------------------------------------------
     @staticmethod
     def list_files(interview_id: Optional[str] = None) -> List[str]:
-        if interview_id is None:
-            raise ValueError("interview_id is required to list files")
-
+        """
+        Lists files for a specific interview if interview_id is provided.
+        If interview_id is None, returns all video files (admin mode).
+        """
         if _use_azure():
-            return _Cloud.list_files(interview_id)
-        return LocalStorageService.list_files(interview_id)
+            if interview_id:
+                return _Cloud.list_files(interview_id)
+            return _Cloud.list_all_files()
+        else:
+            if interview_id:
+                return LocalStorageService.list_files(interview_id)
+            return LocalStorageService.list_all_files()
 
 
     # -------------------------------------------------------------------

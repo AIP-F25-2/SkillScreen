@@ -15,3 +15,4 @@ class Config:
     AZURE_BLOB_ACCOUNT_URL = os.environ.get("AZURE_BLOB_ACCOUNT_URL", "https://skillscreenstorage.blob.core.windows.net")
     AZURE_BLOB_CONTAINER = os.environ.get("AZURE_BLOB_CONTAINER", "video_recordings")
     AZURE_BLOB_SAS_TOKEN = os.environ.get("AZURE_BLOB_SAS_TOKEN", "?sp=racwdl&st=2025-11-04T14:56:17Z&se=2025-12-31T23:11:17Z&spr=https&sv=2024-11-04&sr=c&sig=7nu5Z5vcJrIuL0ivanRi3BHfHv%2FAPtHycpnhvubw0is%3D")
+    WTF_CSRF_ENABLED = os.getenv("ENABLE_CSRF", "false").lower() == "true"

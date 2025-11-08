@@ -11,22 +11,14 @@ from .controllers.admin_controller import admin_bp
 from .controllers.files_controller import files_bp
 from .controllers.health_controller import health_bp
 from .controllers.interview_controller import interview_bp
+from app.utils.security import configure_csrf
 
 
 def create_app() -> Flask:
     app = Flask(__name__)
     app.config.from_object(Config())
 
-    # ---- CSRF Protection ----
-    # If the app serves forms or uses session-based auth, enable CSRF.
-    # For stateless APIs (JWT, OAuth2, etc.), you can safely skip CSRF.
-    if os.getenv("ENABLE_CSRF", "false").lower() == "true":
-        csrf = CSRFProtect()
-        csrf.init_app(app)
-    else:
-        # This service is a stateless REST API using Bearer tokens (no session cookies).
-        # Disabling CSRF is safe because credentials are not stored in the browser.
-        app.config["WTF_CSRF_ENABLED"] = False
+    configure_csrf(app)
 
     # ---- CORS ----
     cors.init_app(

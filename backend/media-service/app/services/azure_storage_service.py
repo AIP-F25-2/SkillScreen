@@ -132,3 +132,10 @@ class AzureStorageService:
         prefix = f"videos/{interview_id}/" if interview_id else "videos/"
         blobs = cc.list_blobs(name_starts_with=prefix)
         return [b.name for b in blobs]
+
+    @staticmethod
+    def list_all_files() -> list[str]:
+        """List all video blobs in the Azure container."""
+        cc = _container_client()
+        blobs = cc.list_blobs(name_starts_with="videos/")
+        return [b.name for b in blobs]

@@ -68,6 +68,20 @@ class LocalStorageService:
         if not os.path.isdir(folder):
             return []
         return [f for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))]
+    
+    @staticmethod
+    def list_all_files() -> List[str]:
+        """List all files across all interviews under 'videos/'."""
+        base_folder = "videos"
+        if not os.path.isdir(base_folder):
+            return []
+        all_files = []
+        # Walk recursively through all subdirectories under /videos
+        for root, _, files in os.walk(base_folder):
+            for f in files:
+                if os.path.isfile(os.path.join(root, f)):
+                    all_files.append(os.path.relpath(os.path.join(root, f), start=base_folder))
+        return all_files
 
     # ----------------------------------------------------------
     # Download/upload helpers
