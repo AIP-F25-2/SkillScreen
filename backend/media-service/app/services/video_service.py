@@ -79,7 +79,6 @@ def finalize_concat_then_encode(
     interview_id: str,
     *,
     keep_merged: bool = False,
-    session_id: Optional[str] = None,
 ) -> Tuple[str, Optional[str], List[str], Optional[int]]:
     """
     Merge .webm chunks in `workdir`, encode to mp4, upload final to Azure/local storage,

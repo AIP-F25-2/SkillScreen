@@ -117,7 +117,6 @@ class MediaRepository:
         *,
         media_type: str,
         interview_id: Optional[str] = None,
-        file_name: Optional[str] = None,
         blob_name: Optional[str] = None,
         mime_type: Optional[str] = None,
         status: Optional[str] = None,

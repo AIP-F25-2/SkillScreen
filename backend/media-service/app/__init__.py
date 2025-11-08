@@ -24,7 +24,9 @@ def create_app() -> Flask:
         csrf = CSRFProtect()
         csrf.init_app(app)
     else:
-        app.config["WTF_CSRF_ENABLED"] = False  # Explicitly disable for API mode
+        # This service is a stateless REST API using Bearer tokens (no session cookies).
+        # Disabling CSRF is safe because credentials are not stored in the browser.
+        app.config["WTF_CSRF_ENABLED"] = False
 
     # ---- CORS ----
     cors.init_app(
