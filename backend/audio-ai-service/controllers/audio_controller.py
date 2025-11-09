@@ -40,7 +40,7 @@ async def process_interview_audio_endpoint(request: ProcessInterviewAudioRequest
     Validates request and starts background processing
     Returns immediately (asynchronous)
     """
-    logger.info(f"📨 Audio processing request received")
+    logger.info("Audio processing request received")
     logger.info(f"   Interview: {request.interview_id}")
     logger.info(f"   Session: {request.session_id}")
     logger.info(f"   Media File: {request.media_file_id}")
@@ -64,7 +64,7 @@ async def process_interview_audio_endpoint(request: ProcessInterviewAudioRequest
             str(request.interview_id),
             str(request.session_id)
         ):
-            logger.warning(f"⚠️ Already processed - returning success")
+            logger.warning("⚠️Already processed - returning success")
             return ProcessInterviewAudioResponse(
                 status="accepted",
                 message="Already processed (idempotent)",
@@ -84,7 +84,7 @@ async def process_interview_audio_endpoint(request: ProcessInterviewAudioRequest
             blob_name=request.blob_name
         )
         
-        logger.info(f"✅ Background processing started")
+        logger.info("✅Background processing started")
         
         # Return immediate response
         return ProcessInterviewAudioResponse(

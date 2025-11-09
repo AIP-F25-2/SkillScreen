@@ -34,7 +34,7 @@ class DiarizationService:
                     self.pipeline.to(device)
                     logger.info("Diarization pipeline loaded successfully")
                 else:
-                    raise Exception("Pipeline failed to load")
+                    raise RuntimeError("Pipeline failed to load")
                     
             except Exception as e:
                 logger.error(f"Failed to load diarization pipeline: {str(e)}")
@@ -86,7 +86,7 @@ class DiarizationService:
         except Exception as e:
             error_msg = f"Diarization error: {str(e)}"
             logger.error(error_msg)
-            raise Exception(error_msg)
+            raise RuntimeError(error_msg) from e
     
     def detect_speaker_changes(self, segments: List[Dict]) -> List[Dict]:
         """

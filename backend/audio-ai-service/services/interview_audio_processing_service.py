@@ -72,7 +72,7 @@ class InterviewAudioProcessingService:
     ):
         """
         Background worker for audio processing
-        
+
         This runs in a separate thread and:
         1. Updates status to 'processing'
         2. Downloads from Azure Blob
@@ -82,33 +82,30 @@ class InterviewAudioProcessingService:
         6. Retries once on failure
         """
         uow = None
-        
+        downloader = None
+
         try:
-            logger.info(f"🎬 [Background] Processing started")
+            logger.info("🎬[Background] Processing started")
             logger.info(f"   Media File: {media_file_id}")
             logger.info(f"   Interview: {interview_id}")
             logger.info(f"   Session: {session_id}")
             logger.info(f"   Blob: {blob_name}")
-            
+
             # Initialize database
             uow = UnitOfWork()
             repo = AudioRepository(uow)
-            
-            # Check if already processed
-            if repo.check_if_already_processed(interview_id, session_id):
-                logger.warning(f"⚠️ Already processed - skipping")
+
+            # Validate prerequisites
+            validation_error = self._validate_prerequisites(
+                repo, interview_id, session_id, media_file_id
+            )
+            if validation_error:
                 return
-            
-            # Get media file info
+
+            # Check retry count
             media_file = repo.get_media_file_by_id(media_file_id)
-            if not media_file:
-                logger.error(f"❌ Media file {media_file_id} not found")
-                return
-            
-            # Check retry count (using metadata field)
-            metadata_field = media_file.get('metadata', {})
-            retry_count = metadata_field.get('retry_count', 0) if metadata_field else 0
-            
+            retry_count = self._get_retry_count(media_file)
+
             if retry_count >= self.max_retries:
                 logger.error(f"❌ Max retries ({self.max_retries}) exceeded")
                 repo.mark_processing_failed(
@@ -117,20 +114,15 @@ class InterviewAudioProcessingService:
                     retry_count
                 )
                 return
-            
-            # Mark as processing
+
+            # Mark as processing and download
             repo.mark_processing_started(media_file_id)
-            
-            # Download from Azure Blob
-            blob_url = self._build_blob_url(blob_name)
-            logger.info(f"📥 Downloading: {blob_url}")
-            
             downloader = MediaDownloader()
-            media_path, media_type, download_error = downloader.download(
-                blob_url,
-                media_file_id=media_file_id
+
+            media_path, media_type, download_error = self._download_media(
+                downloader, blob_name, media_file_id
             )
-            
+
             if download_error:
                 self._handle_processing_error(
                     repo, media_file_id, interview_id, session_id,
@@ -138,19 +130,10 @@ class InterviewAudioProcessingService:
                     retry_count, blob_name
                 )
                 return
-            
-            logger.info(f"✅ Downloaded: {media_path} (type: {media_type})")
-            
+
             # Process audio
-            logger.info(f"🎤 Processing audio...")
-            processor = AudioProcessingService()
-            
-            processing_result = processor.process(
-                media_url=media_path,
-                session_id=session_id,
-                include_analytics=True
-            )
-            
+            processing_result = self._process_audio(media_path, session_id)
+
             if processing_result["status"] != "success":
                 error_msg = f"Processing failed: {processing_result.get('error', 'Unknown')}"
                 self._handle_processing_error(
@@ -158,44 +141,112 @@ class InterviewAudioProcessingService:
                     error_msg, retry_count, blob_name
                 )
                 return
-            
-            logger.info(f"✅ Audio processing completed")
-            
+
+            logger.info("✅Audio processing completed")
+
             # Save results
             self._save_results(
                 repo, processing_result,
                 interview_id, session_id, media_file_id
             )
-            
+
             # Mark completed
             repo.mark_processing_completed(media_file_id)
-            
             logger.info(f"🎉 [Background] Processing completed for {media_file_id}")
-            
-            # Cleanup
-            downloader.cleanup()
-            
+
         except Exception as e:
             logger.error(f"❌ [Background] Unexpected error: {str(e)}", exc_info=True)
-            
-            if uow:
-                try:
-                    repo = AudioRepository(uow)
-                    media_file = repo.get_media_file_by_id(media_file_id)
-                    metadata_field = media_file.get('metadata', {})
-                    retry_count = metadata_field.get('retry_count', 0) if metadata_field else 0
-                    
-                    repo.mark_processing_failed(media_file_id, str(e), retry_count)
-                    repo.save_error_analysis(interview_id, session_id, str(e))
-                except Exception as db_error:
-                    logger.error(f"Failed to save error: {db_error}")
-        
+            self._handle_unexpected_error(uow, media_file_id, interview_id, session_id, e)
+
         finally:
-            if uow:
-                try:
-                    pass  # UnitOfWork auto-closes
-                except:
-                    pass
+            if downloader:
+                downloader.cleanup()
+
+    def _validate_prerequisites(
+        self,
+        repo: AudioRepository,
+        interview_id: str,
+        session_id: str,
+        media_file_id: str
+    ) -> Optional[str]:
+        """
+        Validate prerequisites before processing
+
+        Returns:
+            Error message if validation fails, None if valid
+        """
+        # Check if already processed
+        if repo.check_if_already_processed(interview_id, session_id):
+            logger.warning("⚠️Already processed - skipping")
+            return "already_processed"
+
+        # Get media file info
+        media_file = repo.get_media_file_by_id(media_file_id)
+        if not media_file:
+            logger.error(f"❌ Media file {media_file_id} not found")
+            return "media_file_not_found"
+
+        return None
+
+    def _get_retry_count(self, media_file: Dict) -> int:
+        """Extract retry count from media file metadata"""
+        metadata_field = media_file.get('metadata', {})
+        return metadata_field.get('retry_count', 0) if metadata_field else 0
+
+    def _download_media(
+        self,
+        downloader: MediaDownloader,
+        blob_name: str,
+        media_file_id: str
+    ) -> tuple:
+        """Download media from Azure Blob Storage"""
+        blob_url = self._build_blob_url(blob_name)
+        logger.info(f"📥 Downloading: {blob_url}")
+
+        media_path, media_type, download_error = downloader.download(
+            blob_url,
+            media_file_id=media_file_id
+        )
+
+        if not download_error:
+            logger.info(f"✅ Downloaded: {media_path} (type: {media_type})")
+
+        return media_path, media_type, download_error
+
+    def _process_audio(
+        self,
+        media_path: str,
+        session_id: str
+    ) -> dict:
+        """Process audio and return results"""
+        logger.info("🎤Processing audio...")
+        processor = AudioProcessingService()
+
+        return processor.process(
+            media_url=media_path,
+            session_id=session_id,
+            include_analytics=True
+        )
+
+    def _handle_unexpected_error(
+        self,
+        uow: Optional[object],
+        media_file_id: str,
+        interview_id: str,
+        session_id: str,
+        error: Exception
+    ):
+        """Handle unexpected errors during processing"""
+        if uow:
+            try:
+                repo = AudioRepository(uow)
+                media_file = repo.get_media_file_by_id(media_file_id)
+                retry_count = self._get_retry_count(media_file)
+
+                repo.mark_processing_failed(media_file_id, str(error), retry_count)
+                repo.save_error_analysis(interview_id, session_id, str(error))
+            except Exception as db_error:
+                logger.error(f"Failed to save error: {db_error}")
     
     def _build_blob_url(self, blob_name: str) -> str:
         """Build full Azure Blob Storage URL"""
@@ -266,7 +317,7 @@ class InterviewAudioProcessingService:
         - proctoring_events (if cheating detected)
         - evidence_clips (if cheating detected)
         """
-        logger.info(f"💾 Saving results to database...")
+        logger.info("💾Saving results to database...")
         
         # ============================================
         # FIX 1 & 2: Calculate confidence from Whisper word probabilities
@@ -340,7 +391,7 @@ class InterviewAudioProcessingService:
         # 3. Save proctoring events (if cheating detected)
         cheating_detection = result.get('cheating_detection', {})
         if cheating_detection.get('cheating_detected', False):
-            logger.warning(f"🚨 Cheating detected - saving proctoring event")
+            logger.warning("🚨Cheating detected - saving proctoring event")
             
             proctoring_data = {
                 'interview_id': interview_id,
@@ -367,7 +418,7 @@ class InterviewAudioProcessingService:
                 }
                 repo.save_evidence_clip(clip_data)
         
-        logger.info(f"✅ Results saved to database")
+        logger.info("✅Results saved to database")
     
     def _calculate_confidence_score(self, result: dict) -> float:
         """
