@@ -119,7 +119,7 @@ class InterviewAudioProcessingService:
             repo.mark_processing_started(media_file_id)
             downloader = MediaDownloader()
 
-            media_path, media_type, download_error = self._download_media(
+            media_path, _, download_error = self._download_media(
                 downloader, blob_name, media_file_id
             )
 
