@@ -3,7 +3,7 @@ sys.path.append('/common-service')
 
 from repository.base_repository import BaseRepository
 from db import UnitOfWork
-from sqlalchemy import Table, Column, Text, Integer, String, Boolean, DateTime, MetaData, select, insert, update, text, BigInteger
+from sqlalchemy import Table, Column, Text, Integer, String, Boolean, DateTime, MetaData, select, insert, update, text, BigInteger, and_
 from sqlalchemy.dialects.postgresql import UUID, JSONB, NUMERIC
 from datetime import datetime, timezone
 from typing import List, Dict, Optional
@@ -316,23 +316,29 @@ class AudioRepository(BaseRepository):
         return None
     
     def check_if_already_processed(self, interview_id: str, session_id: str) -> bool:
-        """Check if this interview/session already processed successfully"""
+        """Check if already processed SUCCESSFULLY"""
         query = select(ai_analysis_table).where(
-            ai_analysis_table.c.interview_id == interview_id,
-            ai_analysis_table.c.session_id == session_id,
-            ai_analysis_table.c.service_name == 'audio-ai-service'
+            and_(
+                ai_analysis_table.c.interview_id == interview_id,
+                ai_analysis_table.c.session_id == session_id,
+                ai_analysis_table.c.service_name == 'audio-ai-service'
+            )
         )
-        
         result = self.session.execute(query).fetchone()
-        
-        if result:
-            # Check if it's a failed record
-            raw_results = result.raw_results if hasattr(result, 'raw_results') else {}
-            if isinstance(raw_results, dict) and raw_results.get('error'):
-                return False  # Allow reprocessing of failed records
-            return True  # Already successfully processed
-        
-        return False
+
+        if not result:
+            return False  # No record = not processed
+
+        # ✅ Check if processing was successful
+        raw_results = result.raw_results if hasattr(result, 'raw_results') else {}
+
+        # If raw_results has status 'failed', consider it NOT processed
+        if isinstance(raw_results, dict):
+            status = raw_results.get('status', 'success')
+            if status == 'failed':
+                return False  # Failed = allow reprocessing
+
+        return True  # Success = skip processing
     
     # ==========================================
     # SAVE RESULTS (Same as before)
@@ -440,16 +446,16 @@ class AudioRepository(BaseRepository):
             FROM media_files mf
             WHERE mf.media_type IN ('audio', 'video')
               AND (
-                  mf.status IS NULL
-                  OR mf.status = 'pending'
-                  OR (mf.status = 'failed' AND (mf.extra->>'retry_count')::int < 3)
+                    mf.status IS NULL
+                    OR mf.status = 'pending'
+                    OR (mf.status = 'failed' AND (mf.extra->>'retry_count')::int < 3)
               )
               AND NOT EXISTS (
-                  SELECT 1 FROM ai_analysis aa
-                  WHERE aa.interview_id = mf.interview_id
-                    AND aa.session_id = mf.session_id
-                    AND aa.service_name = 'audio-ai-service'
-                    AND aa.raw_results->>'error' IS NULL
+                    SELECT 1 FROM ai_analysis aa
+                    WHERE aa.interview_id = mf.interview_id
+                      AND aa.session_id = mf.session_id
+                      AND aa.service_name = 'audio-ai-service'
+                      AND aa.raw_results->>'error' IS NULL
               )
             ORDER BY mf.created_at ASC
             LIMIT :limit

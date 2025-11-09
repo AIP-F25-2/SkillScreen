@@ -205,6 +205,7 @@ class AudioProcessingService:
                 "session_id": session_id,
                 "candidate_id": candidate_id,
                 "transcript": transcription_result["text"],
+                "word_timestamps": transcription_result.get("words", []),
                 "duration_seconds": duration,
                 "word_count": word_count,
                 "language": transcription_result.get("language", "en"),

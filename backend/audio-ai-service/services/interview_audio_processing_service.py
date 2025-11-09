@@ -261,33 +261,77 @@ class InterviewAudioProcessingService:
         Save all processing results to database
         
         Saves to:
-        - transcripts
-        - ai_analysis
+        - transcripts (with confidence, start_time, end_time)
+        - ai_analysis (with confidence_score)
         - proctoring_events (if cheating detected)
         - evidence_clips (if cheating detected)
         """
         logger.info(f"💾 Saving results to database...")
         
-        # 1. Save transcript
+        # ============================================
+        # FIX 1 & 2: Calculate confidence from Whisper word probabilities
+        # and extract start/end times
+        # ============================================
+        words_with_confidence = result.get('word_timestamps', [])
+        avg_confidence = 0.95  # default fallback
+        
+        if words_with_confidence:
+            # Calculate average word probability from Whisper
+            confidences = [
+                w.get('probability', 0.95) 
+                for w in words_with_confidence 
+                if 'probability' in w
+            ]
+            if confidences:
+                avg_confidence = round(sum(confidences) / len(confidences), 3)
+        
+        # Extract start and end times from word timestamps
+        start_time = 0.0
+        end_time = result.get('duration_seconds', 0.0)
+        
+        if words_with_confidence:
+            start_time = words_with_confidence[0].get('start', 0.0)
+            end_time = words_with_confidence[-1].get('end', end_time)
+        
+        # 1. Save transcript (with calculated confidence and times)
         transcript_data = {
             'interview_id': interview_id,
             'session_id': session_id,
             'speaker': 'candidate',
             'text': result.get('transcript', ''),
-            'confidence_score': 0.95 if result.get('language') == 'en' else 0.85,
+            'confidence_score': avg_confidence,  # ✅ FIX 1: Calculated from Whisper
+            'start_time': start_time,            # ✅ FIX 2: Populated
+            'end_time': end_time,                # ✅ FIX 2: Populated
             'word_timestamps': result.get('word_timestamps', {}),
             'disfluencies': result.get('filler_analysis', {})
         }
         repo.save_transcript(transcript_data)
         
-        # 2. Save AI analysis (complete results)
+        # ============================================
+        # FIX 3: Extract confidence_score from results
+        # ============================================
+        # Try to get from confidence_analysis first
+        confidence_score = None
+        
+        if 'confidence_analysis' in result:
+            confidence_score = result['confidence_analysis'].get('confidence_score', None)
+        
+        # Fallback to communication_score
+        if confidence_score is None and 'communication_score' in result:
+            confidence_score = result['communication_score'].get('communication_score', None)
+        
+        # Final fallback to calculated score
+        if confidence_score is None:
+            confidence_score = self._calculate_confidence_score(result)
+        
+        # 2. Save AI analysis (with confidence_score)
         ai_analysis_data = {
             'interview_id': interview_id,
             'session_id': session_id,
             'analysis_type': 'audio_analysis',
             'service_name': 'audio-ai-service',
             'raw_results': result,
-            'confidence_score': self._calculate_confidence_score(result),
+            'confidence_score': confidence_score,  # ✅ FIX 3: Now populated
             'processing_time': int(result.get('processing_time_seconds', 0)),
             'version': 'v1.0'
         }

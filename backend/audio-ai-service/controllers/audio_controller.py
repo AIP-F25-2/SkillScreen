@@ -65,7 +65,6 @@ async def process_interview_audio_endpoint(request: ProcessInterviewAudioRequest
             str(request.session_id)
         ):
             logger.warning(f"⚠️ Already processed - returning success")
-            uow.close()
             return ProcessInterviewAudioResponse(
                 status="accepted",
                 message="Already processed (idempotent)",
