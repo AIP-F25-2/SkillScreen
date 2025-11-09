@@ -76,7 +76,7 @@ export default function LoginPage() {
     const usernameOrEmail = userType === 'recruiter' ? 'admin' : 'ashish';
     setFormData({
       usernameOrEmail,
-      password: userType === 'recruiter' ? 'admin' : '1234'
+      password: userType === 'recruiter' ? 'password' : '1234'
     });
     setShowDemo(false);
   };

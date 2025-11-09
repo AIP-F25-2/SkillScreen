@@ -14,7 +14,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
 lib64/
 parts/
 sdist/
@@ -139,6 +138,7 @@ celerybeat.pid
 .env
 .envrc
 .venv
+.env.example
 env/
 venv/
 ENV/
@@ -315,4 +315,27 @@ build/
 *.bak
 *.backup
 
+# Configuration files with sensitive data
+.config
+*.config
+config.ini
+config.json
+secrets.json
+.secrets
+
+# API Keys and sensitive data
+api_keys.txt
+credentials.json
+.secrets
+secrets/
+credentials/
+
+# SonarQube
 .sonar
+
+# Personal documentation files (keep local only)
+AI_DATA_SCIENCE_PROGRESS_TRACKING.md
+PRESENTATION_Q&A.html
+PRESENTATION_Q&A.md
+ML_ENHANCEMENTS_SUMMARY.md
+progress.docx

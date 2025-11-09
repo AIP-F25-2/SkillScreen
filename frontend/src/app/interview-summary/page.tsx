@@ -4,11 +4,15 @@ import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Download, Clock, FileText, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Download, Clock, FileText, CheckCircle, ShieldAlert, UserCheck } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { API_BASE_URL } from '@/lib/config';
+import { getInterviewToken } from '@/lib/interviewToken';
 
 export default function InterviewSummaryPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { user, isLoading: authLoading } = useAuth();
   const interviewId = searchParams?.get('id');
   const isProcessingParam = searchParams?.get('processing') === 'true';
 
@@ -16,8 +20,43 @@ export default function InterviewSummaryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showInitialProcessing, setShowInitialProcessing] = useState(isProcessingParam);
+  const [accessDenied, setAccessDenied] = useState(false);
+  const [isCandidateCompletion, setIsCandidateCompletion] = useState(false);
+  const [candidateName, setCandidateName] = useState('');
 
   useEffect(() => {
+    // Debug authentication state
+    console.log('🔍 DEBUG: Interview Summary Auth State:', {
+      authLoading,
+      user,
+      userType: user?.userType,
+      interviewId,
+      isProcessingParam
+    });
+
+    // Check if this is a candidate completion flow (no user but has interview token)
+    const tokenData = getInterviewToken();
+    if (!authLoading && !user && tokenData && interviewId) {
+      console.log('🎯 Candidate completion flow detected');
+      setIsCandidateCompletion(true);
+      setCandidateName(tokenData.candidateName);
+      // Allow candidate to see their completion message
+    } else if (!authLoading && !user) {
+      // No user and no token - access denied
+      console.log('❌ No user found, setting access denied');
+      setAccessDenied(true);
+      setLoading(false);
+      return;
+    } else if (!authLoading && user && user.userType !== 'recruiter') {
+      // User is not a recruiter - access denied
+      console.log('❌ User is not a recruiter:', user.userType);
+      setAccessDenied(true);
+      setLoading(false);
+      return;
+    } else if (!authLoading && user && user.userType === 'recruiter') {
+      console.log('✅ Recruiter access granted');
+    }
+
     const fetchInterview = async () => {
       if (!interviewId) {
         setError('No interview ID provided');
@@ -29,6 +68,8 @@ export default function InterviewSummaryPage() {
         const response = await apiClient.getInterviewDetails(interviewId);
         if (response.success) {
           setInterview(response.data);
+          console.log('📊 Interview data loaded:', response.data);
+          console.log('📝 Transcript data:', response.data.transcript);
           // Hide initial processing screen once we have data
           if (response.data.status === 'completed' || response.data.transcript) {
             setShowInitialProcessing(false);
@@ -44,7 +85,9 @@ export default function InterviewSummaryPage() {
       }
     };
 
+    if (!authLoading && (user?.userType === 'recruiter' || isCandidateCompletion)) {
     fetchInterview();
+    }
 
     // Poll for updates if processing
     const pollInterval = setInterval(async () => {
@@ -67,7 +110,98 @@ export default function InterviewSummaryPage() {
     }, 10000); // Poll every 10 seconds
 
     return () => clearInterval(pollInterval);
-  }, [interviewId, isProcessingParam]);
+  }, [interviewId, isProcessingParam, user, authLoading, isCandidateCompletion]);
+
+  // Show candidate completion screen
+  if (isCandidateCompletion && !loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#0A0A0A] via-[#1E1E1E] to-[#0A0A0A] flex items-center justify-center p-6">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center max-w-2xl px-6"
+        >
+          <UserCheck className="w-24 h-24 text-green-400 mx-auto mb-6" />
+          <h1 className="text-white text-4xl font-bold mb-4">Thank You, {candidateName}!</h1>
+          <p className="text-white/70 text-xl mb-8">
+            Your interview has been completed successfully.
+          </p>
+          
+          <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-6 mb-8">
+            <h2 className="text-green-300 text-lg font-semibold mb-3">What happens next?</h2>
+            <div className="text-white/80 text-left space-y-2">
+              <p>• Our team will review your interview recording and responses</p>
+              <p>• We'll analyze your technical skills and communication</p>
+              <p>• You'll be contacted within 2-3 business days with next steps</p>
+              <p>• If selected, we'll schedule the next round of interviews</p>
+            </div>
+          </div>
+
+          <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-6 mb-8">
+            <h3 className="text-blue-300 text-lg font-semibold mb-3">Interview Details</h3>
+            <div className="text-white/80 text-left space-y-2">
+              <p><strong>Interview ID:</strong> {interviewId}</p>
+              <p><strong>Status:</strong> Completed</p>
+              <p><strong>Duration:</strong> {interview?.duration || 'Processing...'}</p>
+              <p><strong>Questions Answered:</strong> {interview?.questions?.length || 'Processing...'}</p>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <button
+              onClick={() => window.close()}
+              className="px-8 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+            >
+              Close Window
+            </button>
+            <button
+              onClick={() => router.push('/')}
+              className="px-8 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
+            >
+              Return to Home
+            </button>
+          </div>
+
+          <div className="mt-8 text-white/50 text-sm">
+            <p>This interview session has been securely recorded and stored.</p>
+            <p>Only authorized recruiters can access the full interview details.</p>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // Show access denied screen
+  if (accessDenied) {
+    return (
+      <div className="min-h-screen bg-[#1E1E1E] flex items-center justify-center">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center max-w-md px-6"
+        >
+          <ShieldAlert className="w-24 h-24 text-red-400 mx-auto mb-6" />
+          <h1 className="text-white text-3xl font-bold mb-4">Access Denied</h1>
+          <p className="text-white/70 text-lg mb-6">
+            Interview summaries are only accessible to recruiters.
+          </p>
+          <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 mb-6">
+            <p className="text-red-300 text-sm">
+              {!user 
+                ? 'Please log in as a recruiter to view this page.' 
+                : 'Your account does not have permission to view interview summaries.'}
+            </p>
+          </div>
+          <button
+            onClick={() => router.push(user ? '/recruiter' : '/login')}
+            className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
+          >
+            {user ? 'Go to Dashboard' : 'Go to Login'}
+          </button>
+        </motion.div>
+      </div>
+    );
+  }
 
   // Show big processing message when first redirected
   if (showInitialProcessing && loading) {
@@ -117,7 +251,7 @@ export default function InterviewSummaryPage() {
           <h1 className="text-white text-2xl font-bold mb-4">Error</h1>
           <p className="text-white/70">{error || 'Interview not found'}</p>
           <button
-            onClick={() => router.push('/candidate')}
+            onClick={() => router.push('/recruiter')}
             className="mt-6 px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg"
           >
             Back to Dashboard
@@ -130,7 +264,7 @@ export default function InterviewSummaryPage() {
   // Video path from backend is like: /ashish/filename.mp4
   // Use configurable API base URL for video serving
   const videoUrl = interview.video_path
-    ? `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000'}/media/video${interview.video_path}`
+    ? `${API_BASE_URL}/media/video${interview.video_path}`
     : '';
   
   console.log('Interview data:', interview);

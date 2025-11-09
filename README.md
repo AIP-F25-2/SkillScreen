@@ -129,7 +129,7 @@ ai-interview-platform/
 - **Authentication**: JWT, Role-based Access Control
 - **Databases**: PostgreSQL, Redis
 - **Message Queue**: Redis/RabbitMQ
-- **Container**: Docker, Kubernetes
+- **Container**: Docker
 
 ### AI & ML Services
 - **Computer Vision**: OpenCV, MediaPipe
@@ -146,7 +146,7 @@ ai-interview-platform/
 
 ### DevOps & Infrastructure
 - **Containerization**: Docker, Docker Compose
-- **Orchestration**: Kubernetes
+- **Orchestration**: Docker Swarm
 - **Monitoring**: Grafana, Prometheus, ELK Stack
 - **CI/CD**: GitHub Actions
 - **Cloud**: AWS/Azure/GCP ready
@@ -163,7 +163,7 @@ The platform will maintain high test coverage across all services with unit test
 
 ## 🚀 Deployment
 
-The platform is designed for containerized deployment with support for development, staging, and production environments using Docker and Kubernetes orchestration.
+The platform is designed for containerized deployment with support for development, staging, and production environments using Docker and Docker Compose.
 
 ## 🤝 Contributing
 
