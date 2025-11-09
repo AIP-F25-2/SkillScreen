@@ -4,7 +4,7 @@ import os
 import json
 import uuid
 from typing import Dict, Any, List, Optional, Tuple
-
+from datetime import datetime,timezone
 import numpy as np
 
 from app.core.logging import get_logger
@@ -195,9 +195,17 @@ class VideoAnalyzer:
     def _fourcc():
         return cv2.VideoWriter_fourcc(*"mp4v")
 
-    def save_upload(self, filename: str, data: bytes) -> str:
+    def _session_dirs(self, interview_id: str, session_id: str) -> Tuple[str, str]:
+        upload_dir = os.path.join(settings.UPLOAD_FOLDER, interview_id, session_id)
+        processed_dir = os.path.join(settings.PROCESSED_FOLDER, interview_id, session_id)
+        os.makedirs(upload_dir, exist_ok=True)
+        os.makedirs(processed_dir, exist_ok=True)
+        return upload_dir, processed_dir
+
+    def save_upload(self, filename: str, data: bytes, interview_id: str, session_id: str) -> str:
+        upload_dir, _ = self._session_dirs(interview_id, session_id)
         uid = uuid.uuid4().hex
-        path = os.path.join(settings.UPLOAD_FOLDER, f"{uid}_{os.path.basename(filename)}")
+        path = os.path.join(upload_dir, f"{session_id}_{uid}_{os.path.basename(filename)}")
         with open(path, "wb") as f:
             f.write(data)
         return path
@@ -229,35 +237,14 @@ class VideoAnalyzer:
                             cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 255), 1, cv2.LINE_AA)
         return out
 
-    @staticmethod
-    def _parse_user_ts_from_name(user_id: Optional[str], src_path: str) -> Tuple[Optional[str], Optional[str], str]:
-        """
-        From a path like UPLOAD_FOLDER/<user>/<user>_<timestamp>.<ext>
-        return (user_id, timestamp, ext). If user_id is provided param, trust it; else infer from filename prefix.
-        """
-        base = os.path.basename(src_path)
-        name, ext = os.path.splitext(base)
-        inferred_user = user_id
-        ts = None
-        if inferred_user:
-            prefix = f"{inferred_user}_"
-            if name.startswith(prefix):
-                ts = name[len(prefix):] or None
-        else:
-            if "_" in name:
-                parts = name.split("_", 1)
-                inferred_user = parts[0] or None
-                ts = parts[1] or None
-        return inferred_user, ts, ext or ".mp4"
-
-    def analyze(self, src_video_path: str, user_id: Optional[str] = None, source_url: Optional[str] = None) -> Dict[str, Any]:
+    def analyze(self, src_video_path: str, interview_id: str, session_id: str, source_url: Optional[str] = None) -> Dict[str, Any]:
         if cv2 is None:
             raise RuntimeError("OpenCV not available in runtime")
 
-        # Derive user & timestamp for output naming/placement
-        user_id, ts, in_ext = self._parse_user_ts_from_name(user_id, src_video_path)
-        user_proc_dir = os.path.join(settings.PROCESSED_FOLDER, user_id) if user_id else settings.PROCESSED_FOLDER
-        os.makedirs(user_proc_dir, exist_ok=True)
+        _, user_proc_dir = self._session_dirs(interview_id, session_id)
+        _, in_ext = os.path.splitext(src_video_path)
+        if not in_ext:
+            in_ext = ".mp4"
 
         cap = cv2.VideoCapture(src_video_path)
         if not cap.isOpened():
@@ -270,15 +257,14 @@ class VideoAnalyzer:
             cap.release()
             raise ValueError(f"Invalid video dimensions: {in_w}x{in_h}")
 
-        stride = max(1, int(round(in_fps / max(0.1, settings.TARGET_FPS))))
+        if getattr(settings, "ANALYZE_FULL_FPS", False):
+            stride = 1
+        else:
+            stride = max(1, int(round(in_fps / max(0.1, settings.TARGET_FPS))))
 
-        # Outputs
-        if not ts:
-            ts = uuid.uuid4().hex[:8]
-        out_video_name = (f"{user_id}_{ts}_annotated{in_ext}") if user_id else f"{ts}_annotated{in_ext}"
-        out_json_name = (f"{user_id}_{ts}_report.json") if user_id else f"{ts}_report.json"
-
-        out_video = os.path.join(user_proc_dir, out_video_name)
+        run_ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        run_label = f"{session_id}_{run_ts}"
+        out_video = os.path.join(user_proc_dir, f"{run_label}_annotated{in_ext}")
         writer = cv2.VideoWriter(out_video, self._fourcc(), in_fps, (in_w, in_h)) if settings.DRAW_ANNOTATIONS else None
 
         self.state.reset()
@@ -582,10 +568,18 @@ class VideoAnalyzer:
                 score += float(alpha) * v
             summary["cheating_probability"] = round(float(np.clip(score, 0.0, 1.0)), 3)
 
+        thumbs = []
+        if getattr(settings, "EMIT_THUMBNAILS", True) and os.path.isdir(thumbs_dir):
+            try:
+                thumbs = [os.path.join(f"processed/{interview_id}/{session_id}/thumbs", name) for name in sorted(os.listdir(thumbs_dir)) if name.lower().endswith(".jpg")]
+            except Exception:
+                thumbs = []
+
         report = {
             "id": uuid.uuid4().hex,
-            "user_id": user_id,
-            "timestamp": ts,
+            "interview_id": interview_id,
+            "session_id": session_id,
+            "timestamp": run_ts,
             "source_url": source_url,
             "source_video": os.path.basename(src_video_path),
             "output_video": os.path.basename(out_video) if settings.DRAW_ANNOTATIONS else None,
@@ -598,25 +592,27 @@ class VideoAnalyzer:
             "events": events,
             "segments": segments,
             "rollup": {"num_segments": len(segments), **summary},
-            "performance": perf, 
+            "performance": perf,
             "thumbnails_dir": (os.path.join(user_proc_dir, "thumbs") if getattr(settings, "EMIT_THUMBNAILS", True) else None),
         }
 
-        out_json = os.path.join(user_proc_dir, out_json_name)
-        with open(out_json, "w") as f:
-            json.dump(report, f, indent=2)
+        result_summary = {
+            "interview_id": interview_id,
+            "session_id": session_id,
+            "timestamp": run_ts,
+            "source_url": source_url,
+            "num_segments": len(segments), **summary,
+            "frames_total": frame_idx,
+            "frames_analyzed": analyzed_frames,
+            "thumbnail_blobs": thumbs,
+        }
 
         return {
             "ok": True,
-            "report_path": out_json,
+            "report": report,
+            "report_timestamp": run_label,
             "video_path": out_video if settings.DRAW_ANNOTATIONS else None,
-            "summary": {
-                "user_id": user_id,
-                "timestamp": ts,
-                "source_url": source_url,
-                "num_segments": len(segments), **summary,
-                "frames_total": frame_idx, "frames_analyzed": analyzed_frames
-            }
+            "summary": result_summary,
         }
 
     # helper for thumbnails
