@@ -1,13 +1,154 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from config import logger, settings
-from schemas.audio_schemas import AudioProcessRequest, AudioProcessResponse
+from schemas.audio_schemas import AudioProcessRequest, AudioProcessResponse, ProcessInterviewAudioRequest, ProcessInterviewAudioResponse
 from services.audio_processing_service import AudioProcessingService
+
+from pydantic import BaseModel, Field
+from uuid import UUID
+from fastapi import status
+from services.interview_audio_processing_service import InterviewAudioProcessingService
+from repositories.audio_repository import AudioRepository
+from datetime import datetime, timezone
 
 from db import UnitOfWork
 
 
 router = APIRouter()
 
+
+@router.post(
+    "/process-interview-audio",
+    response_model=ProcessInterviewAudioResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Process interview audio (async)",
+    description="""
+    Process interview audio/video with complete analysis pipeline.
+    
+    **Flow:**
+    1. Receives request with interview IDs and blob name
+    2. Returns 202 Accepted immediately
+    3. Processes in background (3-5 minutes)
+    4. Updates media_files.status and saves results
+    
+    **Called by:** Interview Service after candidate submits answer
+    """
+)
+async def process_interview_audio_endpoint(request: ProcessInterviewAudioRequest):
+    """
+    Main API endpoint for interview audio processing
+    
+    Validates request and starts background processing
+    Returns immediately (asynchronous)
+    """
+    logger.info("Audio processing request received")
+    logger.info(f"   Interview: {request.interview_id}")
+    logger.info(f"   Session: {request.session_id}")
+    logger.info(f"   Media File: {request.media_file_id}")
+    
+    try:
+        # Validate: Check if media file exists
+        uow = UnitOfWork()
+        repo = AudioRepository(uow)
+        
+        media_file = repo.get_media_file_by_id(str(request.media_file_id))
+        
+        if not media_file:
+            logger.error(f"❌ Media file not found: {request.media_file_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Media file {request.media_file_id} not found"
+            )
+        
+        # Check if already processed (idempotency)
+        if repo.check_if_already_processed(
+            str(request.interview_id),
+            str(request.session_id)
+        ):
+            logger.warning("⚠️Already processed - returning success")
+            return ProcessInterviewAudioResponse(
+                status="accepted",
+                message="Already processed (idempotent)",
+                media_file_id=str(request.media_file_id),
+                interview_id=str(request.interview_id),
+                session_id=str(request.session_id)
+            )
+        
+        
+        
+        # Start background processing via service layer
+        processing_service = InterviewAudioProcessingService()
+        processing_service.process_async(
+            interview_id=str(request.interview_id),
+            session_id=str(request.session_id),
+            media_file_id=str(request.media_file_id),
+            blob_name=request.blob_name
+        )
+        
+        logger.info("✅Background processing started")
+        
+        # Return immediate response
+        return ProcessInterviewAudioResponse(
+            status="accepted",
+            message="Audio processing started in background",
+            media_file_id=str(request.media_file_id),
+            interview_id=str(request.interview_id),
+            session_id=str(request.session_id)
+        )
+        
+    except HTTPException:
+        raise
+    
+    except Exception as e:
+        logger.error(f"❌ Failed to start processing: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to start audio processing: {str(e)}"
+        )
+
+
+@router.get(
+    "/audio-status/{media_file_id}",
+    summary="Check audio processing status",
+    description="Get current processing status of a media file"
+)
+async def get_audio_processing_status(media_file_id: UUID):
+    """
+    Check processing status of a media file
+    
+    Returns:
+    - status: 'pending', 'processing', 'completed', 'failed'
+    - extra: Error details if failed
+    """
+    try:
+        uow = UnitOfWork()
+        repo = AudioRepository(uow)
+        
+        media_file = repo.get_media_file_by_id(str(media_file_id))
+        
+        if not media_file:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Media file {media_file_id} not found"
+            )
+        
+        
+        
+        return {
+            "media_file_id": str(media_file_id),
+            "status": media_file.get('status', 'pending'),
+            "extra": media_file.get('extra', {}),
+            "updated_at": media_file.get('updated_at')
+        }
+        
+    except HTTPException:
+        raise
+    
+    except Exception as e:
+        logger.error(f"Failed to get status: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get status: {str(e)}"
+        )
 
 
 
