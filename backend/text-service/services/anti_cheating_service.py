@@ -11,7 +11,7 @@ import numpy as np
 from collections import defaultdict, deque
 import logging
 
-from database.models import Interview, InterviewResponse, AuditLog
+from database.models import Interview, Response, AuditLog
 from utils.logger import log_info, log_error, log_warning
 
 class AntiCheatingService:
@@ -58,9 +58,9 @@ class AntiCheatingService:
             if not interview:
                 return analysis_results
             
-            previous_responses = db.query(InterviewResponse).filter(
-                InterviewResponse.interview_id == interview_id
-            ).order_by(InterviewResponse.received_at).all()
+            previous_responses = db.query(Response).filter(
+                Response.interview_id == interview_id
+            ).order_by(Response.created_at).all()
             
             # 1. Duplicate response detection
             duplicate_analysis = await self._detect_duplicate_responses(
@@ -120,7 +120,7 @@ class AntiCheatingService:
     async def _detect_duplicate_responses(
         self,
         response_text: str,
-        previous_responses: List[InterviewResponse]
+        previous_responses: List[Response]
     ) -> Dict:
         """Detect duplicate or near-duplicate responses"""
         try:
@@ -230,7 +230,7 @@ class AntiCheatingService:
         self,
         response_text: str,
         interview: Interview,
-        previous_responses: List[InterviewResponse]
+        previous_responses: List[Response]
     ) -> Dict:
         """Analyze response content for suspicious patterns"""
         try:
@@ -284,7 +284,7 @@ class AntiCheatingService:
         self,
         response_text: str,
         interview_id: str,
-        previous_responses: List[InterviewResponse]
+        previous_responses: List[Response]
     ) -> Dict:
         """Analyze behavioral patterns across responses"""
         try:
@@ -337,7 +337,7 @@ class AntiCheatingService:
         self,
         response_text: str,
         interview_id: str,
-        previous_responses: List[InterviewResponse]
+        previous_responses: List[Response]
     ) -> Dict:
         """Analyze AI-generated content with warning system"""
         try:
@@ -428,7 +428,7 @@ class AntiCheatingService:
     async def _determine_termination(
         self,
         analysis_results: Dict,
-        previous_responses: List[InterviewResponse]
+        previous_responses: List[Response]
     ) -> Dict:
         """Determine if interview should be terminated with enhanced logic"""
         try:
@@ -567,7 +567,7 @@ class AntiCheatingService:
     def _detect_repeated_phrases(
         self,
         response_text: str,
-        previous_responses: List[InterviewResponse]
+        previous_responses: List[Response]
     ) -> List[str]:
         """Detect phrases repeated across responses"""
         try:
@@ -838,7 +838,7 @@ class AntiCheatingService:
             log_warning(f"Error calculating complexity score: {e}")
             return 5.0
     
-    def _calculate_question_engagement(self, response_text: str, previous_responses: List[InterviewResponse]) -> float:
+    def _calculate_question_engagement(self, response_text: str, previous_responses: List[Response]) -> float:
         """Calculate how well the response engages with the question"""
         try:
             if not response_text:

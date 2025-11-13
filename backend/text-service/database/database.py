@@ -25,13 +25,13 @@ class DatabaseManager:
             database_url = get_config('DATABASE_URL')
             
             if not database_url:
-                # Fallback to individual components
-                host = get_config('DATABASE_HOST', 'localhost')
+                # Fallback to individual components or Azure PostgreSQL defaults
+                host = get_config('DATABASE_HOST', 'skillscreen-db.postgres.database.azure.com')
                 port = get_config('DATABASE_PORT', '5432')
-                dbname = get_config('DATABASE_NAME', 'skillscreen_database')
-                user = get_config('DATABASE_USER', 'postgres')
-                password = get_config('DATABASE_PASSWORD', '')
-                ssl_mode = get_config('DATABASE_SSL_MODE', 'prefer')
+                dbname = get_config('DATABASE_NAME', 'postgres')
+                user = get_config('DATABASE_USER', 'intervuai')
+                password = get_config('DATABASE_PASSWORD', 'LOYALlist_2025')
+                ssl_mode = get_config('DATABASE_SSL_MODE', 'require')
                 
                 database_url = f"postgresql://{user}:{password}@{host}:{port}/{dbname}?sslmode={ssl_mode}"
             

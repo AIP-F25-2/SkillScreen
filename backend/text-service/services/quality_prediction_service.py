@@ -18,7 +18,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
-from database.models import Interview, InterviewResponse, Candidate, Job
+from database.models import Interview, Response, Candidate, JobPosition
 from utils.logger import log_info, log_error, log_warning
 
 # Try to import ML libraries (with fallback)

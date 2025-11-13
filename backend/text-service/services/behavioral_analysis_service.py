@@ -15,7 +15,7 @@ from sklearn.cluster import KMeans
 import pickle
 import os
 
-from database.models import Interview, InterviewResponse
+from database.models import Interview, Response
 from utils.logger import log_info, log_error, log_warning
 
 class BehavioralAnalysisService:

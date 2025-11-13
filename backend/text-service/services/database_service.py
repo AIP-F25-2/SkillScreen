@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc
 from database.models import (
     Organization, User, JobPosition, InterviewTemplate, Interview,
-    InterviewSession, Response, Score, Assessment, UserRole, InterviewStatus, InterviewMode
+    InterviewSession, Response, Score, Assessment, AIAnalysis, Candidate,
+    UserRole, InterviewStatus, InterviewMode
 )
 import uuid
 from datetime import datetime, timezone
@@ -40,18 +41,20 @@ class InterviewDataService:
     def create_user(self, organization_id: str, email: str, first_name: str, last_name: str, 
                    role: UserRole, password_hash: Optional[str] = None) -> User:
         """Create a new user"""
+        # Use the enum value directly (lowercase) - database should accept it
+        role_value = role.value if hasattr(role, 'value') else str(role)
         user = User(
             organization_id=organization_id,
             email=email,
             first_name=first_name,
             last_name=last_name,
-            role=role,
+            role=role_value,
             password_hash=password_hash,
             is_active=True
         )
         self.db.add(user)
         self.db.commit()
-        self.db.refresh(user)
+        # Skip refresh to avoid enum mismatch on read - just return the object
         return user
     
     def get_user_by_email(self, email: str) -> Optional[User]:
@@ -290,5 +293,124 @@ class InterviewDataService:
                 role=UserRole.CANDIDATE
             )
         return user
+    
+    # AI Analysis operations
+    def create_ai_analysis(
+        self,
+        interview_id: str,
+        session_id: Optional[str] = None,
+        analysis_type: str = "text_analysis",
+        service_name: str = "text-service",
+        raw_results: Optional[Dict] = None,
+        confidence_score: Optional[float] = None,
+        processing_time: Optional[int] = None,
+        version: str = "v1.0"
+    ) -> AIAnalysis:
+        """Create a new AI analysis record"""
+        analysis = AIAnalysis(
+            interview_id=interview_id,
+            session_id=session_id,
+            analysis_type=analysis_type,
+            service_name=service_name,
+            raw_results=raw_results,
+            confidence_score=confidence_score,
+            processing_time=processing_time,
+            version=version
+        )
+        self.db.add(analysis)
+        self.db.commit()
+        self.db.refresh(analysis)
+        return analysis
+    
+    def get_ai_analysis_by_interview(self, interview_id: str) -> List[AIAnalysis]:
+        """Get all AI analysis records for an interview"""
+        return self.db.query(AIAnalysis).filter(AIAnalysis.interview_id == interview_id).order_by(AIAnalysis.created_at).all()
+    
+    def get_ai_analysis_by_session(self, session_id: str) -> List[AIAnalysis]:
+        """Get all AI analysis records for a session"""
+        return self.db.query(AIAnalysis).filter(AIAnalysis.session_id == session_id).order_by(AIAnalysis.created_at).all()
+    
+    # Candidate operations
+    def create_candidate(
+        self,
+        organization_id: str,
+        full_name: str,
+        email: Optional[str] = None,
+        phone: Optional[str] = None,
+        location: Optional[str] = None,
+        resume_url: Optional[str] = None,
+        skills: Optional[List[str]] = None,
+        experience: Optional[Dict] = None,
+        education: Optional[Dict] = None,
+        projects: Optional[List[Dict]] = None
+    ) -> Candidate:
+        """Create a new candidate"""
+        candidate = Candidate(
+            organization_id=organization_id,
+            full_name=full_name,
+            email=email,
+            phone=phone,
+            location=location,
+            resume_url=resume_url,
+            skills=skills or [],
+            experience=experience or {},
+            education=education or {},
+            projects=projects or []
+        )
+        self.db.add(candidate)
+        self.db.commit()
+        self.db.refresh(candidate)
+        return candidate
+    
+    def get_candidate(self, candidate_id: str) -> Optional[Candidate]:
+        """Get candidate by ID"""
+        return self.db.query(Candidate).filter(Candidate.id == candidate_id).first()
+    
+    def get_candidate_by_email(self, email: str) -> Optional[Candidate]:
+        """Get candidate by email"""
+        return self.db.query(Candidate).filter(Candidate.email == email).first()
+    
+    def get_candidates_by_organization(self, organization_id: str) -> List[Candidate]:
+        """Get all candidates for an organization"""
+        return self.db.query(Candidate).filter(Candidate.organization_id == organization_id).order_by(Candidate.created_at.desc()).all()
+    
+    def update_candidate(
+        self,
+        candidate_id: str,
+        full_name: Optional[str] = None,
+        email: Optional[str] = None,
+        phone: Optional[str] = None,
+        location: Optional[str] = None,
+        resume_url: Optional[str] = None,
+        skills: Optional[List[str]] = None,
+        experience: Optional[Dict] = None,
+        education: Optional[Dict] = None,
+        projects: Optional[List[Dict]] = None
+    ) -> Optional[Candidate]:
+        """Update candidate information"""
+        candidate = self.db.query(Candidate).filter(Candidate.id == candidate_id).first()
+        if candidate:
+            if full_name is not None:
+                candidate.full_name = full_name
+            if email is not None:
+                candidate.email = email
+            if phone is not None:
+                candidate.phone = phone
+            if location is not None:
+                candidate.location = location
+            if resume_url is not None:
+                candidate.resume_url = resume_url
+            if skills is not None:
+                candidate.skills = skills
+            if experience is not None:
+                candidate.experience = experience
+            if education is not None:
+                candidate.education = education
+            if projects is not None:
+                candidate.projects = projects
+            
+            self.db.commit()
+            self.db.refresh(candidate)
+        return candidate
 
 

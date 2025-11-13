@@ -422,6 +422,24 @@ class ProctoringEvent(Base):
     session = relationship("InterviewSession", back_populates="proctoring_events")
     reviewer = relationship("User", foreign_keys=[reviewed_by], back_populates="proctoring_events_reviewed")
 
+class Candidate(Base, TimestampMixin):
+    __tablename__ = "candidates"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey(FK_ORGANIZATIONS_ID), nullable=False)
+    full_name = Column(String(255), nullable=True)
+    email = Column(String(255), nullable=True)
+    phone = Column(String(50), nullable=True)
+    location = Column(String(255), nullable=True)
+    resume_url = Column(String(1024), nullable=True)
+    skills = Column(JSONB, nullable=True)
+    experience = Column(JSONB, nullable=True)
+    education = Column(JSONB, nullable=True)
+    projects = Column(JSONB, nullable=True)
+    
+    # Relationships
+    organization = relationship("Organization")
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
     

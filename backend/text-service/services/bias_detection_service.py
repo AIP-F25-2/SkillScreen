@@ -13,7 +13,7 @@ from scipy import stats
 from scipy.stats import chi2_contingency, ttest_ind, mannwhitneyu
 import math
 
-from database.models import Interview, InterviewResponse, Candidate, Job
+from database.models import Interview, Response, Candidate, JobPosition
 from utils.logger import log_info, log_error, log_warning
 
 class BiasDetectionService:
@@ -215,7 +215,7 @@ class BiasDetectionService:
                     # Calculate effect size (Cohen's d)
                     pooled_std = math.sqrt(
                         ((len(scores1) - 1) * np.var(scores1) + (len(scores2) - 1) * np.var(scores2)) /
-                         (len(scores1) + len(scores2) - 2))
+                        (len(scores1) + len(scores2) - 2)
                     )
                     cohens_d = (np.mean(scores1) - np.mean(scores2)) / pooled_std if pooled_std > 0 else 0
                     

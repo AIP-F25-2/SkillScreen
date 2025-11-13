@@ -3,16 +3,17 @@ Interview service for orchestrating the complete interview process
 """
 
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 import json
 import asyncio
 import logging
 
 from database.models import (
-    Interview, InterviewQuestion, InterviewResponse, 
-    InterviewSummary, Candidate, Job, AuditLog
+    Interview, InterviewSession, Response,
+    Candidate, JobPosition, AuditLog, Assessment, InterviewStatus
 )
+from services.database_service import InterviewDataService
 from services.nlp_service import NLPService
 from services.anti_cheating_service import AntiCheatingService
 from services.rag_service import RAGExplainabilityService
@@ -61,7 +62,7 @@ class InterviewService:
     async def generate_initial_question(
         self,
         candidate: Candidate,
-        job: Job,
+        job: JobPosition,
         interview_type: str,
         db
     ) -> Dict:
@@ -69,13 +70,13 @@ class InterviewService:
         try:
             # Create context for question generation
             context = {
-                'candidate_name': candidate.name,
-                'candidate_skills': candidate.skills or [],
-                'candidate_experience': candidate.experience_years or 0,
+                'candidate_name': getattr(candidate, 'full_name', None) or getattr(candidate, 'name', 'Candidate'),
+                'candidate_skills': getattr(candidate, 'skills', []) or [],
+                'candidate_experience': getattr(candidate, 'experience', {}).get('years', 0) if isinstance(getattr(candidate, 'experience', None), dict) else 0,
                 'job_title': job.title,
-                'job_company': job.company,
-                'job_skills': job.skills_required or [],
-                'job_level': job.experience_level or 'Mid-level'
+                'job_company': getattr(job, 'company', 'Company'),
+                'job_skills': getattr(job, 'required_skills', []) or [],
+                'job_level': getattr(job, 'experience_level', 'Mid-level') or 'Mid-level'
             }
             
             # Generate personalized question
@@ -83,15 +84,8 @@ class InterviewService:
                 'general', context, interview_type
             )
             
-            # Create question record
-            question = InterviewQuestion(
-                question_index=0,
-                question_text=question_text,
-                question_type='general',
-                difficulty='medium',
-                round_number=1,
-                context=json.dumps(context)
-            )
+            # Question will be stored in InterviewSession when response is submitted
+            # No separate InterviewQuestion model exists
             
             return {
                 'id': str(uuid.uuid4()),
@@ -101,7 +95,7 @@ class InterviewService:
                 'difficulty': 'medium',
                 'round_number': 1,
                 'context': context,
-                'asked_at': datetime.utcnow()
+                'asked_at': datetime.now(timezone.utc)
             }
             
         except Exception as e:
@@ -114,7 +108,7 @@ class InterviewService:
                 'difficulty': 'medium',
                 'round_number': 1,
                 'context': {},
-                'asked_at': datetime.utcnow()
+                'asked_at': datetime.now(timezone.utc)
             }
     
     async def generate_next_question(
@@ -129,52 +123,58 @@ class InterviewService:
             if not interview:
                 raise ValueError(f"Interview {interview_id} not found")
             
-            previous_questions = db.query(InterviewQuestion).filter(
-                InterviewQuestion.interview_id == interview_id
-            ).order_by(InterviewQuestion.question_index).all()
+            # Get previous questions from interview sessions
+            previous_sessions = db.query(InterviewSession).filter(
+                InterviewSession.interview_id == interview_id
+            ).order_by(InterviewSession.created_at).all()
+            previous_questions = [s.question_text for s in previous_sessions if s.question_text]
             
             # Determine question type based on progress
             current_question_index = len(previous_questions)
             question_type, round_number = self._determine_question_type(current_question_index)
             
             # Get candidate and job context
-            candidate = db.query(Candidate).filter(Candidate.id == interview.candidate_id).first()
-            job = db.query(Job).filter(Job.id == interview.job_id).first()
+            # interview.candidate_id is a User ID, get Candidate from settings or User
+            candidate = None
+            if interview.settings and interview.settings.get('candidate_record_id'):
+                candidate_id = interview.settings.get('candidate_record_id')
+                candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
+            
+            # If not found in settings, try to get from User email
+            if not candidate:
+                from database.models import User
+                user = db.query(User).filter(User.id == interview.candidate_id).first()
+                if user:
+                    candidate = db.query(Candidate).filter(Candidate.email == user.email).first()
+            
+            job = db.query(JobPosition).filter(JobPosition.id == interview.job_position_id).first()
             
             if not candidate or not job:
                 raise ValueError("Candidate or job not found")
             
             # Create context for question generation
             context = {
-                'candidate_name': candidate.name,
-                'candidate_skills': candidate.skills or [],
-                'candidate_experience': candidate.experience_years or 0,
+                'candidate_name': getattr(candidate, 'full_name', None) or getattr(candidate, 'name', 'Candidate'),
+                'candidate_skills': getattr(candidate, 'skills', []) or [],
+                'candidate_experience': getattr(candidate, 'experience', {}).get('years', 0) if isinstance(getattr(candidate, 'experience', None), dict) else 0,
                 'job_title': job.title,
-                'job_company': job.company,
-                'job_skills': job.skills_required or [],
-                'job_level': job.experience_level or 'Mid-level',
-                'previous_questions': [q.question_text for q in previous_questions],
+                'job_company': getattr(job, 'company', 'Company'),
+                'job_skills': getattr(job, 'required_skills', []) or [],
+                'job_level': getattr(job, 'experience_level', 'Mid-level') or 'Mid-level',
+                'previous_questions': previous_questions,
                 'current_round': round_number
             }
             
             # Generate personalized question
+            # Get interview type from settings or default
+            interview_type = interview.settings.get('interview_type', 'mixed') if interview.settings else 'mixed'
             question_text = await self._generate_personalized_question(
-                question_type, context, interview.interview_type
+                question_type, context, interview_type
             )
             
             # Create question record
-            question = InterviewQuestion(
-                interview_id=interview_id,
-                question_index=current_question_index,
-                question_text=question_text,
-                question_type=question_type,
-                difficulty='medium',
-                round_number=round_number,
-                context=json.dumps(context)
-            )
-            
-            db.add(question)
-            db.commit()
+            # Question will be stored in InterviewSession when response is submitted
+            # No separate InterviewQuestion model exists
             
             return {
                 'id': str(uuid.uuid4()),
@@ -184,7 +184,7 @@ class InterviewService:
                 'difficulty': 'medium',
                 'round_number': round_number,
                 'context': context,
-                'asked_at': datetime.utcnow()
+                'asked_at': datetime.now(timezone.utc)
             }
             
         except Exception as e:
@@ -198,7 +198,7 @@ class InterviewService:
                 'difficulty': 'medium',
                 'round_number': 1,
                 'context': {},
-                'asked_at': datetime.utcnow()
+                'asked_at': datetime.now(timezone.utc)
             }
     
     async def generate_interview_summary(
@@ -213,11 +213,23 @@ class InterviewService:
             if not interview:
                 raise ValueError(f"Interview {interview_id} not found")
             
-            candidate = db.query(Candidate).filter(Candidate.id == interview.candidate_id).first()
-            job = db.query(Job).filter(Job.id == interview.job_id).first()
-            responses = db.query(InterviewResponse).filter(
-                InterviewResponse.interview_id == interview_id
-            ).order_by(InterviewResponse.received_at).all()
+            # Get candidate from settings (interview.candidate_id is User ID)
+            candidate = None
+            if interview.settings and interview.settings.get('candidate_record_id'):
+                candidate_id = interview.settings.get('candidate_record_id')
+                candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
+            
+            # If not found in settings, try to get from User email
+            if not candidate:
+                from database.models import User
+                user = db.query(User).filter(User.id == interview.candidate_id).first()
+                if user:
+                    candidate = db.query(Candidate).filter(Candidate.email == user.email).first()
+            
+            job = db.query(JobPosition).filter(JobPosition.id == interview.job_position_id).first()
+            responses = db.query(Response).filter(
+                Response.interview_id == interview_id
+            ).order_by(Response.created_at).all()
             
             if not candidate or not job:
                 raise ValueError("Candidate or job not found")
@@ -225,20 +237,26 @@ class InterviewService:
             # Calculate overall metrics
             total_responses = len(responses)
             if total_responses > 0:
-                overall_score = sum(r.overall_score for r in responses if r.overall_score is not None) / total_responses
-                avg_response_length = sum(len(r.response_text) for r in responses) / total_responses
+                # Get scores from Score model
+                from database.models import Score
+                response_ids = [str(r.id) for r in responses]
+                scores = db.query(Score).filter(Score.response_id.in_(response_ids)).all()
+                score_map = {str(s.response_id): float(s.auto_score) if s.auto_score else 0.0 for s in scores}
+                
+                overall_score = sum(score_map.get(str(r.id), 0.0) for r in responses) / total_responses if total_responses > 0 else 0.0
+                avg_response_length = sum(len(r.response_text or '') for r in responses) / total_responses
             else:
                 overall_score = 0.0
                 avg_response_length = 0.0
             
-            # Analyze response patterns
-            duplicate_responses = sum(1 for r in responses if r.is_duplicate)
-            off_topic_responses = sum(1 for r in responses if r.is_off_topic)
+            # Analyze response patterns - these would need to be stored separately or calculated
+            duplicate_responses = 0  # Would need to be calculated from response similarity
+            off_topic_responses = 0  # Would need to be calculated from NLP analysis
             
             # Generate detailed assessments
-            technical_assessment = await self._generate_technical_assessment(responses, job)
-            communication_assessment = await self._generate_communication_assessment(responses)
-            cultural_fit_assessment = await self._generate_cultural_fit_assessment(responses, candidate, job)
+            technical_assessment = await self._generate_technical_assessment(responses, job, db)
+            communication_assessment = await self._generate_communication_assessment(responses, db)
+            cultural_fit_assessment = await self._generate_cultural_fit_assessment(responses, candidate, job, db)
             
             # Generate executive summary
             executive_summary = await self._generate_executive_summary(
@@ -251,10 +269,10 @@ class InterviewService:
             )
             
             # Generate strengths and weaknesses
-            strengths, weaknesses = await self._generate_strengths_weaknesses(responses)
+            strengths, weaknesses = await self._generate_strengths_weaknesses(responses, db)
             
             # Generate improvement tips
-            improvement_tips = await self._generate_improvement_tips(responses, job)
+            improvement_tips = await self._generate_improvement_tips(responses, job, db)
             
             # Create summary data
             summary_data = {
@@ -267,7 +285,7 @@ class InterviewService:
                 'cultural_fit': cultural_fit_assessment,
                 'strengths': strengths,
                 'areas_for_improvement': weaknesses,
-                'key_highlights': await self._generate_key_highlights(responses),
+                'key_highlights': await self._generate_key_highlights(responses, db),
                 'red_flags': await self._generate_red_flags(responses, duplicate_responses, off_topic_responses),
                 'improvement_tips': improvement_tips,
                 'next_steps': await self._generate_next_steps(recommendation, overall_score),
@@ -276,44 +294,107 @@ class InterviewService:
                 )
             }
             
-            # Save summary to database
-            summary = InterviewSummary(
+            # Save summary to database using Assessment model
+            from database.models import Assessment
+            assessment = Assessment(
                 interview_id=interview_id,
-                executive_summary=executive_summary,
                 overall_score=overall_score,
+                technical_score=technical_assessment['score'],
+                communication_score=communication_assessment['score'],
+                soft_skills_score=cultural_fit_assessment['score'],
                 recommendation=recommendation,
-                recommendation_reason=recommendation_reason,
-                technical_assessment_score=technical_assessment['score'],
-                technical_assessment_summary=technical_assessment['summary'],
-                communication_assessment_score=communication_assessment['score'],
-                communication_assessment_summary=communication_assessment['summary'],
-                cultural_fit_score=cultural_fit_assessment['score'],
-                cultural_fit_summary=cultural_fit_assessment['summary'],
-                strengths=strengths,
-                areas_for_improvement=weaknesses,
-                key_highlights=summary_data['key_highlights'],
-                red_flags=summary_data['red_flags'],
-                improvement_tips=improvement_tips,
-                next_steps=summary_data['next_steps'],
-                interviewer_notes=summary_data['interviewer_notes']
+                summary=executive_summary
             )
             
-            db.add(summary)
+            db.add(assessment)
             
             # Update interview with final score
-            interview.overall_score = overall_score
-            interview.end_time = datetime.utcnow()
-            interview.status = 'completed'
+            interview.status = InterviewStatus.COMPLETED
+            interview.completed_at = datetime.now(timezone.utc)
             
             db.commit()
             
             log_info(f"Generated interview summary for {interview_id}")
+            
+            # Store the summary in ai_analysis table
+            await self._store_interview_summary_analysis(
+                interview_id=interview_id,
+                summary_data=summary_data,
+                db=db
+            )
             
             return summary_data
             
         except Exception as e:
             log_error(f"Error generating interview summary: {e}")
             return self._fallback_summary()
+    
+    async def _store_interview_summary_analysis(
+        self,
+        interview_id: str,
+        summary_data: Dict,
+        db
+    ) -> None:
+        """Store the final interview summary in ai_analysis table"""
+        try:
+            import time
+            start_time = time.time()
+            
+            # Initialize database service if not provided
+            if db is None:
+                from database.database import db_manager
+                db = db_manager.get_session_sync()
+                should_close = True
+            else:
+                should_close = False
+            
+            db_service = InterviewDataService(db)
+            
+            # Prepare raw_results with the complete summary data
+            raw_results = {
+                'interview_summary': summary_data,  # Full summary from generate_interview_summary
+                'summary_type': 'final_assessment',
+                'metadata': {
+                    'interview_id': interview_id,
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
+                    'analysis_version': 'v1.0'
+                }
+            }
+            
+            # Calculate a confidence score based on the summary
+            # Use overall_score from summary (already in 1-10 range if applicable)
+            overall_score = summary_data.get('overall_score', 5.0)
+            confidence_score = float(overall_score) if overall_score else 5.0
+            
+            # Ensure confidence score is in 1-10 range
+            if confidence_score < 1.0:
+                confidence_score = 1.0
+            if confidence_score > 10.0:
+                confidence_score = 10.0
+            
+            # Calculate processing time
+            processing_time_ms = int((time.time() - start_time) * 1000)
+            
+            # Store in ai_analysis table
+            ai_analysis = db_service.create_ai_analysis(
+                interview_id=interview_id,
+                session_id=None,  # Summary is interview-level, not session-level
+                analysis_type='interview_summary',
+                service_name='text-service',
+                raw_results=raw_results,
+                confidence_score=confidence_score,
+                processing_time=processing_time_ms,
+                version='v1.0'
+            )
+            
+            if should_close:
+                db.close()
+            
+            log_info(f"✅ Stored interview summary analysis for interview {interview_id}")
+            
+        except Exception as e:
+            log_error(f"Error storing interview summary analysis: {e}")
+            # Don't raise - this is supplementary data
     
     async def generate_pdf_report(
         self,
@@ -407,10 +488,26 @@ class InterviewService:
         
         return personalized_question
     
+    def _get_response_scores(self, db, responses: List[Response]) -> Dict:
+        """Helper to get scores for responses from Score model"""
+        from database.models import Score
+        response_ids = [str(r.id) for r in responses]
+        scores = db.query(Score).filter(Score.response_id.in_(response_ids)).all()
+        
+        score_map = {}
+        for s in scores:
+            rid = str(s.response_id)
+            if rid not in score_map:
+                score_map[rid] = {}
+            score_map[rid][s.dimension.value if hasattr(s.dimension, 'value') else str(s.dimension)] = float(s.auto_score) if s.auto_score else 0.0
+        
+        return score_map
+    
     async def _generate_technical_assessment(
         self,
-        responses: List[InterviewResponse],
-        job: Job
+        responses: List[Response],
+        job: JobPosition,
+        db=None
     ) -> Dict:
         """Generate technical assessment"""
         try:
@@ -420,10 +517,17 @@ class InterviewService:
                     'summary': 'No technical responses to evaluate'
                 }
             
-            # Calculate technical score
-            technical_scores = [r.technical_accuracy_score for r in responses if r.technical_accuracy_score is not None]
-            if technical_scores:
-                avg_technical_score = sum(technical_scores) / len(technical_scores)
+            # Calculate technical score from Score model
+            if db and responses:
+                score_map = self._get_response_scores(db, responses)
+                technical_scores = []
+                for r in responses:
+                    rid = str(r.id)
+                    if rid in score_map:
+                        tech_score = score_map[rid].get('technical_skills', score_map[rid].get('overall', 0.0))
+                        if tech_score > 0:
+                            technical_scores.append(tech_score)
+                avg_technical_score = sum(technical_scores) / len(technical_scores) if technical_scores else 0.0
             else:
                 avg_technical_score = 0.0
             
@@ -451,7 +555,7 @@ class InterviewService:
     
     async def _generate_communication_assessment(
         self,
-        responses: List[InterviewResponse]
+        responses: List[Response]
     ) -> Dict:
         """Generate communication assessment"""
         try:
@@ -461,10 +565,17 @@ class InterviewService:
                     'summary': 'No communication responses to evaluate'
                 }
             
-            # Calculate communication score
-            comm_scores = [r.communication_score for r in responses if r.communication_score is not None]
-            if comm_scores:
-                avg_comm_score = sum(comm_scores) / len(comm_scores)
+            # Calculate communication score from Score model
+            if db and responses:
+                score_map = self._get_response_scores(db, responses)
+                comm_scores = []
+                for r in responses:
+                    rid = str(r.id)
+                    if rid in score_map:
+                        comm_score = score_map[rid].get('communication', score_map[rid].get('overall', 0.0))
+                        if comm_score > 0:
+                            comm_scores.append(comm_score)
+                avg_comm_score = sum(comm_scores) / len(comm_scores) if comm_scores else 0.0
             else:
                 avg_comm_score = 0.0
             
@@ -492,9 +603,10 @@ class InterviewService:
     
     async def _generate_cultural_fit_assessment(
         self,
-        responses: List[InterviewResponse],
+        responses: List[Response],
         candidate: Candidate,
-        job: Job
+        job: JobPosition,
+        db=None
     ) -> Dict:
         """Generate cultural fit assessment"""
         try:
@@ -504,10 +616,17 @@ class InterviewService:
                     'summary': 'No responses to evaluate cultural fit'
                 }
             
-            # Calculate job fit score
-            fit_scores = [r.job_fit_score for r in responses if r.job_fit_score is not None]
-            if fit_scores:
-                avg_fit_score = sum(fit_scores) / len(fit_scores)
+            # Calculate job fit score from Score model
+            if db and responses:
+                score_map = self._get_response_scores(db, responses)
+                fit_scores = []
+                for r in responses:
+                    rid = str(r.id)
+                    if rid in score_map:
+                        fit_score = score_map[rid].get('cultural_fit', score_map[rid].get('overall', 0.0))
+                        if fit_score > 0:
+                            fit_scores.append(fit_score)
+                avg_fit_score = sum(fit_scores) / len(fit_scores) if fit_scores else 0.0
             else:
                 avg_fit_score = 0.0
             
@@ -536,7 +655,7 @@ class InterviewService:
     async def _generate_executive_summary(
         self,
         candidate: Candidate,
-        job: Job,
+        job: JobPosition,
         overall_score: float,
         total_responses: int,
         duplicate_responses: int,
@@ -564,7 +683,8 @@ class InterviewService:
                 summary_parts.append(f"Additionally, {off_topic_responses} off-topic responses suggest difficulties in understanding questions")
             
             # Job fit
-            summary_parts.append(f"The candidate's responses were evaluated for the {job.title} position at {job.company}")
+            company = getattr(job, 'company', 'Company')
+            summary_parts.append(f"The candidate's responses were evaluated for the {job.title} position at {company}")
             
             return ". ".join(summary_parts) + "."
             
@@ -604,7 +724,8 @@ class InterviewService:
     
     async def _generate_strengths_weaknesses(
         self,
-        responses: List[InterviewResponse]
+        responses: List[Response],
+        db=None
     ) -> tuple:
         """Generate strengths and weaknesses"""
         try:
@@ -614,31 +735,42 @@ class InterviewService:
             if not responses:
                 return strengths, weaknesses
             
-            # Analyze response patterns
-            high_scores = sum(1 for r in responses if r.overall_score and r.overall_score >= 7)
-            low_scores = sum(1 for r in responses if r.overall_score and r.overall_score <= 4)
-            
-            if high_scores >= len(responses) * 0.6:
-                strengths.append("Consistently high-quality responses")
-            
-            if low_scores >= len(responses) * 0.4:
-                weaknesses.append("Multiple low-scoring responses")
-            
-            # Check for specific strengths
-            technical_scores = [r.technical_accuracy_score for r in responses if r.technical_accuracy_score is not None]
-            if technical_scores and sum(technical_scores) / len(technical_scores) >= 7:
-                strengths.append("Strong technical knowledge and experience")
-            
-            comm_scores = [r.communication_score for r in responses if r.communication_score is not None]
-            if comm_scores and sum(comm_scores) / len(comm_scores) >= 7:
-                strengths.append("Clear and professional communication")
-            
-            # Check for specific weaknesses
-            if any(r.is_duplicate for r in responses):
-                weaknesses.append("Some duplicate responses detected")
-            
-            if any(r.is_off_topic for r in responses):
-                weaknesses.append("Some off-topic responses")
+            # Get scores from Score model if available
+            if db:
+                score_map = self._get_response_scores(db, responses)
+                high_scores = 0
+                low_scores = 0
+                technical_scores = []
+                comm_scores = []
+                
+                for r in responses:
+                    rid = str(r.id)
+                    if rid in score_map:
+                        overall = score_map[rid].get('overall', 0.0)
+                        if overall >= 7:
+                            high_scores += 1
+                        if overall <= 4:
+                            low_scores += 1
+                        
+                        tech = score_map[rid].get('technical_skills', 0.0)
+                        if tech > 0:
+                            technical_scores.append(tech)
+                        
+                        comm = score_map[rid].get('communication', 0.0)
+                        if comm > 0:
+                            comm_scores.append(comm)
+                
+                if high_scores >= len(responses) * 0.6:
+                    strengths.append("Consistently high-quality responses")
+                
+                if low_scores >= len(responses) * 0.4:
+                    weaknesses.append("Multiple low-scoring responses")
+                
+                if technical_scores and sum(technical_scores) / len(technical_scores) >= 7:
+                    strengths.append("Strong technical knowledge and experience")
+                
+                if comm_scores and sum(comm_scores) / len(comm_scores) >= 7:
+                    strengths.append("Clear and professional communication")
             
             # Default strengths/weaknesses if none identified
             if not strengths:
@@ -655,29 +787,37 @@ class InterviewService:
     
     async def _generate_improvement_tips(
         self,
-        responses: List[InterviewResponse],
-        job: Job
+        responses: List[Response],
+        job: JobPosition,
+        db=None
     ) -> List[str]:
         """Generate improvement tips"""
         try:
             tips = []
             
-            # Analyze response patterns for improvement areas
-            if any(r.is_duplicate for r in responses):
-                tips.append("Avoid repeating the same responses to different questions")
-            
-            if any(r.is_off_topic for r in responses):
-                tips.append("Listen carefully to questions and address them directly")
-            
-            # Check for technical improvement
-            technical_scores = [r.technical_accuracy_score for r in responses if r.technical_accuracy_score is not None]
-            if technical_scores and sum(technical_scores) / len(technical_scores) < 6:
-                tips.append("Provide more specific technical examples and details")
-            
-            # Check for communication improvement
-            comm_scores = [r.communication_score for r in responses if r.communication_score is not None]
-            if comm_scores and sum(comm_scores) / len(comm_scores) < 6:
-                tips.append("Structure responses more clearly with specific examples")
+            # Get scores from Score model if available
+            if db and responses:
+                score_map = self._get_response_scores(db, responses)
+                technical_scores = []
+                comm_scores = []
+                
+                for r in responses:
+                    rid = str(r.id)
+                    if rid in score_map:
+                        tech = score_map[rid].get('technical_skills', 0.0)
+                        if tech > 0:
+                            technical_scores.append(tech)
+                        comm = score_map[rid].get('communication', 0.0)
+                        if comm > 0:
+                            comm_scores.append(comm)
+                
+                # Check for technical improvement
+                if technical_scores and sum(technical_scores) / len(technical_scores) < 6:
+                    tips.append("Provide more specific technical examples and details")
+                
+                # Check for communication improvement
+                if comm_scores and sum(comm_scores) / len(comm_scores) < 6:
+                    tips.append("Structure responses more clearly with specific examples")
             
             # General tips
             tips.extend([
@@ -698,7 +838,8 @@ class InterviewService:
     
     async def _generate_key_highlights(
         self,
-        responses: List[InterviewResponse]
+        responses: List[Response],
+        db=None
     ) -> List[str]:
         """Generate key highlights"""
         try:
@@ -707,18 +848,34 @@ class InterviewService:
             if not responses:
                 return highlights
             
-            # Find highest scoring responses
-            high_scoring_responses = [r for r in responses if r.overall_score and r.overall_score >= 8]
-            
-            if high_scoring_responses:
-                highlights.append(f"{len(high_scoring_responses)} exceptional responses demonstrating strong competency")
-            
-            # Check for specific achievements
-            if any(r.technical_accuracy_score and r.technical_accuracy_score >= 8 for r in responses):
-                highlights.append("Demonstrated strong technical knowledge and experience")
-            
-            if any(r.communication_score and r.communication_score >= 8 for r in responses):
-                highlights.append("Excellent communication skills and clarity")
+            # Get scores from Score model if available
+            if db:
+                score_map = self._get_response_scores(db, responses)
+                high_scoring_count = 0
+                has_high_tech = False
+                has_high_comm = False
+                
+                for r in responses:
+                    rid = str(r.id)
+                    if rid in score_map:
+                        overall = score_map[rid].get('overall', 0.0)
+                        if overall >= 8:
+                            high_scoring_count += 1
+                        
+                        if score_map[rid].get('technical_skills', 0.0) >= 8:
+                            has_high_tech = True
+                        
+                        if score_map[rid].get('communication', 0.0) >= 8:
+                            has_high_comm = True
+                
+                if high_scoring_count > 0:
+                    highlights.append(f"{high_scoring_count} exceptional responses demonstrating strong competency")
+                
+                if has_high_tech:
+                    highlights.append("Demonstrated strong technical knowledge and experience")
+                
+                if has_high_comm:
+                    highlights.append("Excellent communication skills and clarity")
             
             return highlights
             
@@ -728,7 +885,7 @@ class InterviewService:
     
     async def _generate_red_flags(
         self,
-        responses: List[InterviewResponse],
+        responses: List[Response],
         duplicate_responses: int,
         off_topic_responses: int
     ) -> List[str]:
@@ -797,7 +954,7 @@ class InterviewService:
     async def _generate_interviewer_notes(
         self,
         candidate: Candidate,
-        job: Job,
+        job: JobPosition,
         overall_score: float,
         total_responses: int,
         duplicate_responses: int,
@@ -847,3 +1004,198 @@ class InterviewService:
             'next_steps': ['Review interview results'],
             'interviewer_notes': 'Interview completed successfully'
         }
+    
+    async def evaluate_and_store_response_analysis(
+        self,
+        interview_id: str,
+        session_id: str,
+        question_text: str,
+        response_text: str,
+        response_time_seconds: Optional[float] = None,
+        question_number: int = 0,
+        candidate_context: Optional[Dict] = None,
+        job_context: Optional[Dict] = None,
+        db = None
+    ) -> Dict:
+        """
+        Comprehensive response evaluation using all ML services and store results in ai_analysis table.
+        This method:
+        1. Runs behavioral analysis
+        2. Runs quality prediction
+        3. Runs bias detection (if applicable)
+        4. Stores analysis results (not the actual response) in raw_results column
+        5. Stores final confidence score in confidence_score column
+        """
+        import time
+        start_time = time.time()
+        
+        try:
+            # Initialize database service if not provided
+            if db is None:
+                from database.database import db_manager
+                db = db_manager.get_session_sync()
+                should_close = True
+            else:
+                should_close = False
+            
+            db_service = InterviewDataService(db)
+            
+            # Run all ML analyses in parallel
+            analysis_tasks = []
+            
+            # 1. Behavioral Analysis
+            analysis_tasks.append(
+                self.behavioral_analysis_service.analyze_behavioral_patterns(
+                    response_text=response_text,
+                    interview_id=interview_id,
+                    response_time_seconds=response_time_seconds,
+                    question_number=question_number
+                )
+            )
+            
+            # 2. Quality Prediction
+            analysis_tasks.append(
+                self.quality_prediction_service.predict_quality_score(
+                    question=question_text,
+                    response=response_text,
+                    candidate_context=candidate_context,
+                    job_context=job_context
+                )
+            )
+            
+            # Run analyses
+            results = await asyncio.gather(*analysis_tasks, return_exceptions=True)
+            
+            behavioral_analysis = results[0] if not isinstance(results[0], Exception) else {}
+            quality_prediction = results[1] if not isinstance(results[1], Exception) else {}
+            
+            # 3. Bias Detection (run separately as it may need interview-level data)
+            bias_analysis = {}
+            try:
+                # Get previous responses for bias detection
+                # Use Response model from database.models
+                from database.models import Response
+                previous_responses = db.query(Response).filter(
+                    Response.interview_id == interview_id
+                ).order_by(Response.created_at).all()
+                
+                if len(previous_responses) >= 2:  # Need at least 2 responses for bias detection
+                    # Get scores from Score model if available
+                    from database.models import Score
+                    response_ids = [str(r.id) for r in previous_responses]
+                    scores = db.query(Score).filter(
+                        Score.response_id.in_(response_ids)
+                    ).all()
+                    score_map = {str(s.response_id): float(s.auto_score) if s.auto_score else 5.0 for s in scores}
+                    
+                    response_texts = [r.response_text for r in previous_responses if r.response_text]
+                    response_scores = [score_map.get(str(r.id), 5.0) for r in previous_responses if r.response_text]
+                    
+                    if len(response_texts) >= 2:
+                        bias_analysis = await self.bias_detection_service.detect_bias(
+                            interview_id=interview_id,
+                            responses=response_texts,
+                            scores=response_scores
+                        )
+            except Exception as e:
+                log_warning(f"Bias detection failed: {e}")
+            
+            # Calculate final confidence score (range: 1-10)
+            # Weighted average of quality prediction score and behavioral consistency
+            quality_score = quality_prediction.get('predicted_score', 5.0)
+            behavioral_consistency = behavioral_analysis.get('consistency_score', 0.5)
+            behavioral_engagement = behavioral_analysis.get('engagement_score', 0.5)
+            
+            # Normalize behavioral scores (0-1) to 1-10 range
+            # Convert 0-1 consistency/engagement to 1-10 scale
+            consistency_10 = 1.0 + (behavioral_consistency * 9.0)  # 0.5 -> 5.5, 1.0 -> 10.0
+            engagement_10 = 1.0 + (behavioral_engagement * 9.0)  # 0.5 -> 5.5, 1.0 -> 10.0
+            
+            # Ensure quality_score is in 1-10 range
+            if quality_score < 1.0:
+                quality_score = 1.0
+            if quality_score > 10.0:
+                quality_score = 10.0
+            
+            # Calculate weighted final score (all in 1-10 range)
+            final_confidence_score = (
+                quality_score * 0.6 +  # 60% weight on quality
+                consistency_10 * 0.25 +  # 25% weight on consistency
+                engagement_10 * 0.15  # 15% weight on engagement
+            )
+            
+            # Ensure score is between 1 and 10
+            final_confidence_score = max(1.0, min(10.0, final_confidence_score))
+            
+            # Prepare raw_results JSON (analysis data, NOT the actual response)
+            # Include all analysis data that the API would return
+            raw_results = {
+                'response_analysis': {
+                    'behavioral_analysis': {
+                        'behavior_type': behavioral_analysis.get('behavior_type', 'unknown'),
+                        'anomaly_score': behavioral_analysis.get('anomaly_score', 0.0),
+                        'engagement_trend': behavioral_analysis.get('engagement_trend', 'stable'),
+                        'consistency_score': behavioral_analysis.get('consistency_score', 0.0),
+                        'behavioral_flags': behavioral_analysis.get('behavioral_flags', []),
+                        'engagement_score': behavioral_analysis.get('engagement_score', 0.5)
+                    },
+                    'quality_prediction': {
+                        'predicted_score': quality_prediction.get('predicted_score', 5.0),
+                        'confidence': quality_prediction.get('confidence', 0.5),
+                        'feature_importance': quality_prediction.get('feature_importance', {}),
+                        'model_used': quality_prediction.get('model_used', 'ensemble')
+                    },
+                    'bias_detection': bias_analysis if bias_analysis else None
+                },
+                'metadata': {
+                    'question_number': question_number,
+                    'response_length': len(response_text),
+                    'response_time_seconds': response_time_seconds,
+                    'timestamp': datetime.now(timezone.utc).isoformat()
+                }
+            }
+            
+            # Calculate processing time
+            processing_time_ms = int((time.time() - start_time) * 1000)
+            
+            # Store in ai_analysis table
+            ai_analysis = db_service.create_ai_analysis(
+                interview_id=interview_id,
+                session_id=session_id,
+                analysis_type='text_analysis',
+                service_name='text-service',
+                raw_results=raw_results,
+                confidence_score=float(final_confidence_score),
+                processing_time=processing_time_ms,
+                version='v1.0'
+            )
+            
+            if should_close:
+                db.close()
+            
+            log_info(f"✅ Stored AI analysis for interview {interview_id}, session {session_id}")
+            
+            return {
+                'analysis_id': str(ai_analysis.id),
+                'confidence_score': final_confidence_score,
+                'quality_score': quality_score,
+                'behavioral_consistency': behavioral_consistency,
+                'behavioral_engagement': behavioral_engagement,
+                'processing_time_ms': processing_time_ms,
+                'analysis_stored': True
+            }
+            
+        except Exception as e:
+            log_error(f"Error evaluating and storing response analysis: {e}")
+            if should_close and db:
+                db.close()
+            return {
+                'analysis_id': None,
+                'confidence_score': 0.5,
+                'quality_score': 5.0,
+                'behavioral_consistency': 0.5,
+                'behavioral_engagement': 0.5,
+                'processing_time_ms': int((time.time() - start_time) * 1000),
+                'analysis_stored': False,
+                'error': str(e)
+            }

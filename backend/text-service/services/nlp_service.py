@@ -2,12 +2,30 @@
 Advanced NLP service for SkillScreen using Hugging Face Transformers and sentence-transformers
 """
 
-import torch
-from sentence_transformers import SentenceTransformer
-from transformers import (
-    AutoTokenizer, AutoModelForSequenceClassification,
-    pipeline, AutoModel
-)
+# Optional ML imports - will fallback if not available
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+    torch = None
+
+try:
+    from sentence_transformers import SentenceTransformer
+    SENTENCE_TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    SENTENCE_TRANSFORMERS_AVAILABLE = False
+    SentenceTransformer = None
+
+try:
+    from transformers import (
+        AutoTokenizer, AutoModelForSequenceClassification,
+        pipeline, AutoModel
+    )
+    TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    TRANSFORMERS_AVAILABLE = False
+    pipeline = None
 import numpy as np
 from typing import Dict, List, Tuple, Optional
 import logging
@@ -16,7 +34,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import json
 
-from database.models import Candidate, Job, InterviewResponse
+from database.models import Candidate, JobPosition, Response
 from utils.logger import log_info, log_error, log_warning
 
 class NLPService:
@@ -30,6 +48,11 @@ class NLPService:
     
     def _initialize_models(self):
         """Initialize all NLP models"""
+        if not TORCH_AVAILABLE or not TRANSFORMERS_AVAILABLE or not SENTENCE_TRANSFORMERS_AVAILABLE:
+            log_warning("ML libraries (torch/transformers) not available, using fallback models")
+            self._initialize_fallback_models()
+            return
+        
         try:
             log_info("Initializing NLP models...")
             
@@ -79,18 +102,23 @@ class NLPService:
         try:
             log_info("Initializing fallback NLP models...")
             
-            # Basic sentence transformer
-            self.models['sentence_transformer'] = SentenceTransformer(
-                'paraphrase-MiniLM-L3-v2'
-            )
+            if SENTENCE_TRANSFORMERS_AVAILABLE:
+                # Basic sentence transformer
+                self.models['sentence_transformer'] = SentenceTransformer(
+                    'paraphrase-MiniLM-L3-v2'
+                )
             
-            # Basic sentiment analysis
-            self.models['sentiment'] = pipeline(
-                'sentiment-analysis',
-                model='distilbert-base-uncased-finetuned-sst-2-english'
-            )
+            if TRANSFORMERS_AVAILABLE and pipeline:
+                # Basic sentiment analysis
+                self.models['sentiment'] = pipeline(
+                    'sentiment-analysis',
+                    model='distilbert-base-uncased-finetuned-sst-2-english'
+                )
             
-            log_info("✅ Fallback NLP models initialized")
+            if self.models:
+                log_info("✅ Fallback NLP models initialized")
+            else:
+                log_warning("⚠️ No NLP models available - will use rule-based fallbacks")
             
         except Exception as e:
             log_error(f"❌ Failed to initialize fallback models: {e}")
@@ -253,7 +281,7 @@ class NLPService:
         """Evaluate technical accuracy based on job requirements"""
         try:
             # Get job requirements
-            job = db.query(Job).filter(Job.id == job_id).first()
+            job = db.query(JobPosition).filter(JobPosition.id == job_id).first()
             if not job:
                 return 5.0
             
@@ -396,7 +424,7 @@ class NLPService:
         try:
             # Get candidate and job information
             candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
-            job = db.query(Job).filter(Job.id == job_id).first()
+            job = db.query(JobPosition).filter(JobPosition.id == job_id).first()
             
             if not candidate or not job:
                 return 5.0

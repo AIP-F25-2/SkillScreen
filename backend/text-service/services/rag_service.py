@@ -8,14 +8,26 @@ from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
 import json
 import re
-from sentence_transformers import SentenceTransformer
-import faiss
+# Optional ML imports
+try:
+    from sentence_transformers import SentenceTransformer
+    SENTENCE_TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    SENTENCE_TRANSFORMERS_AVAILABLE = False
+    SentenceTransformer = None
+
+try:
+    import faiss
+    FAISS_AVAILABLE = True
+except ImportError:
+    FAISS_AVAILABLE = False
+    faiss = None
 from collections import defaultdict
 import logging
 
 from database.models import (
-    Interview, InterviewResponse, InterviewQuestion, 
-    Candidate, Job, InterviewSummary
+    Interview, Response, InterviewSession,
+    Candidate, JobPosition, Assessment
 )
 from utils.logger import log_info, log_error, log_warning
 
@@ -33,6 +45,10 @@ class RAGExplainabilityService:
         """Initialize RAG system components"""
         try:
             log_info("Initializing RAG explainability system...")
+            
+            if not SENTENCE_TRANSFORMERS_AVAILABLE or not FAISS_AVAILABLE:
+                log_warning("ML libraries not available for RAG system, using fallback")
+                return
             
             # Initialize sentence transformer for embeddings
             self.sentence_transformer = SentenceTransformer('all-MiniLM-L6-v2')
@@ -180,10 +196,12 @@ class RAGExplainabilityService:
                 embeddings = self.sentence_transformer.encode(texts)
                 
                 # Normalize embeddings for cosine similarity
-                faiss.normalize_L2(embeddings)
+                if FAISS_AVAILABLE and faiss:
+                    faiss.normalize_L2(embeddings)
                 
                 # Add to FAISS index
-                self.evidence_index.add(embeddings.astype('float32'))
+                if self.evidence_index is not None:
+                    self.evidence_index.add(embeddings.astype('float32'))
                 self.evidence_documents = all_documents
                 
                 log_info(f"Indexed {len(all_documents)} knowledge base documents")
@@ -304,9 +322,12 @@ class RAGExplainabilityService:
             
             # Create query embedding
             query_embedding = self.sentence_transformer.encode([query])
-            faiss.normalize_L2(query_embedding)
+            if FAISS_AVAILABLE and faiss:
+                faiss.normalize_L2(query_embedding)
             
             # Search for relevant evidence
+            if self.evidence_index is None:
+                return self._get_fallback_evidence(category)
             scores, indices = self.evidence_index.search(query_embedding.astype('float32'), k=3)
             
             evidence = []
@@ -487,7 +508,7 @@ class RAGExplainabilityService:
             # Get interview context
             interview = db.query(Interview).filter(Interview.id == interview_id).first()
             if interview:
-                job = db.query(Job).filter(Job.id == interview.job_id).first()
+                job = db.query(JobPosition).filter(JobPosition.id == interview.job_position_id).first()
                 if job:
                     job_skills = job.skills_required or []
                 else:
@@ -609,9 +630,9 @@ class RAGExplainabilityService:
             if not interview:
                 return explanation
             
-            responses = db.query(InterviewResponse).filter(
-                InterviewResponse.interview_id == interview_id
-            ).all()
+            responses = db.query(Response).filter(
+                Response.interview_id == interview_id
+            ).order_by(Response.created_at).all()
             
             # Explain recommendation
             recommendation = interview_summary.get('recommendation', 'Consider')
@@ -650,7 +671,7 @@ class RAGExplainabilityService:
         self,
         recommendation: str,
         interview_summary: Dict,
-        responses: List[InterviewResponse]
+        responses: List[Response]
     ) -> str:
         """Explain the rationale behind the recommendation"""
         try:
@@ -691,7 +712,7 @@ class RAGExplainabilityService:
     async def _identify_key_factors(
         self,
         interview_summary: Dict,
-        responses: List[InterviewResponse]
+        responses: List[Response]
     ) -> List[Dict]:
         """Identify key factors that influenced the evaluation"""
         try:
@@ -765,7 +786,7 @@ class RAGExplainabilityService:
     async def _create_evidence_links(
         self,
         interview_summary: Dict,
-        responses: List[InterviewResponse],
+        responses: List[Response],
         interview_id: str
     ) -> List[Dict]:
         """Create links to specific evidence supporting the evaluation"""
@@ -802,7 +823,7 @@ class RAGExplainabilityService:
     async def _assess_summary_confidence(
         self,
         interview_summary: Dict,
-        responses: List[InterviewResponse]
+        responses: List[Response]
     ) -> float:
         """Assess confidence level for the interview summary"""
         try:
