@@ -161,7 +161,7 @@ export function FileUploadDemo() {
       console.log(`Uploading ${selectedFiles.length} file(s) to interview-service...`);
       const parseResponse = await apiClient.uploadResumeForParsing(selectedFiles);
       console.log("Interview-service parse response:", parseResponse);
-
+      
       if (!parseResponse.success) {
         throw new Error("Failed to parse resumes");
       }
@@ -172,7 +172,7 @@ export function FileUploadDemo() {
       setProcessedFiles(files);
       
       console.log(`Successfully processed ${files.length} file(s)`);
-      
+
       // Send invitation emails to successfully processed candidates
       // Note: We send emails even if database save failed (id might be missing)
       const processedCandidates = files.filter(
@@ -181,7 +181,7 @@ export function FileUploadDemo() {
         f.extracted_emails.length > 0 && 
         f.extracted_name
       );
-      
+
       console.log(`Candidates eligible for email (${processedCandidates.length}):`, processedCandidates.map((c: ProcessedFile) => ({
         name: c.extracted_name,
         email: c.extracted_emails?.[0],
@@ -190,7 +190,7 @@ export function FileUploadDemo() {
       })));
       
       const emailResults: Array<{ candidate: ProcessedFile; success: boolean; error?: string }> = [];
-      
+
       // Add a small delay to ensure database operations complete
       if (processedCandidates.length > 0) {
         console.log(`⏳ Waiting for database operations to complete...`);
@@ -206,11 +206,11 @@ export function FileUploadDemo() {
           const sessionId = `session_${Date.now()}_${generateSecureRandomString(9)}_${candidateId}`;
           
           console.log(`📧 Sending invitation email to ${candidate.extracted_emails[0]} for candidate ${candidateId}...`);
-          
+        
           const emailResponse = await apiClient.sendInterviewInvitation({
             candidate_email: candidate.extracted_emails[0],
             candidate_name: candidate.extracted_name || 'Candidate',
-            candidate_id: candidateId,
+          candidate_id: candidateId,
             session_id: sessionId,
             recruiter_name: "Hiring Team",
             company_name: "SkillScreen",
