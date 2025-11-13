@@ -34,7 +34,16 @@ class Settings(BaseSettings):
     ENABLE_FILLER_DETECTION: bool = True
     
     # Database
-    DATABASE_URL: str = "mock://localhost"
+    DATABASE_URL: str = "" # Will be set via environment variable
+
+    # Add to your existing Settings class in config/settings.py
+
+    # Polling Configuration
+    POLLING_INTERVAL_SECONDS: int = 3600  # 1 hour default
+    POLLING_BATCH_SIZE: int = 10
+    POLLING_ENABLED: bool = True
+
+
     
     # API Keys
     API_KEY_HEADER: str = "X-API-Key"
@@ -49,12 +58,17 @@ class Settings(BaseSettings):
 
 
         # TTS Configuration
-    TTS_PROVIDER: str = "gtts"  # Options: gtts, edge, azure, aws
-    TTS_DEFAULT_VOICE: str = "en-US-female"
+    TTS_PROVIDER: str = "edge"  # Options: gtts, edge, azure, aws
+    TTS_DEFAULT_VOICE: str = "en-US-AriaNeural"  # Default voice for TTS
     
     # Azure TTS (if using Azure)
     AZURE_TTS_KEY: Optional[str] = None
     AZURE_TTS_REGION: Optional[str] = None
+
+      # Azure Blob Storage
+    AZURE_STORAGE_ACCOUNT_NAME: str = "skillscreenstorage"
+    AZURE_STORAGE_CONTAINER_NAME: str = "audio-recordings"
+    AZURE_STORAGE_SAS_TOKEN: str = ""
     
     # AWS Polly (if using AWS)
     AWS_ACCESS_KEY: Optional[str] = None

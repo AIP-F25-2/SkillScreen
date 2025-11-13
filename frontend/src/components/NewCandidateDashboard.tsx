@@ -280,48 +280,7 @@ export default function CandidateDashboard() {
           </div>
         </div>
       
-        {/* Performance Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          <div className="glass-dark p-6 rounded-xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-white">Resume Performance</h3>
-              <span className="text-green-400 flex items-center">
-                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
-                </svg>
-                +16.25%
-              </span>
-            </div>
-            <p className="text-white/60 text-sm">Reach to Employers</p>
-          </div>
-
-          <div className="glass-dark p-6 rounded-xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-white">Resume Score</h3>
-              <span className="text-red-400 flex items-center">
-                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                </svg>
-                -10.25%
-              </span>
-            </div>
-            <p className="text-white/60 text-sm">Against Optimal</p>
-          </div>
-
-          <div className="glass-dark p-6 rounded-xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-white">Interview Performance</h3>
-              <span className="text-green-400 flex items-center">
-                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
-                </svg>
-                +22.45%
-              </span>
-            </div>
-            <p className="text-white/60 text-sm">Against your previous</p>
-          </div>
-        </div>
-
+       
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column - Interview Performance */}
