@@ -1,6 +1,7 @@
 from pydantic import BaseModel, HttpUrl, Field, field_validator
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
+from uuid import UUID
 import os
 
 
@@ -143,5 +144,45 @@ class AudioProcessResponse(BaseModel):
                 "word_count": 250,
                 "language": "en",
                 "processing_time_seconds": 45.2
+            }
+        }
+
+
+class ProcessInterviewAudioRequest(BaseModel):
+    """Request schema for interview audio processing"""
+    interview_id: UUID = Field(..., description="Interview UUID")
+    session_id: UUID = Field(..., description="Session UUID (question)")
+    media_file_id: UUID = Field(..., description="Media file UUID")
+    blob_name: str = Field(..., description="Blob filename (e.g., 'dick-grayson-q1.mp4')")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "interview_id": "d37f8d3d-5c68-5f56-8a9d-59d040850c90",
+                "session_id": "f211e428-3aab-4c52-abb3-c3f5f0a957c6",
+                "media_file_id": "609f1983-1f85-4f33-96a6-fe67d9ba7742",
+                "blob_name": "dick-grayson-q1.mp4"
+            }
+        }
+
+
+class ProcessInterviewAudioResponse(BaseModel):
+    """Response schema for interview audio processing"""
+    status: str = Field(..., description="'accepted' - processing started")
+    message: str = Field(..., description="Status message")
+    media_file_id: str
+    interview_id: str
+    session_id: str
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "status": "accepted",
+                "message": "Audio processing started in background",
+                "media_file_id": "609f1983-1f85-4f33-96a6-fe67d9ba7742",
+                "interview_id": "d37f8d3d-5c68-5f56-8a9d-59d040850c90",
+                "session_id": "f211e428-3aab-4c52-abb3-c3f5f0a957c6",
+                "timestamp": "2025-11-06T10:30:00Z"
             }
         }

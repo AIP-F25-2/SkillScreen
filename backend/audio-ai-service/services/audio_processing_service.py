@@ -1,5 +1,6 @@
 import time
 import signal
+import threading
 from typing import Dict, Optional
 from config import logger, settings
 from services.media_downloader import MediaDownloader
@@ -57,10 +58,11 @@ class AudioProcessingService:
         
         # Set timeout
         try:
-            signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(settings.PROCESSING_TIMEOUT_SECONDS)
+            if threading.current_thread() is threading.main_thread():
+                signal.signal(signal.SIGALRM, timeout_handler)
+                signal.alarm(settings.PROCESSING_TIMEOUT_SECONDS)
         except AttributeError:
-            logger.warning("Timeout not supported on this platform")
+                logger.warning("Timeout not supported on this platform")
         
         try:
             logger.info(f"Starting media processing for: {media_url}")
@@ -203,6 +205,7 @@ class AudioProcessingService:
                 "session_id": session_id,
                 "candidate_id": candidate_id,
                 "transcript": transcription_result["text"],
+                "word_timestamps": transcription_result.get("words", []),
                 "duration_seconds": duration,
                 "word_count": word_count,
                 "language": transcription_result.get("language", "en"),
@@ -259,9 +262,10 @@ class AudioProcessingService:
         
         finally:
             try:
-                signal.alarm(0)
+                if threading.current_thread() is threading.main_thread():
+                    signal.alarm(0)
             except AttributeError:
-                pass
+                    pass
             
             self.downloader.cleanup()
             if media_type and media_type != 'audio':
