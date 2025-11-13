@@ -1,5 +1,4 @@
 # SkillScreen Platform - Development Environment (Azure Postgres)
-version: "3.8"
 
 services:
   # Core Infrastructure Services (5000-5009)
@@ -123,9 +122,8 @@ services:
     platform: linux/amd64
     ports:
       - "8000:8080"
-
     env_file:
-    - ./backend/audio-ai-service/.env  
+      - ./backend/audio-ai-service/.env  
     environment:
       - PORT=8080
       - HOST=0.0.0.0
@@ -242,8 +240,7 @@ services:
       - PORT=8080
       - HOST=0.0.0.0
       - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-db.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
-    volumes:
-      - ./backend/common-service:/app
+      - SEQ_URL=http://seq:5341
       # logging
       - ENV=dev
       - LOG_LEVEL=DEBUG
@@ -251,7 +248,8 @@ services:
       - LOG_DIR=/var/log/app
       - LOG_FILE=user-service.log
       - ENABLE_SEQ=true
-      - SEQ_URL=http://seq:5341
+    volumes:
+      - ./backend/common-service:/app
       - ./_logs:/var/log/app
     depends_on:
       - seq
