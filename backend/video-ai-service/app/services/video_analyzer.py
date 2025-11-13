@@ -468,43 +468,62 @@ class VideoAnalyzer:
     def _extract_pose(self, frame_bgr, face_bbox: Optional[List[float]], pose_available: bool) -> PoseResult:
         if not pose_available:
             return PoseResult()
+
+        kps = self._pose_keypoints(frame_bgr)
+        if kps is None:
+            return PoseResult()
+
+        yaw, pitch = self._head_angles(kps)
+        torso = self._torso_tilt(kps)
+        near_hand = self._hand_face_flag(face_bbox, frame_bgr, kps)
+        eye_open = self._eye_open_value(kps)
+        return PoseResult(True, yaw, pitch, torso, near_hand, eye_open)
+
+    def _pose_keypoints(self, frame_bgr) -> Optional[Any]:
         try:
             pose = extract_keypoints(self.pose_model, frame_bgr)
         except Exception:
-            pose = None
+            return None
         if not pose or "kps" not in pose:
-            return PoseResult()
+            return None
+        return pose["kps"]
 
-        kps = pose["kps"]
-        yaw = pitch = torso = 0.0
-        eye_open = 1.0
-        near_hand = False
+    def _head_angles(self, kps) -> Tuple[float, float]:
+        if not head_pose_proxy:
+            return 0.0, 0.0
         try:
-            hp = head_pose_proxy(kps) if head_pose_proxy else {}
-            yaw = float(hp.get("yaw_deg", 0.0))
-            pitch = float(hp.get("pitch_deg", 0.0))
+            hp = head_pose_proxy(kps)
+            return float(hp.get("yaw_deg", 0.0)), float(hp.get("pitch_deg", 0.0))
         except Exception:
-            pass
-        try:
-            torso = float(torso_tilt_deg(kps)) if torso_tilt_deg else 0.0
-        except Exception:
-            pass
-        if face_bbox is not None and hand_near_face is not None:
-            h, w = frame_bgr.shape[:2]
-            try:
-                near_hand = bool(hand_near_face(
-                    face_bbox, kps, (w, h),
-                    iou_thresh=float(getattr(settings, "HAND_NEAR_FACE_IOU", 0.03))
-                ))
-            except Exception:
-                near_hand = False
-        if eye_closure_proxy is not None and getattr(settings, "BLINK_ENABLED", True):
-            try:
-                eye_open = float(eye_closure_proxy(kps))
-            except Exception:
-                eye_open = 1.0
+            return 0.0, 0.0
 
-        return PoseResult(True, yaw, pitch, torso, near_hand, eye_open)
+    def _torso_tilt(self, kps) -> float:
+        if not torso_tilt_deg:
+            return 0.0
+        try:
+            return float(torso_tilt_deg(kps))
+        except Exception:
+            return 0.0
+
+    def _hand_face_flag(self, face_bbox: Optional[List[float]], frame_bgr, kps) -> bool:
+        if face_bbox is None or hand_near_face is None:
+            return False
+        h, w = frame_bgr.shape[:2]
+        try:
+            return bool(hand_near_face(
+                face_bbox, kps, (w, h),
+                iou_thresh=float(getattr(settings, "HAND_NEAR_FACE_IOU", 0.03))
+            ))
+        except Exception:
+            return False
+
+    def _eye_open_value(self, kps) -> float:
+        if eye_closure_proxy is None or not getattr(settings, "BLINK_ENABLED", True):
+            return 1.0
+        try:
+            return float(eye_closure_proxy(kps))
+        except Exception:
+            return 1.0
 
     def _update_pose_stats(self, frame_bgr, pose: PoseResult, t_sec: float, ctx: RunContext) -> bool:
         if not pose.enabled:
