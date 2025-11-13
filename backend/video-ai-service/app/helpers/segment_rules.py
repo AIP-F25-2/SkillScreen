@@ -2,7 +2,7 @@
 from __future__ import annotations
 from typing import List, Dict, Any, Optional
 import numpy as np
-from app.config import settings
+from app.utils.config import settings
 
 def _within_gap(prev_t: Optional[float], t: float) -> bool:
     if prev_t is None:

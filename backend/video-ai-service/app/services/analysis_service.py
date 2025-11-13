@@ -11,7 +11,7 @@ from fastapi import HTTPException, UploadFile
 
 from azure.core.exceptions import ResourceNotFoundError
 
-from app.config import settings
+from app.utils.config import settings
 from app.core.logging import get_logger
 from app.helpers.azure_blob import BlobReference, azure_blob
 from app.helpers.state_metrics import TrackingState

@@ -14,7 +14,9 @@ def _get_json(name: str, default: str):
 class Settings:
     SERVER_PORT: int = int(os.getenv("SERVER_PORT", "8000"))
     APP_NAME: str = os.getenv("APP_NAME", "anti_cheat_service")
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-db.postgres.database.azure.com:5432/skillscreen_database?sslmode=require")
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
+    if not DATABASE_URL:
+        raise ValueError("DATABASE_URL environment variable is required but missing.")
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     LOG_JSON: bool = _get_bool("LOG_JSON", "1")
 

@@ -1,12 +1,14 @@
+# app.repositories.video_ai_repository.py
+
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime,timezone
 from typing import Any, Dict, Optional
 
 from sqlalchemy import Column, DateTime, Integer, MetaData, String, Table, Text, insert, select, delete
 
-from app.db import DBFactory, UnitOfWork
+from app.utils.db import DBFactory, UnitOfWork
 
 metadata = MetaData()
 
@@ -28,8 +30,8 @@ video_analysis_runs = Table(
     Column("decision", String(64), nullable=True),
     Column("tags_json", Text, nullable=True),
     Column("thumbnail_blobs_json", Text, nullable=True),
-    Column("created_at", DateTime, default=datetime.utcnow),
-    Column("updated_at", DateTime, default=datetime.utcnow, onupdate=datetime.utcnow),
+    Column("created_at", DateTime, default=datetime.now(timezone.utc)),
+    Column("updated_at", DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc)),
 )
 
 
@@ -41,36 +43,31 @@ class VideoAIRepository:
     def _format_row(row) -> Optional[Dict[str, Any]]:
         if not row:
             return None
+
         data = dict(row._mapping)
-        report = data.pop("report_json", None)
-        summary = data.pop("summary_json", None)
-        tags = data.pop("tags_json", None)
-        thumbs = data.pop("thumbnail_blobs_json", None)
-        if report is not None:
-            if isinstance(report, str):
-                data["report"] = json.loads(report)
+
+        # mapping for json fields → output fields
+        json_fields = {
+            "report_json": "report",
+            "summary_json": "summary",
+            "tags_json": "tags",
+            "thumbnail_blobs_json": "thumbnail_blobs",
+        }
+
+        for src_field, target_field in json_fields.items():
+            raw_value = data.pop(src_field, None)
+            if raw_value is None:
+                continue
+
+            if isinstance(raw_value, str):
+                try:
+                    data[target_field] = json.loads(raw_value)
+                except json.JSONDecodeError:
+                    # fallback: store raw value if not valid JSON
+                    data[target_field] = raw_value
             else:
-                data["report"] = report
-        if summary is not None:
-            if isinstance(summary, str):
-                data["summary"] = json.loads(summary)
-            else:
-                data["summary"] = summary
-        if summary is not None:
-            if isinstance(summary, str):
-                data["summary"] = json.loads(summary)
-            else:
-                data["summary"] = summary
-        if tags is not None:
-            if isinstance(tags, str):
-                data["tags"] = json.loads(tags)
-            else:
-                data["tags"] = tags
-        if thumbs is not None:
-            if isinstance(thumbs, str):
-                data["thumbnail_blobs"] = json.loads(thumbs)
-            else:
-                data["thumbnail_blobs"] = thumbs
+                data[target_field] = raw_value
+
         return data
 
     def save_report(
@@ -101,8 +98,8 @@ class VideoAIRepository:
             "decision": None,
             "tags_json": None,
             "thumbnail_blobs_json": json.dumps(thumbnail_blobs, default=str) if thumbnail_blobs else None,
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc),
         }
         with UnitOfWork() as uow:
             uow.session.execute(insert(video_analysis_runs).values(**payload))
@@ -175,7 +172,7 @@ class VideoAIRepository:
             if status is not None:
                 values["status"] = status
             if values:
-                values["updated_at"] = datetime.utcnow()
+                values["updated_at"] = datetime.now(timezone.utc)
                 uow.session.execute(
                     video_analysis_runs.update()
                     .where(video_analysis_runs.c.id == row._mapping["id"])
@@ -197,7 +194,7 @@ class VideoAIRepository:
             ).fetchone()
             if not row:
                 return None
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             uow.session.execute(
                 video_analysis_runs.update()
                 .where(video_analysis_runs.c.id == row._mapping["id"])

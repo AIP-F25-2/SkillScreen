@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 
-from app.config import settings
+from app.utils.config import settings
 from app.controllers.analyze_controller import router as analyze_router
 from app.controllers import processed_controller
 from app.helpers.device_select import pick_device

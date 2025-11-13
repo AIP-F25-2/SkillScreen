@@ -4,11 +4,11 @@ import os
 from typing import Any, Dict, Optional, Sequence, List
 
 from fastapi import HTTPException
-
+from app.utils import constants as CONSTANTS
 from app.helpers.azure_blob import azure_blob, BlobReference
 from app.repositories.video_ai_repository import VideoAIRepository
 from app.services import analysis_service as analysis_svc
-from app.config import settings
+from app.utils.config import settings
 
 _repo = VideoAIRepository()
 _REPORT_SUMMARY_EXCLUDE = {"events", "thumbnails_blobs","segments"}
@@ -17,7 +17,7 @@ _REPORT_SUMMARY_EXCLUDE = {"events", "thumbnails_blobs","segments"}
 def _ensure_run(interview_id: str, session_id: str) -> Dict[str, Any]:
     row = _repo.get_run(interview_id, session_id)
     if not row:
-        raise HTTPException(404, "Session not found")
+        raise HTTPException(404, CONSTANTS.SESSION_NOT_FOUND_MSG)
     return row
 
 
@@ -119,7 +119,7 @@ def svc_update_metadata(
         status=status,
     )
     if not row:
-        raise HTTPException(404, "Session not found")
+        raise HTTPException(404, CONSTANTS.SESSION_NOT_FOUND_MSG)
     return row
 
 
@@ -180,7 +180,7 @@ def _remove_local_dirs(interview_id: str, session_id: str) -> None:
 def svc_delete_session(interview_id: str, session_id: str, delete_blobs: bool = True) -> Dict[str, Any]:
     row = _repo.delete_run(interview_id, session_id)
     if not row:
-        raise HTTPException(404, "Session not found")
+        raise HTTPException(404, CONSTANTS.SESSION_NOT_FOUND_MSG)
     if delete_blobs:
         _delete_blob(azure_blob.processed_container, row.get("report_blob"))
         _delete_blob(azure_blob.processed_container, row.get("video_blob"))

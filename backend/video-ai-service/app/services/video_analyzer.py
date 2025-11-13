@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import json
 import uuid
+from dataclasses import dataclass, field
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime,timezone
 import numpy as np
@@ -29,7 +30,7 @@ except Exception:
 
 from app.helpers.state_metrics import TrackingState
 from app.helpers.segment_rules import build_segments, rollup
-from app.config import settings
+from app.utils.config import settings
 
 try:
     import cv2
@@ -180,6 +181,65 @@ def _compute_performance(summary: dict) -> dict:
     }
 
 
+@dataclass
+class PoseResult:
+    enabled: bool = False
+    yaw: float = 0.0
+    pitch: float = 0.0
+    torso: float = 0.0
+    near_hand: bool = False
+    eye_open: float = 1.0
+
+
+@dataclass
+class RunContext:
+    cap: Any
+    writer: Optional[Any]
+    width: int
+    height: int
+    fps: float
+    stride: int
+    run_ts: str
+    run_label: str
+    out_video: str
+    user_proc_dir: str
+    interview_id: str
+    session_id: str
+    source_url: Optional[str]
+    thumbs_dir: str
+    gaze_tol: float
+    consec_need: int
+    pose_thresholds: Tuple[float, float, float]
+    blink_gap: int
+    blink_enabled: bool
+    pose_available: bool
+    objects_enabled: bool
+    thumbnails_enabled: bool
+    draw_annotations: bool
+    events: List[Dict[str, Any]] = field(default_factory=list)
+    frame_idx: int = 0
+    analyzed_frames: int = 0
+    prohibited_frames: int = 0
+    segments_prohibited: List[Dict[str, Any]] = field(default_factory=list)
+    run_len: int = 0
+    run_start_t: Optional[float] = None
+    last_t: Optional[float] = None
+    thumb_counts: Dict[str, int] = field(default_factory=dict)
+    look_away_frames: int = 0
+    nod_frames: int = 0
+    slouch_frames: int = 0
+    hand_face_frames: int = 0
+    blink_frames: int = 0
+    last_blink_fr: int = -999
+    pose_runs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    pose_segments: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
+
+    def close(self) -> None:
+        self.cap.release()
+        if self.writer is not None:
+            self.writer.release()
+
+
 class VideoAnalyzer:
     def __init__(self, face_model, person_model, state: TrackingState, object_model=None, pose_model=None):
         self.face_model = face_model
@@ -238,9 +298,34 @@ class VideoAnalyzer:
         return out
 
     def analyze(self, src_video_path: str, interview_id: str, session_id: str, source_url: Optional[str] = None) -> Dict[str, Any]:
+        self._ensure_opencv()
+        ctx = self._prepare_run_context(src_video_path, interview_id, session_id, source_url)
+        self.state.reset()
+
+        try:
+            for frame_bgr in self._frame_stream(ctx.cap):
+                self._handle_frame(frame_bgr, ctx)
+        finally:
+            ctx.close()
+
+        segments = self._finalize_segments(ctx)
+        summary, perf = self._build_summary_data(ctx, segments)
+        thumbs = self._collect_thumbnails(ctx)
+        report, result_summary = self._build_report_payload(ctx, segments, summary, perf, thumbs, src_video_path)
+
+        return {
+            "ok": True,
+            "report": report,
+            "report_timestamp": ctx.run_label,
+            "video_path": ctx.out_video if ctx.draw_annotations else None,
+            "summary": result_summary,
+        }
+
+    def _ensure_opencv(self) -> None:
         if cv2 is None:
             raise RuntimeError("OpenCV not available in runtime")
 
+    def _prepare_run_context(self, src_video_path: str, interview_id: str, session_id: str, source_url: Optional[str]) -> RunContext:
         _, user_proc_dir = self._session_dirs(interview_id, session_id)
         _, in_ext = os.path.splitext(src_video_path)
         if not in_ext:
@@ -257,364 +342,410 @@ class VideoAnalyzer:
             cap.release()
             raise ValueError(f"Invalid video dimensions: {in_w}x{in_h}")
 
-        if getattr(settings, "ANALYZE_FULL_FPS", False):
-            stride = 1
-        else:
-            stride = max(1, int(round(in_fps / max(0.1, settings.TARGET_FPS))))
-
+        stride = 1 if getattr(settings, "ANALYZE_FULL_FPS", False) else max(1, int(round(in_fps / max(0.1, settings.TARGET_FPS))))
         run_ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
         run_label = f"{session_id}_{run_ts}"
         out_video = os.path.join(user_proc_dir, f"{run_label}_annotated{in_ext}")
         writer = cv2.VideoWriter(out_video, self._fourcc(), in_fps, (in_w, in_h)) if settings.DRAW_ANNOTATIONS else None
 
-        self.state.reset()
+        ctx = RunContext(
+            cap=cap,
+            writer=writer,
+            width=in_w,
+            height=in_h,
+            fps=in_fps,
+            stride=stride,
+            run_ts=run_ts,
+            run_label=run_label,
+            out_video=out_video,
+            user_proc_dir=user_proc_dir,
+            interview_id=interview_id,
+            session_id=session_id,
+            source_url=source_url,
+            thumbs_dir=os.path.join(user_proc_dir, "thumbs"),
+            gaze_tol=float(getattr(settings, "GAZE_CENTER_TOL", 0.20)),
+            consec_need=int(getattr(settings, "PROHIBITED_CONSECUTIVE_FRAMES", 3)),
+            pose_thresholds=(
+                float(getattr(settings, "HEAD_YAW_DEG_THRESH", 25.0)),
+                float(getattr(settings, "HEAD_PITCH_DEG_THRESH", 20.0)),
+                float(getattr(settings, "SLOUCH_TORSO_ANGLE_DEG", 35.0)),
+            ),
+            blink_gap=int(getattr(settings, "BLINK_MIN_GAP_FR", 3)),
+            blink_enabled=bool(getattr(settings, "BLINK_ENABLED", True)),
+            pose_available=bool(self.pose_model and extract_keypoints and getattr(settings, "POSE_ENABLED", True)),
+            objects_enabled=bool(_HAS_OBJECTS and self.object_model is not None),
+            thumbnails_enabled=bool(getattr(settings, "EMIT_THUMBNAILS", True)),
+            draw_annotations=bool(settings.DRAW_ANNOTATIONS),
+        )
 
-        events: List[Dict[str, Any]] = []
-        frame_idx = 0
-        analyzed_frames = 0
-        prohibited_frames = 0
-
-        segments_prohibited: List[Dict[str, Any]] = []
-        run_len = 0
-        run_start_t: Optional[float] = None
-        last_t: Optional[float] = None
-        consec_need = int(getattr(settings, "PROHIBITED_CONSECUTIVE_FRAMES", 3))
-
-        # Thumbnails (optional)
-        thumbs_dir = os.path.join(user_proc_dir, "thumbs")
-        thumb_counts: Dict[str, int] = {}
-
-        # Pose-based counters/segments (optional)
-        look_away_frames = 0
-        nod_frames = 0
-        slouch_frames = 0
-        hand_face_frames = 0
-        seg_lookaway: List[Dict[str, Any]] = []
-        seg_nod: List[Dict[str, Any]] = []
-        seg_slouch: List[Dict[str, Any]] = []
-        seg_handface: List[Dict[str, Any]] = []
-
-        # Blink (optional)
-        blink_frames = 0
-        last_blink_fr = -999
-
-        def _run_emit(flag: bool, t_sec: float, run):
-            name, arr = run["name"], run["arr"]
-            if flag:
-                if arr["len"] == 0:
-                    arr.update(start=t_sec)
-                arr["len"] += 1
-                arr["last"] = t_sec
-            elif arr["len"] > 0:
-                if arr["len"] >= run["need"]:
-                    run["out"].append({"type": name, "start": arr["start"], "end": arr["last"]})
-                arr.update(len=0, start=None, last=None)
-
-        yaw_thr = float(getattr(settings, "HEAD_YAW_DEG_THRESH", 25.0))
-        pitch_thr = float(getattr(settings, "HEAD_PITCH_DEG_THRESH", 20.0))
-        torso_thr = float(getattr(settings, "SLOUCH_TORSO_ANGLE_DEG", 35.0))
-        consec_pose_need = consec_need
-
-        runs = {
-            "look_away": {"name": "look_away", "need": consec_pose_need, "arr": {"len": 0, "start": None, "last": None}, "out": seg_lookaway},
-            "nod":       {"name": "head_nod",  "need": consec_pose_need, "arr": {"len": 0, "start": None, "last": None}, "out": seg_nod},
-            "slouch":    {"name": "slouch",    "need": consec_pose_need, "arr": {"len": 0, "start": None, "last": None}, "out": seg_slouch},
-            "hand_face": {"name": "hand_near_face", "need": consec_pose_need, "arr": {"len": 0, "start": None, "last": None}, "out": seg_handface},
+        ctx.pose_segments = {
+            "look_away": [],
+            "nod": [],
+            "slouch": [],
+            "hand_face": [],
         }
+        ctx.pose_runs = self._init_pose_runs(ctx.consec_need, ctx.pose_segments)
+        return ctx
 
+    def _init_pose_runs(self, consec_need: int, pose_segments: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Dict[str, Any]]:
+        mapping = {
+            "look_away": "look_away",
+            "nod": "head_nod",
+            "slouch": "slouch",
+            "hand_face": "hand_near_face",
+        }
+        runs: Dict[str, Dict[str, Any]] = {}
+        for key, label in mapping.items():
+            runs[key] = {
+                "name": label,
+                "need": consec_need,
+                "arr": {"len": 0, "start": None, "last": None},
+                "out": pose_segments[key],
+            }
+        return runs
+
+    def _frame_stream(self, cap) -> Any:
+        while True:
+            ok, frame_bgr = cap.read()
+            if not ok:
+                break
+            yield frame_bgr
+
+    def _handle_frame(self, frame_bgr, ctx: RunContext) -> None:
+        frame_out = frame_bgr
+        current_idx = ctx.frame_idx
+        t_sec = current_idx / ctx.fps if ctx.fps else 0.0
+        if current_idx % ctx.stride == 0:
+            frame_out = self._process_analyzable_frame(frame_bgr, t_sec, ctx)
+        if ctx.writer is not None:
+            ctx.writer.write(frame_out)
+        ctx.frame_idx += 1
+
+    def _process_analyzable_frame(self, frame_bgr, t_sec: float, ctx: RunContext):
+        faces, persons = self._detect_faces_persons(frame_bgr)
+        face_bbox = faces[0]["bbox"] if faces else None
+        emo_tmp = self._infer_emotion(frame_bgr, face_bbox)
+        objects = self._detect_objects(frame_bgr) if ctx.objects_enabled else None
+        pose = self._extract_pose(frame_bgr, face_bbox, ctx.pose_available)
+        blink_event = self._update_pose_stats(frame_bgr, pose, t_sec, ctx)
+        self._update_prohibited_state(objects, t_sec, ctx)
+        metrics = self._compute_metrics(frame_bgr, face_bbox, emo_tmp, pose, blink_event, ctx)
+        self._append_event(ctx, t_sec, faces, persons, objects, metrics)
+        if ctx.writer is not None:
+            return self._annotate(frame_bgr, faces or [], persons or [], objects or [])
+        return frame_bgr
+
+    def _detect_faces_persons(self, frame_bgr) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        faces = detect_faces(self.face_model, frame_bgr, max_faces=None)
+        persons = detect_persons(self.person_model, frame_bgr, max_people=10)
+        return faces or [], persons or []
+
+    def _infer_emotion(self, frame_bgr, face_bbox: Optional[List[float]]) -> Dict[str, Any]:
+        if not (getattr(settings, "EMOTION_ENABLED", True) and face_bbox):
+            return {}
         try:
-            while True:
-                ok, frame_bgr = cap.read()
-                if not ok:
-                    break
+            from app.services.emotion_helper import infer_emotion, top_emotion
+            emo_dist = infer_emotion(frame_bgr, face_bbox)
+            if not emo_dist:
+                return {}
+            emo_tmp: Dict[str, Any] = {"emotion": emo_dist}
+            te = top_emotion(emo_dist, min_conf=getattr(settings, "EMOTION_MIN_CONF", 0.35))
+            if te:
+                emo_tmp["emotion_top"] = {"label": te[0], "conf": te[1]}
+            return emo_tmp
+        except Exception:
+            return {}
 
-                t_sec = frame_idx / in_fps
-                analyze_this = (frame_idx % stride == 0)
+    def _detect_objects(self, frame_bgr) -> Optional[List[Dict[str, Any]]]:
+        try:
+            class_ids = getattr(settings, "PROHIBITED_CLASS_IDS", [67, 73, 63])
+            min_conf = float(getattr(settings, "PROHIBITED_MIN_CONF", 0.4))
+            raw_objs = detect_objects(self.object_model, frame_bgr, class_ids=class_ids, topk=20)
+            return [o for o in (raw_objs or []) if o.get("conf", 0.0) >= min_conf] or None
+        except Exception:
+            return None
 
-                faces: Optional[List[Dict[str, Any]]] = None
-                persons: Optional[List[Dict[str, Any]]] = None
-                objects: Optional[List[Dict[str, Any]]] = None
-                metrics: Optional[Dict[str, Any]] = None
+    def _extract_pose(self, frame_bgr, face_bbox: Optional[List[float]], pose_available: bool) -> PoseResult:
+        if not pose_available:
+            return PoseResult()
+        try:
+            pose = extract_keypoints(self.pose_model, frame_bgr)
+        except Exception:
+            pose = None
+        if not pose or "kps" not in pose:
+            return PoseResult()
 
-                if analyze_this:
-                    faces = detect_faces(self.face_model, frame_bgr, max_faces=None)
-                    persons = detect_persons(self.person_model, frame_bgr, max_people=10)
+        kps = pose["kps"]
+        yaw = pitch = torso = 0.0
+        eye_open = 1.0
+        near_hand = False
+        try:
+            hp = head_pose_proxy(kps) if head_pose_proxy else {}
+            yaw = float(hp.get("yaw_deg", 0.0))
+            pitch = float(hp.get("pitch_deg", 0.0))
+        except Exception:
+            pass
+        try:
+            torso = float(torso_tilt_deg(kps)) if torso_tilt_deg else 0.0
+        except Exception:
+            pass
+        if face_bbox is not None and hand_near_face is not None:
+            h, w = frame_bgr.shape[:2]
+            try:
+                near_hand = bool(hand_near_face(
+                    face_bbox, kps, (w, h),
+                    iou_thresh=float(getattr(settings, "HAND_NEAR_FACE_IOU", 0.03))
+                ))
+            except Exception:
+                near_hand = False
+        if eye_closure_proxy is not None and getattr(settings, "BLINK_ENABLED", True):
+            try:
+                eye_open = float(eye_closure_proxy(kps))
+            except Exception:
+                eye_open = 1.0
 
-                    face_bbox = faces[0]["bbox"] if faces else None
+        return PoseResult(True, yaw, pitch, torso, near_hand, eye_open)
 
-                    # --- EMOTION (optional): capture into a temp dict first to avoid touching metrics before init ---
-                    emo_tmp: Dict[str, Any] = {}
-                    if getattr(settings, "EMOTION_ENABLED", True) and face_bbox is not None:
-                        try:
-                            from app.services.emotion_helper import infer_emotion, top_emotion
-                            emo_dist = infer_emotion(frame_bgr, face_bbox)
-                            if emo_dist:
-                                emo_tmp["emotion"] = emo_dist  # full distribution
-                                te = top_emotion(emo_dist, min_conf=getattr(settings, "EMOTION_MIN_CONF", 0.35))
-                                if te:
-                                    emo_tmp["emotion_top"] = {"label": te[0], "conf": te[1]}
-                        except Exception:
-                            pass
+    def _update_pose_stats(self, frame_bgr, pose: PoseResult, t_sec: float, ctx: RunContext) -> bool:
+        if not pose.enabled:
+            return False
 
-                    # Objects (existing)
-                    if _HAS_OBJECTS and self.object_model is not None:
-                        try:
-                            class_ids = getattr(settings, "PROHIBITED_CLASS_IDS", [67, 73, 63])
-                            min_conf = float(getattr(settings, "PROHIBITED_MIN_CONF", 0.4))
-                            raw_objs = detect_objects(self.object_model, frame_bgr, class_ids=class_ids, topk=20)
-                            cand_objs = [o for o in (raw_objs or []) if (o.get("conf", 0.0) >= min_conf)]
-                            objects = cand_objs
-                        except Exception:
-                            objects = None
+        yaw_thr, pitch_thr, torso_thr = ctx.pose_thresholds
+        if abs(pose.yaw) >= yaw_thr:
+            ctx.look_away_frames += 1
+            self._save_thumb(frame_bgr, ctx.thumbs_dir, "lookaway", t_sec, ctx.thumb_counts)
+        if abs(pose.pitch) >= pitch_thr:
+            ctx.nod_frames += 1
+            self._save_thumb(frame_bgr, ctx.thumbs_dir, "nod", t_sec, ctx.thumb_counts)
+        if pose.torso >= torso_thr:
+            ctx.slouch_frames += 1
+            self._save_thumb(frame_bgr, ctx.thumbs_dir, "slouch", t_sec, ctx.thumb_counts)
+        if pose.near_hand:
+            ctx.hand_face_frames += 1
+            self._save_thumb(frame_bgr, ctx.thumbs_dir, "handface", t_sec, ctx.thumb_counts)
 
-                    # --- Pose (optional) ---
-                    yaw = pitch = torso = 0.0
-                    near_hand = False
-                    eye_open = 1.0
-                    use_pose = (
-                        self.pose_model is not None and
-                        extract_keypoints is not None and
-                        getattr(settings, "POSE_ENABLED", True)
-                    )
-                    if use_pose:
-                        try:
-                            pose = extract_keypoints(self.pose_model, frame_bgr)
-                        except Exception:
-                            pose = None
-                        if pose and "kps" in pose:
-                            kps = pose["kps"]
-                            try:
-                                hp = head_pose_proxy(kps) if head_pose_proxy else {"yaw_deg": 0.0, "pitch_deg": 0.0}
-                                yaw, pitch = float(hp.get("yaw_deg", 0.0)), float(hp.get("pitch_deg", 0.0))
-                            except Exception:
-                                yaw, pitch = 0.0, 0.0
-                            try:
-                                torso = float(torso_tilt_deg(kps)) if torso_tilt_deg else 0.0
-                            except Exception:
-                                torso = 0.0
-                            # Hand near face
-                            if face_bbox is not None and hand_near_face is not None:
-                                h, w = frame_bgr.shape[:2]
-                                try:
-                                    near_hand = bool(hand_near_face(
-                                        face_bbox, kps, (w, h),
-                                        iou_thresh=float(getattr(settings, "HAND_NEAR_FACE_IOU", 0.03))
-                                    ))
-                                except Exception:
-                                    near_hand = False
-                            # Blink proxy
-                            if eye_closure_proxy is not None and getattr(settings, "BLINK_ENABLED", True):
-                                try:
-                                    eye_open = float(eye_closure_proxy(kps))  # 0..1
-                                except Exception:
-                                    eye_open = 1.0
+        self._run_emit(abs(pose.yaw) >= yaw_thr, t_sec, ctx.pose_runs["look_away"])
+        self._run_emit(abs(pose.pitch) >= pitch_thr, t_sec, ctx.pose_runs["nod"])
+        self._run_emit(pose.torso >= torso_thr, t_sec, ctx.pose_runs["slouch"])
+        self._run_emit(pose.near_hand, t_sec, ctx.pose_runs["hand_face"])
 
-                    # Pose counters (added-only)
-                    if abs(yaw) >= yaw_thr:
-                        look_away_frames += 1
-                        self._save_thumb(frame_bgr, thumbs_dir, "lookaway", t_sec, thumb_counts)
-                    if abs(pitch) >= pitch_thr:
-                        nod_frames += 1
-                        self._save_thumb(frame_bgr, thumbs_dir, "nod", t_sec, thumb_counts)
-                    if torso >= torso_thr:
-                        slouch_frames += 1
-                        self._save_thumb(frame_bgr, thumbs_dir, "slouch", t_sec, thumb_counts)
-                    if near_hand:
-                        hand_face_frames += 1
-                        self._save_thumb(frame_bgr, thumbs_dir, "handface", t_sec, thumb_counts)
+        blink_event = False
+        if ctx.blink_enabled:
+            closed_now = (pose.eye_open < 0.25)
+            prev_closed = bool(self.state.__dict__.get("_prev_eye_closed", False))
+            if closed_now and not prev_closed and (ctx.frame_idx - ctx.last_blink_fr) >= ctx.blink_gap:
+                blink_event = True
+                ctx.blink_frames += 1
+                ctx.last_blink_fr = ctx.frame_idx
+                self._save_thumb(frame_bgr, ctx.thumbs_dir, "blink", t_sec, ctx.thumb_counts)
+            else:
+                blink_event = False
+            self.state.__dict__["_prev_eye_closed"] = closed_now
+        return blink_event
 
-                    # Pose segments
-                    _run_emit(abs(yaw) >= yaw_thr, t_sec, runs["look_away"])
-                    _run_emit(abs(pitch) >= pitch_thr, t_sec, runs["nod"])
-                    _run_emit(torso >= torso_thr, t_sec, runs["slouch"])
-                    _run_emit(near_hand, t_sec, runs["hand_face"])
+    @staticmethod
+    def _run_emit(flag: bool, t_sec: float, run: Dict[str, Any]) -> None:
+        arr = run["arr"]
+        if flag:
+            if arr["len"] == 0:
+                arr.update(start=t_sec)
+            arr["len"] += 1
+            arr["last"] = t_sec
+            return
+        if arr["len"] > 0 and arr["len"] >= run["need"] and arr["start"] is not None and arr["last"] is not None:
+            run["out"].append({"type": run["name"], "start": arr["start"], "end": arr["last"]})
+        arr.update(len=0, start=None, last=None)
 
-                    # --- Prohibited (existing) ---
-                    has_prohibited = bool(objects)
-                    if has_prohibited:
-                        prohibited_frames += 1
-                        run_len += 1
-                        if run_len == 1:
-                            run_start_t = t_sec
-                        last_t = t_sec
-                    else:
-                        if run_len >= consec_need and run_start_t is not None and last_t is not None:
-                            segments_prohibited.append({"type": "prohibited_item", "start": run_start_t, "end": last_t})
-                        run_len = 0
-                        run_start_t = None
-                        last_t = None
+    def _update_prohibited_state(self, objects: Optional[List[Dict[str, Any]]], t_sec: float, ctx: RunContext) -> None:
+        has_prohibited = bool(objects)
+        if has_prohibited:
+            ctx.prohibited_frames += 1
+            ctx.run_len += 1
+            if ctx.run_len == 1:
+                ctx.run_start_t = t_sec
+            ctx.last_t = t_sec
+            return
+        self._close_prohibited_if_needed(ctx)
 
-                    # --- Metrics (existing) ---
-                    gaze_tol = float(getattr(settings, "GAZE_CENTER_TOL", 0.20))
-                    metrics = self.state.update(frame_bgr, bbox=face_bbox, gaze_tol=gaze_tol)
+    def _close_prohibited_if_needed(self, ctx: RunContext) -> None:
+        if ctx.run_len >= ctx.consec_need and ctx.run_start_t is not None and ctx.last_t is not None:
+            ctx.segments_prohibited.append({"type": "prohibited_item", "start": ctx.run_start_t, "end": ctx.last_t})
+        ctx.run_len = 0
+        ctx.run_start_t = None
+        ctx.last_t = None
 
-                    # attach emotion if computed earlier
-                    if emo_tmp:
-                        metrics.update(emo_tmp)
+    def _compute_metrics(
+        self,
+        frame_bgr,
+        face_bbox: Optional[List[float]],
+        emo_tmp: Dict[str, Any],
+        pose: PoseResult,
+        blink_event: bool,
+        ctx: RunContext,
+    ) -> Dict[str, Any]:
+        metrics = self.state.update(frame_bgr, bbox=face_bbox, gaze_tol=ctx.gaze_tol)
+        if emo_tmp:
+            metrics.update(emo_tmp)
+        if pose.enabled:
+            metrics.update({
+                "head_yaw_deg": pose.yaw,
+                "head_pitch_deg": pose.pitch,
+                "torso_tilt_deg": pose.torso,
+                "hand_near_face": bool(pose.near_hand),
+                "eye_open_proxy": float(pose.eye_open),
+            })
+            if ctx.blink_enabled:
+                metrics["blink_event"] = blink_event
+        if "lighting" not in metrics:
+            gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+            metrics["lighting"] = float(np.clip(np.mean(gray) / 255.0, 0.0, 1.0))
+        return metrics
 
-                    # attach pose fields (added-only)
-                    if use_pose:
-                        metrics.update({
-                            "head_yaw_deg": yaw,
-                            "head_pitch_deg": pitch,
-                            "torso_tilt_deg": torso,
-                            "hand_near_face": bool(near_hand),
-                            "eye_open_proxy": float(eye_open),
-                        })
+    def _append_event(
+        self,
+        ctx: RunContext,
+        t_sec: float,
+        faces: List[Dict[str, Any]],
+        persons: List[Dict[str, Any]],
+        objects: Optional[List[Dict[str, Any]]],
+        metrics: Dict[str, Any],
+    ) -> None:
+        ctx.events.append({
+            "t": round(t_sec, 3),
+            "faces": faces,
+            "persons": persons,
+            "objects": objects or [],
+            "metrics": metrics,
+        })
+        ctx.analyzed_frames += 1
 
-                        # Blink event (edge with small memory in state; does not alter other logic)
-                        if getattr(settings, "BLINK_ENABLED", True):
-                            closed_now = (eye_open < 0.25)
-                            prev_closed = bool(self.state.__dict__.get("_prev_eye_closed", False))
-                            if closed_now and not prev_closed and (frame_idx - last_blink_fr) >= int(getattr(settings, "BLINK_MIN_GAP_FR", 3)):
-                                metrics["blink_event"] = True
-                                blink_frames += 1
-                                last_blink_fr = frame_idx
-                                self._save_thumb(frame_bgr, thumbs_dir, "blink", t_sec, thumb_counts)
-                            else:
-                                metrics["blink_event"] = False
-                            self.state.__dict__["_prev_eye_closed"] = closed_now
-
-                    if "lighting" not in metrics:
-                        gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-                        metrics["lighting"] = float(np.clip(np.mean(gray) / 255.0, 0.0, 1.0))
-
-                    events.append({
-                        "t": round(t_sec, 3),
-                        "faces": faces or [],
-                        "persons": persons or [],
-                        "objects": objects or [],
-                        "metrics": metrics,
-                    })
-                    analyzed_frames += 1
-
-                    if writer is not None:
-                        frame_bgr = self._annotate(frame_bgr, faces or [], persons or [], objects or [])
-
-                if writer is not None:
-                    writer.write(frame_bgr)
-
-                frame_idx += 1
-
-        finally:
-            cap.release()
-            if writer is not None:
-                writer.release()
-
-        # close prohibited run if active
-        if run_len >= consec_need and run_start_t is not None and last_t is not None:
-            segments_prohibited.append({"type": "prohibited_item", "start": run_start_t, "end": last_t})
-
-        # close pose runs if active
-        for key in ("look_away", "nod", "slouch", "hand_face"):
-            r = runs[key]["arr"]
-            if r["len"] >= runs[key]["need"] and r["start"] is not None and r["last"] is not None:
-                runs[key]["out"].append({"type": runs[key]["name"], "start": r["start"], "end": r["last"]})
-
-        # existing segments + add pose & prohibited segments
-        segments = build_segments(events)
-        for extra in (seg_lookaway, seg_nod, seg_slouch, seg_handface, segments_prohibited):
-            if extra:
-                segments.extend(extra)
+    def _finalize_segments(self, ctx: RunContext) -> List[Dict[str, Any]]:
+        self._close_prohibited_if_needed(ctx)
+        self._close_pose_runs(ctx)
+        segments = build_segments(ctx.events)
+        for segs in ctx.pose_segments.values():
+            if segs:
+                segments.extend(segs)
+        if ctx.segments_prohibited:
+            segments.extend(ctx.segments_prohibited)
         segments.sort(key=lambda s: s.get("start", 0.0))
+        return segments
 
-        summary = rollup(events, segments)
+    def _close_pose_runs(self, ctx: RunContext) -> None:
+        for run in ctx.pose_runs.values():
+            arr = run["arr"]
+            if arr["len"] >= run["need"] and arr["start"] is not None and arr["last"] is not None:
+                run["out"].append({"type": run["name"], "start": arr["start"], "end": arr["last"]})
 
-        # --- Candidate Performance (derived, read-only) ---
+    def _build_summary_data(self, ctx: RunContext, segments: List[Dict[str, Any]]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        summary = rollup(ctx.events, segments)
         perf = _compute_performance(summary)
-        summary["performance"] = perf  # include in returned summary
+        summary["performance"] = perf
+        self._inject_emotion_ratios(summary, ctx.events)
+        summary["prohibited_ratio"] = self._safe_ratio(ctx.prohibited_frames, ctx.analyzed_frames)
+        summary["look_away_ratio"] = self._safe_ratio(ctx.look_away_frames, ctx.analyzed_frames)
+        summary["nod_ratio"] = self._safe_ratio(ctx.nod_frames, ctx.analyzed_frames)
+        summary["slouch_ratio"] = self._safe_ratio(ctx.slouch_frames, ctx.analyzed_frames)
+        summary["hand_near_face_ratio"] = self._safe_ratio(ctx.hand_face_frames, ctx.analyzed_frames)
+        summary["blink_ratio"] = self._safe_ratio(ctx.blink_frames, ctx.analyzed_frames)
 
-        # Emotion ratios (only if present)
-        emo_counts = {}
-        emo_frames = 0
-        for e in events:
-            em = e.get("metrics", {}).get("emotion_top")
-            if not em:
-                continue
-            emo_frames += 1
-            lbl = em.get("label")
-            if lbl:
-                emo_counts[lbl] = emo_counts.get(lbl, 0) + 1
-        if emo_frames > 0:
-            for k, v in emo_counts.items():
-                summary[f"emotion_{k}_ratio"] = round(v / emo_frames, 4)
-            summary["emotion_frames"] = emo_frames
-
-        # Existing ratios
-        summary["prohibited_ratio"] = round(prohibited_frames / analyzed_frames, 4) if analyzed_frames > 0 else 0.0
-
-        # Pose-derived ratios (added-only)
-        summary["look_away_ratio"] = round(look_away_frames / analyzed_frames, 4) if analyzed_frames > 0 else 0.0
-        summary["nod_ratio"] = round(nod_frames / analyzed_frames, 4) if analyzed_frames > 0 else 0.0
-        summary["slouch_ratio"] = round(slouch_frames / analyzed_frames, 4) if analyzed_frames > 0 else 0.0
-        summary["hand_near_face_ratio"] = round(hand_face_frames / analyzed_frames, 4) if analyzed_frames > 0 else 0.0
-        summary["blink_ratio"] = round(blink_frames / analyzed_frames, 4) if analyzed_frames > 0 else 0.0
-
-        # Cheating probability fusion (added-only)
         if getattr(settings, "CHEAT_FUSION_ENABLED", True):
-            w = getattr(settings, "CHEAT_FUSION_WEIGHTS", {
+            weights = getattr(settings, "CHEAT_FUSION_WEIGHTS", {
                 "prohibited_ratio": 0.50,
                 "look_away_ratio":  0.15,
                 "multi_person_ratio": 0.15,
                 "hand_near_face_ratio": 0.10,
                 "slouch_ratio":     0.05,
-                "blink_ratio":      0.05,  # lower blink => more suspicious; invert below
+                "blink_ratio":      0.05,
             })
             score = 0.0
-            for k, alpha in w.items():
-                v = float(summary.get(k, 0.0))
-                if k == "blink_ratio":
-                    v = max(0.0, 1.0 - v)  # invert: fewer blinks => higher risk
-                score += float(alpha) * v
+            for key, alpha in weights.items():
+                val = float(summary.get(key, 0.0))
+                if key == "blink_ratio":
+                    val = max(0.0, 1.0 - val)
+                score += float(alpha) * val
             summary["cheating_probability"] = round(float(np.clip(score, 0.0, 1.0)), 3)
 
-        thumbs = []
-        if getattr(settings, "EMIT_THUMBNAILS", True) and os.path.isdir(thumbs_dir):
-            try:
-                thumbs = [os.path.join(f"processed/{interview_id}/{session_id}/thumbs", name) for name in sorted(os.listdir(thumbs_dir)) if name.lower().endswith(".jpg")]
-            except Exception:
-                thumbs = []
+        return summary, perf
 
+    def _inject_emotion_ratios(self, summary: Dict[str, Any], events: List[Dict[str, Any]]) -> None:
+        emo_frames = 0
+        emo_counts: Dict[str, int] = {}
+        for event in events:
+            emo = event.get("metrics", {}).get("emotion_top")
+            if not emo:
+                continue
+            emo_frames += 1
+            label = emo.get("label")
+            if label:
+                emo_counts[label] = emo_counts.get(label, 0) + 1
+        if emo_frames == 0:
+            return
+        for label, count in emo_counts.items():
+            summary[f"emotion_{label}_ratio"] = round(count / emo_frames, 4)
+        summary["emotion_frames"] = emo_frames
+
+    @staticmethod
+    def _safe_ratio(count: int, denom: int) -> float:
+        return round(count / denom, 4) if denom > 0 else 0.0
+
+    def _collect_thumbnails(self, ctx: RunContext) -> List[str]:
+        if not ctx.thumbnails_enabled or not os.path.isdir(ctx.thumbs_dir):
+            return []
+        try:
+            rel_root = os.path.join("processed", ctx.interview_id, ctx.session_id, "thumbs")
+            return [
+                os.path.join(rel_root, name)
+                for name in sorted(os.listdir(ctx.thumbs_dir))
+                if name.lower().endswith(".jpg")
+            ]
+        except Exception:
+            return []
+
+    def _build_report_payload(
+        self,
+        ctx: RunContext,
+        segments: List[Dict[str, Any]],
+        summary: Dict[str, Any],
+        perf: Dict[str, Any],
+        thumbs: List[str],
+        src_video_path: str,
+    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         report = {
             "id": uuid.uuid4().hex,
-            "interview_id": interview_id,
-            "session_id": session_id,
-            "timestamp": run_ts,
-            "source_url": source_url,
+            "interview_id": ctx.interview_id,
+            "session_id": ctx.session_id,
+            "timestamp": ctx.run_ts,
+            "source_url": ctx.source_url,
             "source_video": os.path.basename(src_video_path),
-            "output_video": os.path.basename(out_video) if settings.DRAW_ANNOTATIONS else None,
-            "resolution": {"w": in_w, "h": in_h},
-            "input_fps": in_fps,
-            "sample_stride": stride,
-            "analyzed_fps_est": in_fps / stride,
-            "num_frames": frame_idx,
-            "num_frames_analyzed": analyzed_frames,
-            "events": events,
+            "output_video": os.path.basename(ctx.out_video) if ctx.draw_annotations else None,
+            "resolution": {"w": ctx.width, "h": ctx.height},
+            "input_fps": ctx.fps,
+            "sample_stride": ctx.stride,
+            "analyzed_fps_est": ctx.fps / ctx.stride,
+            "num_frames": ctx.frame_idx,
+            "num_frames_analyzed": ctx.analyzed_frames,
+            "events": ctx.events,
             "segments": segments,
             "rollup": {"num_segments": len(segments), **summary},
             "performance": perf,
-            "thumbnails_dir": (os.path.join(user_proc_dir, "thumbs") if getattr(settings, "EMIT_THUMBNAILS", True) else None),
+            "thumbnails_dir": (os.path.join(ctx.user_proc_dir, "thumbs") if ctx.thumbnails_enabled else None),
         }
 
         result_summary = {
-            "interview_id": interview_id,
-            "session_id": session_id,
-            "timestamp": run_ts,
-            "source_url": source_url,
+            "interview_id": ctx.interview_id,
+            "session_id": ctx.session_id,
+            "timestamp": ctx.run_ts,
+            "source_url": ctx.source_url,
             "num_segments": len(segments), **summary,
-            "frames_total": frame_idx,
-            "frames_analyzed": analyzed_frames,
+            "frames_total": ctx.frame_idx,
+            "frames_analyzed": ctx.analyzed_frames,
             "thumbnail_blobs": thumbs,
         }
 
-        return {
-            "ok": True,
-            "report": report,
-            "report_timestamp": run_label,
-            "video_path": out_video if settings.DRAW_ANNOTATIONS else None,
-            "summary": result_summary,
-        }
+        return report, result_summary
 
+    # helper for thumbnails
     # helper for thumbnails
     def _save_thumb(self, frame_bgr, out_dir: str, tag: str, t_sec: float, count: Dict[str,int]) -> Optional[str]:
         if not getattr(settings, "EMIT_THUMBNAILS", True) or cv2 is None:
