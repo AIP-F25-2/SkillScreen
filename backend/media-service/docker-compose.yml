@@ -1,10 +1,27 @@
-version: '3.8'
 services:
   media-service:
     build: .
+    image: media-service:latest
+    container_name: media-service
+    ports:
+      - "5004:5004"
     env_file:
       - .env
-    ports:
-      - "${SERVER_PORT}:${SERVER_PORT}"
+    environment:
+      # Fallbacks if not in .env
+      - SERVER_HOST= "0.0.0.0"
+      - SERVER_PORT= "5004"
+      # - UPLOAD_FOLDER= "/app/uploads"
+      - UPLOAD_FOLDER= "/app/temp/uploads"
+      - MAX_CONTENT_LENGTH_BYTES= "524288000"
+      - CORS_ORIGINS= "*"
+      # Set a strong token in .env for production!
+      - ADMIN_TOKEN= "${ADMIN_TOKEN:?set-in-.env}"
+      - DATABASE_URL=postgresql://intervuai:${AZURE_DB_PASSWORD}@skillscreen-db.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+      - PYTHONPATH=/app:/common-service
     volumes:
-      - ${HOST_VOLUME_MOUNT_PATH}:/app/uploads
+      - ./backend/media-service:/app
+      # - ./Users/mukulgarg/Downloads/AIP_backup/video_recordings:/app/uploads
+      - ./backend/common-service:/common-service
+      # - /Users/mukulgarg/Downloads/AIP_backup/video_recordings:/app/uploads
+    restart: unless-stopped
