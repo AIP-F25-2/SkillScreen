@@ -14,6 +14,14 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     cmake \
     ninja-build \
+    pkg-config \
+    libavcodec-dev \
+    libavformat-dev \
+    libavutil-dev \
+    libavdevice-dev \
+    libavfilter-dev \
+    libswscale-dev \
+    libswresample-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Ensure CA certificates are available for HTTPS downloads

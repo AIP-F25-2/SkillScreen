@@ -111,28 +111,40 @@ def reset_chunks():
 
 @app.route("/finalize_upload", methods=["POST"])
 def finalize_upload():
+    print("=== FINALIZE_UPLOAD STARTED ===")
     data = request.get_json()
+    print(f"Request data: {data}")
+    
     user_id = data.get("user_id")
     session_id = data.get("session_id")
     candidate_id = data.get("candidate_id")
 
+    print(f"Extracted values: user_id={user_id}, session_id={session_id}, candidate_id={candidate_id}")
+
     if not user_id:
+        print("ERROR: Missing user_id")
         return jsonify({"error": "Missing user_id"}), 400
 
     user_folder = os.path.join(UPLOAD_FOLDER, user_id)
     if not os.path.exists(user_folder):
+        print(f"ERROR: No chunks found for user {user_id}")
         return jsonify({"error": "No chunks found"}), 400
 
     # Get all WebM chunks and sort by chunk index
     chunks = [f for f in os.listdir(user_folder) if f.endswith(".webm")]
     if not chunks:
+        print(f"ERROR: No .webm chunks found in {user_folder}")
         return jsonify({"error": "No .webm chunks found"}), 400
+    
+    print(f"Found {len(chunks)} chunks: {chunks}")
     
     # Sort chunks by their numeric index (chunk_0000.webm, chunk_0001.webm, etc.)
     chunks.sort(key=lambda x: int(x.split('_')[1].split('.')[0]))
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     final_mp4 = os.path.join(user_folder, f"{user_id}_{timestamp}.mp4")
+    
+    print(f"Creating final video: {final_mp4}")
     
     # Create concat file list for FFmpeg
     concat_file = os.path.join(user_folder, "concat_list.txt")
@@ -143,6 +155,7 @@ def finalize_upload():
             f.write(f"file '{os.path.abspath(chunk_path)}'\n")
 
     try:
+        print("Starting FFmpeg processing...")
         # Use FFmpeg concat demuxer for proper WebM merging
         subprocess.run(
             [
@@ -163,6 +176,7 @@ def finalize_upload():
             capture_output=True,
             text=True
         )
+        print("FFmpeg processing completed successfully")
     except subprocess.CalledProcessError as e:
         print(f"FFmpeg error: {e.stderr}")
         return jsonify({"error": f"ffmpeg failed: {e.stderr}"}), 500
@@ -175,9 +189,13 @@ def finalize_upload():
         except Exception as e:
             print(f"Failed to delete {path_to_delete}: {e}")
     
+    print("=== CREATING INTERVIEW RECORD ===")
+    
     # Create interview record
     interview_id = session_id if session_id else f"interview_{timestamp}"
     video_path = f"/{user_id}/{os.path.basename(final_mp4)}"
+    
+    print(f"Creating interview record: interview_id={interview_id}, video_path={video_path}")
     
     interview_data = {
         "interview_id": interview_id,
@@ -193,12 +211,17 @@ def finalize_upload():
     }
     
     interviews_db[interview_id] = interview_data
+    print(f"Interview record created and stored: {interview_id}")
+    print(f"Total interviews in DB: {len(interviews_db)}")
 
-    return jsonify({
+    response_data = {
         "status": "done",
         "interview_id": interview_id,
         "file": video_path
-    }), 200
+    }
+    print(f"Returning response: {response_data}")
+    
+    return jsonify(response_data), 200
 
 
 @app.route("/video/<user_id>/<filename>")
@@ -659,23 +682,6 @@ def schedule_candidate(candidate_id):
     }), 200
 
 
-@app.route("/api/interviews", methods=["GET"])
-def get_all_interviews():
-    """Get all interviews."""
-    return jsonify({
-        "success": True,
-        "data": {
-            "interviews": list(interviews_db.values()),
-            "count": len(interviews_db)
-        },
-        "meta": {
-            "timestamp": datetime.now().isoformat(),
-            "request_id": "req_" + datetime.now().strftime('%Y%m%d%H%M%S'),
-            "version": "1.0"
-        }
-    }), 200
-
-
 @app.route("/api/interviews/<interview_id>", methods=["GET"])
 def get_interview_details(interview_id):
     """Get details for a specific interview."""
@@ -753,6 +759,23 @@ def get_user_interviews(user_id):
         "data": {
             "interviews": user_interviews,
             "count": len(user_interviews)
+        },
+        "meta": {
+            "timestamp": datetime.now().isoformat(),
+            "request_id": "req_" + datetime.now().strftime('%Y%m%d%H%M%S'),
+            "version": "1.0"
+        }
+    }), 200
+
+
+@app.route("/api/interviews", methods=["GET"])
+def get_all_interviews():
+    """Get all interviews."""
+    return jsonify({
+        "success": True,
+        "data": {
+            "interviews": list(interviews_db.values()),
+            "count": len(interviews_db)
         },
         "meta": {
             "timestamp": datetime.now().isoformat(),

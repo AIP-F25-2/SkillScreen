@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
+import { getInterviewToken } from '@/lib/interviewToken';
 
 export default function InterviewSetup() {
   const router = useRouter();
@@ -14,7 +15,7 @@ export default function InterviewSetup() {
   const streamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number | null>(null);
 
-  const { user, isLoading } = useAuth();
+  const { user } = useAuth();
   const [candidateName, setCandidateName] = useState('');
   const [permissions, setPermissions] = useState({
     camera: false,
@@ -32,15 +33,29 @@ export default function InterviewSetup() {
   const [isTestingAudio, setIsTestingAudio] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState('');
+  const [fromToken, setFromToken] = useState(false);
+  const [sessionId, setSessionId] = useState('');
 
-  // Get interview ID from URL params (if provided)
-  const interviewId = searchParams?.get('id') || 'interview-123';
-
+  // Check if coming from email token
   useEffect(() => {
-    if (user) {
+    const isFromToken = searchParams?.get('fromToken') === 'true';
+    setFromToken(isFromToken);
+
+    if (isFromToken) {
+      // Get candidate data from token
+      const tokenData = getInterviewToken();
+      if (tokenData) {
+        setCandidateName(tokenData.candidateName);
+        setSessionId(tokenData.sessionId);
+      } else {
+        // No valid token, redirect to error
+        router.push('/');
+      }
+    } else if (user) {
+      // Recruiter or authenticated user
       setCandidateName(user.name || '');
     }
-  }, [user]);
+  }, [searchParams, user, router]);
 
   // Initialize media devices
   useEffect(() => {
@@ -270,8 +285,15 @@ export default function InterviewSetup() {
       cancelAnimationFrame(animationFrameRef.current);
     }
 
-    // Navigate to interview with params
-    router.push(`/interview?id=${interviewId}&name=${encodeURIComponent(candidateName)}`);
+    // Navigate to interview with secure token-based flow
+    if (fromToken) {
+      // Token-based flow - use token data from session storage, no sensitive data in URL
+      router.push('/interview?fromToken=true');
+    } else {
+      // Regular flow - still use ID for non-token users
+      const interviewId = searchParams?.get('id') || 'interview-123';
+      router.push(`/interview?id=${interviewId}&name=${encodeURIComponent(candidateName)}`);
+    }
   };
 
   const handleCancel = () => {
@@ -287,10 +309,15 @@ export default function InterviewSetup() {
     }
 
     // Navigate back or to home
-    if (window.history.length > 1) {
+    // Token-based users cannot go back - they must complete or exit
+    if (fromToken) {
+      if (confirm('Are you sure you want to exit? You will need a new link to restart the interview.')) {
+        router.push('/');
+      }
+    } else if (window.history.length > 1) {
       router.back();
     } else {
-      router.push(user ? '/candidate' : '/');
+      router.push(user ? '/recruiter' : '/');
     }
   };
 
@@ -406,7 +433,7 @@ export default function InterviewSetup() {
 
               {/* Right Column - Settings & Controls */}
               <div className="space-y-6">
-                {/* Name Input - Always editable */}
+                {/* Name Input - Editable for non-token users, read-only for token users */}
                 <div className="space-y-2">
                   <label className="text-white/80 text-sm font-medium">Your Name</label>
                   <input
@@ -414,8 +441,12 @@ export default function InterviewSetup() {
                     value={candidateName}
                     onChange={(e) => setCandidateName(e.target.value)}
                     placeholder="Enter your full name"
-                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-white/30"
+                    disabled={fromToken}
+                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-white/30 disabled:opacity-70 disabled:cursor-not-allowed"
                   />
+                  {fromToken && (
+                    <p className="text-white/40 text-xs">Name from your interview invitation</p>
+                  )}
                 </div>
 
                 {/* Audio Level Indicator */}
