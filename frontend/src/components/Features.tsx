@@ -1,5 +1,4 @@
 'use client';
-import LiquidGlass from 'liquid-glass-react';
 
 export default function Features() {
   const features = [

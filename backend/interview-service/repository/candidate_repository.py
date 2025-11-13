@@ -35,7 +35,7 @@ class CandidateRepository:
         """Get candidate by ID"""
         return self.session.query(Candidate).filter(
             and_(
-                Candidate.id == uuid.UUID(candidate_id),
+                Candidate.id == candidate_id,
                 Candidate.deleted_at.is_(None)
             )
         ).first()

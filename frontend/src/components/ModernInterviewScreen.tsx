@@ -111,7 +111,7 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
       
     } catch (error) {
       console.error('Recording test failed:', error);
-      alert(`Recording test FAILED: ${error.message}`);
+      alert(`Recording test FAILED: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
   const toggleChat = () => setIsChatOpen(!isChatOpen);

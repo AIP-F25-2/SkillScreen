@@ -69,7 +69,7 @@ class EmailService:
             test_email = "dummyintervuai@gmail.com"
             
             # Prepare email content with original recipient info
-            subject = f"Interview Invitation for {candidate_name} - {company_name or 'SkillScreen'}"
+            subject = f"Interview Invitations from {company_name or 'SkillScreen'} for {candidate_name}"
             
             html_content = self._build_invitation_email_html(
                 candidate_name=candidate_name,
