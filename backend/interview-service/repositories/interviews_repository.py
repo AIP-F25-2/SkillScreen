@@ -19,6 +19,12 @@ import psycopg
 
 from dotenv import load_dotenv
 
+import json
+
+from repositories.interview_templates_repository import get_template_by_id, get_template_questions
+from repositories.interview_questions_repository import insert_interview_session
+from fastapi import HTTPException
+
 # ✅ Load environment variables from .env
 load_dotenv()
 
@@ -29,6 +35,36 @@ def _conn():
     if not DB_URL:
         raise RuntimeError("DATABASE_URL not set")
     return psycopg.connect(DB_URL)
+
+
+def insert_interview_session(interview_id: str, question: dict):
+    """
+    Insert a single interview session row into interview_sessions.
+    Assumes 'question' dict contains: id, text, type, metadata (optional)
+    """
+    sql = """
+    INSERT INTO interview_sessions (
+        interview_id,
+        question_id,
+        question_text,
+        question_type,
+        metadata,
+        created_at
+    )
+    VALUES (%s, %s, %s, %s, %s, NOW())
+    RETURNING id;
+    """
+    with _conn() as conn, conn.cursor() as cur:
+        cur.execute(sql, (
+            interview_id,
+            question.get("id"),
+            question.get("text"),
+            question.get("type"),
+            json.dumps(question.get("metadata") or {})
+        ))
+        session_id = cur.fetchone()[0]
+        conn.commit()
+        return session_id
 
 # ---------- Foreign Key Sanity Checks ----------
 
@@ -184,3 +220,26 @@ def update_interview_status(interview_id: str, new_status: str):
             "status": row[1],
             "updated_at": row[2]
         }
+
+# ---------- Store Interview Questions ----------
+
+def store_questions_service(interview_id: str, template_id: str):
+    # 🔍 Step 1: Get interview to extract organization_id
+    interview = get_interview_by_id(interview_id)
+    if not interview:
+        raise HTTPException(status_code=404, detail="Interview not found")
+
+    org_id = interview["organization_id"]
+
+    # 🔍 Step 2: Get template using both template_id and org_id
+    template = get_template_by_id(template_id, org_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    questions = template["questions"]
+    if not questions:
+        raise HTTPException(status_code=400, detail="Template has no questions")
+
+    # ✅ Step 3: Store each question into interview_sessions
+    for q in questions:
+        insert_interview_session(interview_id, q)

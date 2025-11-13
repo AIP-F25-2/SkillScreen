@@ -6,20 +6,45 @@ from repositories.interview_questions_repository import (
 )
 from fastapi import HTTPException
 
-def store_questions_service(interview_id: str, template_id: str):
+def store_questions_service(interview_id: str):
+    # 1. load interview by ID
     interview = get_interview_by_id(interview_id)
     if not interview:
-        raise HTTPException(status_code=404, detail="Interview not found")
-    
-    template = get_template_by_id(template_id)
-    if not template:
-        raise HTTPException(status_code=404, detail="Template not found")
-    
-    # Optional: enforce org match
-    if interview["organization_id"] != template["organization_id"]:
-        raise HTTPException(status_code=400, detail="Template does not belong to the same organization")
+        raise HTTPException(404, "Interview not found")
 
+    template_id = interview["template_id"]
+    org_id = interview["organization_id"]
+
+    # 2. load template
+    template = get_template_by_id(template_id, org_id)
+    if not template:
+        raise HTTPException(404, "Template not found")
+
+    # ✅ 3. Store questions from template into interview_sessions
     store_template_questions_into_sessions(interview_id, template)
+
 
 def get_questions_service(interview_id: str):
     return get_questions_by_interview_id(interview_id)
+
+
+    # 3. store questions
+    store_template_questions_into_sessions(interview_id, template)
+
+    # def store_questions_service(interview_id: str, template_id: str):
+#     interview = get_interview_by_id(interview_id)
+#     if not interview:
+#         raise HTTPException(status_code=404, detail="Interview not found")
+    
+#     template = get_template_by_id(template_id)
+#     if not template:
+#         raise HTTPException(status_code=404, detail="Template not found")
+    
+#     # Optional: enforce org match
+#     if interview["organization_id"] != template["organization_id"]:
+#         raise HTTPException(status_code=400, detail="Template does not belong to the same organization")
+
+#     store_template_questions_into_sessions(interview_id, template)
+
+# def get_questions_service(interview_id: str):
+#     return get_questions_by_interview_id(interview_id)

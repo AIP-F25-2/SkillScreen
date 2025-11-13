@@ -59,3 +59,47 @@ def get_questions_by_interview_id(interview_id: str):
             }
             for row in rows
         ]
+
+def insert_interview_session(interview_id: str, question: dict):
+    """
+    Insert a single interview session (one question instance) into the DB.
+    """
+    sql = """
+    INSERT INTO interview_sessions (
+        interview_id, question_id, question_text, question_type,
+        candidate_response, response_duration, started_at, completed_at, metadata
+    )
+    VALUES (%(interview_id)s, %(question_id)s, %(question_text)s, %(question_type)s,
+            NULL, NULL, NULL, NULL, NULL);
+    """
+    with _conn() as conn, conn.cursor() as cur:
+        cur.execute(sql, {
+            "interview_id": interview_id,
+            "question_id": question.get("id"),
+            "question_text": question.get("text"),
+            "question_type": question.get("type")
+        })
+        conn.commit()
+
+
+def get_unanswered_question(interview_id: str):
+    """
+    Get the first unanswered question for the interview session.
+    """
+    sql = """
+    SELECT id, question_text, question_type
+    FROM interview_sessions
+    WHERE interview_id = %s AND candidate_response IS NULL
+    ORDER BY created_at ASC
+    LIMIT 1;
+    """
+    with _conn() as conn, conn.cursor() as cur:
+        cur.execute(sql, (interview_id,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        return {
+            "session_id": str(row[0]),
+            "question_text": row[1],
+            "question_type": row[2]
+        }

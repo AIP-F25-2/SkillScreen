@@ -1,10 +1,8 @@
 import psycopg
 import os
-import json
-
 from dotenv import load_dotenv
-load_dotenv()
 
+load_dotenv()
 DB_URL = os.getenv("DATABASE_URL")
 
 def _conn():
@@ -12,18 +10,41 @@ def _conn():
         raise RuntimeError("DATABASE_URL not set")
     return psycopg.connect(DB_URL)
 
-def get_template_questions(template_id: str):
+
+def get_template_by_id(template_id: str, org_id: str):
     """
-    Retrieve the questions field from the interview_templates table for a given template_id.
+    Fetch a template by ID and organization.
     """
-    sql = """
-    SELECT questions
-    FROM interview_templates
-    WHERE id = %s AND deleted_at IS NULL
+    query = """
+        SELECT id, name, questions
+        FROM interview_templates
+        WHERE id = %s AND organization_id = %s AND deleted_at IS NULL
+        LIMIT 1
     """
     with _conn() as conn, conn.cursor() as cur:
-        cur.execute(sql, (template_id,))
+        cur.execute(query, (template_id, org_id))
         row = cur.fetchone()
         if not row:
             return None
-        return row[0]  # questions column (jsonb)
+        return {
+            "id": row[0],
+            "name": row[1],
+            "questions": row[2]
+        }
+
+
+def get_template_questions(template_id: str):
+    """
+    Fetch the `questions` field from a given template.
+    """
+    query = """
+        SELECT questions
+        FROM interview_templates
+        WHERE id = %s AND deleted_at IS NULL
+    """
+    with _conn() as conn, conn.cursor() as cur:
+        cur.execute(query, (template_id,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        return row[0]  # returns JSONB list of questions

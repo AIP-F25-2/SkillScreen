@@ -43,11 +43,16 @@
 # app.include_router(sessions_controller.router, prefix="/interviews", tags=["Sessions"])
 # app.include_router(resumes_controller.router, prefix="/resumes", tags=["Resumes"])
 
+import os
 from datetime import datetime
 from fastapi import FastAPI
-from controllers import interviews_controller, questions_controller, sessions_controller, resumes_controller
-from utils.response import create_response 
-from database import test_connection
+from dotenv import load_dotenv
+
+from utils.response import create_response
+from controllers import interviews_controller, questions_controller
+from database.db_connection import get_db_connection
+
+load_dotenv()
 
 app = FastAPI(title="Interview Service")
 
@@ -67,13 +72,27 @@ def health():
         "timestamp": datetime.utcnow().isoformat()
     })
 
-
 @app.get("/db-check")
 def db_check():
-    return test_connection()
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        result = cur.fetchone()
+        cur.close()
+        conn.close()
+        return create_response({
+            "db": "ok",
+            "result": result
+        })
+    except Exception as e:
+        return create_response({
+            "db": "error",
+            "detail": str(e)
+        }, success=False)
 
 # Mount routers
 app.include_router(interviews_controller.router, prefix="/interviews", tags=["Interviews"])
-# app.include_router(questions_controller.router, prefix="/interviews", tags=["Questions"])
+app.include_router(questions_controller.router, prefix="/interviews", tags=["Questions"])
 # app.include_router(sessions_controller.router, prefix="/interviews", tags=["Sessions"])
 # app.include_router(resumes_controller.router, prefix="/resumes", tags=["Resumes"])
