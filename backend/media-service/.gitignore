@@ -1,12 +1,12 @@
-cert.pem
-key.pem
-
+templates/
+*.html
+*env.example
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-
+*.pemx
 # C extensions
 *.so
 
@@ -318,3 +318,5 @@ build/
 *.temp
 *.bak
 *.backup
+
+.sonar
