@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from datetime import datetime,timezone
 from typing import Any, Dict, Optional, Tuple
 from urllib.parse import urlparse
@@ -174,6 +175,17 @@ def _sync_processed_outputs(interview_id: str, session_id: str, result: Dict[str
         result["thumbnail_blobs"] = uploaded["thumbnail_blobs"]
         if result.get("summary"):
             result["summary"]["thumbnail_blobs"] = uploaded["thumbnail_blobs"]
+    if video_path and os.path.isfile(video_path):
+        try:
+            os.remove(video_path)
+            result["video_path"] = None
+        except Exception:
+            pass
+    if thumbs_dir and os.path.isdir(thumbs_dir):
+        try:
+            shutil.rmtree(thumbs_dir)
+        except Exception:
+            pass
     return result
 
 
