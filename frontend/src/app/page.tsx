@@ -42,7 +42,7 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen relative">
+    <>
       <AnimatedGradientBackground
         startingGap={110}
         Breathing={true}
@@ -57,16 +57,16 @@ export default function Home() {
         animationSpeed={0.015}
         breathingRange={5}
         topOffset={-20}
-        containerClassName="opacity-90"
+        containerClassName="opacity-90 fixed inset-0 -z-10"
       />
       {/* Main content */}
-      <div className="relative z-10">
+      <div className="relative">
         <NavBar />
         <Hero />
         <MacbookScrollDemo />
-        <Features />
+        {/*<Features /> */}
         <Footer />
       </div>
-    </div>
+    </>
   );
 }
