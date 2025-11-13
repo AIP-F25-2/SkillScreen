@@ -435,41 +435,41 @@ async def get_interview_summary(
     }
 
 # Create candidate endpoint (for frontend compatibility)
-@app.post("/candidates")
-async def create_candidate_endpoint(
-    candidate_data: dict,
-    db: Session = Depends(get_db)
-):
-    """Create a new candidate record"""
-    try:
-        log_info(f"Creating candidate: {candidate_data.get('candidate_name', 'Unknown')}")
+# @app.post("/candidates")
+# async def create_candidate_endpoint(
+#     candidate_data: dict,
+#     db: Session = Depends(get_db)
+# ):
+#     """Create a new candidate record"""
+#     try:
+#         log_info(f"Creating candidate: {candidate_data.get('candidate_name', 'Unknown')}")
         
-        # Create candidate using existing service
-        from services.candidate_service import CandidateService
-        candidate_service = CandidateService(db)
+#         # Create candidate using existing service
+#         from services.candidate_service import CandidateService
+#         candidate_service = CandidateService(db)
         
-        candidate = candidate_service.create_candidate(
-            candidate_name=candidate_data.get('candidate_name', 'Unknown Candidate'),
-            candidate_email=candidate_data.get('candidate_email', 'candidate@example.com'),
-            resume_text=candidate_data.get('resume_text', ''),
-            skills=candidate_data.get('skills', [])
-        )
+#         candidate = candidate_service.create_candidate(
+#             candidate_name=candidate_data.get('candidate_name', 'Unknown Candidate'),
+#             candidate_email=candidate_data.get('candidate_email', 'candidate@example.com'),
+#             resume_text=candidate_data.get('resume_text', ''),
+#             skills=candidate_data.get('skills', [])
+#         )
         
-        log_info(f"Candidate created successfully: {candidate.candidate_id}")
+#         log_info(f"Candidate created successfully: {candidate.candidate_id}")
         
-        return {
-            "success": True,
-            "data": {
-                "candidate_id": candidate.candidate_id,
-                "status": "created",
-                "created_at": candidate.created_at.isoformat()
-            },
-            "message": "Candidate created successfully"
-        }
+#         return {
+#             "success": True,
+#             "data": {
+#                 "candidate_id": candidate.candidate_id,
+#                 "status": "created",
+#                 "created_at": candidate.created_at.isoformat()
+#             },
+#             "message": "Candidate created successfully"
+#         }
         
-    except Exception as e:
-        log_error(f"Error creating candidate: {e}")
-        raise HTTPException(status_code=500, detail=f"Error creating candidate: {str(e)}")
+#     except Exception as e:
+#         log_error(f"Error creating candidate: {e}")
+#         raise HTTPException(status_code=500, detail=f"Error creating candidate: {str(e)}")
 
 # Create job endpoint (for frontend compatibility)
 @app.post("/jobs")
