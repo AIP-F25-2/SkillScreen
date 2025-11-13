@@ -8,6 +8,10 @@ import { ShaderAnimation } from '@/components/ui/shader-lines';
 import Footer from '@/components/Footer';
 import Image from 'next/image';
 import Link from 'next/link';
+import { GrainGradient as GrainGradient1 } from '@paper-design/shaders-react';
+
+
+
 
 export default function LoginPage() {
   const router = useRouter();
@@ -90,14 +94,31 @@ export default function LoginPage() {
   }
 
   return (
-    <>
-      <ShaderAnimation 
+   <div className="relative min-h-screen flex flex-col overflow-hidden">
+      <div className="absolute inset-0 -z-10">
+        <GrainGradient1
+          colors={['#7300ff', '#eba8ff', '#00bfff', '#2a00ff']}
+          colorBack="#00000000"
+          speed={1}
+          scale={1}
+          rotation={0}
+          offsetX={0}
+          offsetY={0}
+          softness={0.5}
+          intensity={0.5}
+          noise={0.25}
+          shape="corners"
+          style={{ width: '100%', height: '100%' }}
+        />
+      </div>
+
+      {/* <ShaderAnimation 
         currentStep={1}
         totalSteps={1}
         progress={0.5}
-      />
-      
-      <div className="min-h-screen flex items-center justify-center p-6">
+      /> */}
+
+      <div className="flex-1 flex items-center justify-center p-6">
         <motion.div 
           className="w-full max-w-md bg-black/40 backdrop-blur-md rounded-2xl p-8 shadow-2xl"
           initial={{ opacity: 0, y: 20 }}
@@ -245,7 +266,6 @@ export default function LoginPage() {
         </motion.div>
       </div>
 
-      <Footer />
-    </>
+    </div>
   );
 }

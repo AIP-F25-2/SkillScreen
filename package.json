@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@paper-design/shaders": "^0.0.62",
+    "@paper-design/shaders-react": "^0.0.62"
+  }
+}

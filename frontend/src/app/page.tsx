@@ -6,6 +6,7 @@ import NavBar from '@/components/NavBar';
 import Hero from '@/components/Hero';
 import Features from '@/components/Features';
 import Footer from '@/components/Footer';
+import { MacbookScrollDemo } from '@/components/MacbookScrollDemo';
 import { useAuth } from '@/contexts/AuthContext';
 
 import { AnimatedGradientBackground } from '@/components/ui/animated-gradient-background';
@@ -62,6 +63,7 @@ export default function Home() {
       <div className="relative z-10">
         <NavBar />
         <Hero />
+        <MacbookScrollDemo />
         <Features />
         <Footer />
       </div>
