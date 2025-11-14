@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 import os
 import shutil
-from datetime import datetime,timezone
+import time
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 from urllib.parse import urlparse
 
@@ -37,18 +38,33 @@ _VALID_EXTS = (".mp4", ".mov", ".mkv", ".avi", ".webm")
 _repo = VideoAIRepository()
 
 
+def validate_media_reference(interview_id: str, session_id: str, media_id: Optional[str]) -> None:
+    if not media_id:
+        return
+    _resolve_media_video_url(interview_id, session_id, media_id)
+
+
+def build_accept_response(interview_id: str, session_id: str, media_file_id: Optional[str]) -> Dict[str, Any]:
+    return {
+        "status": "accepted",
+        "message": "Vedio processing started in background",
+        "media_file_id": media_file_id,
+        "interview_id": interview_id,
+        "session_id": session_id,
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
+
+
 def _log_run(
     interview_id: str,
     session_id: str,
     status: str,
     result: Dict[str, Any],
 ) -> None:
-    blobs = {
-        "source_blob": result.get("source_blob"),
-        "report_blob": result.get("report_blob"),
-        "video_blob": result.get("video_blob"),
-    }
     summary = result.get("summary") or {}
+    media_file_id = result.get("media_file_id")
+    if media_file_id and "media_file_id" not in summary:
+        summary["media_file_id"] = media_file_id
     try:
         _repo.save_report(
             interview_id=interview_id,
@@ -57,9 +73,11 @@ def _log_run(
             status=status,
             report=result.get("report"),
             summary=summary,
-            blobs=blobs,
-            source_url=result.get("summary", {}).get("source_url"),
+            report_blob=result.get("report_blob"),
+            video_blob=result.get("video_blob"),
             thumbnail_blobs=summary.get("thumbnail_blobs"),
+            media_file_id=media_file_id,
+            processing_time_seconds=result.get("processing_time_seconds"),
         )
     except Exception:
         _LOG.warning("Failed to persist video analysis log", exc_info=True)
@@ -128,6 +146,100 @@ def _resolve_video_source(interview_id: str, session_id: str, video_url: str) ->
         except Exception as exc:
             raise HTTPException(502, f"Azure blob download failed: {exc}")
     return _resolve_local_video_path(interview_id, session_id, video_url), None
+
+
+def _match_media_file_by_blob(interview_id: str, session_id: str, blob_name: Optional[str]) -> Optional[str]:
+    if not blob_name:
+        return None
+    try:
+        return _repo.find_media_file_by_blob(interview_id, session_id, blob_name)
+    except Exception:
+        _LOG.warning(
+            "Failed to resolve media file for blob=%s interview=%s session=%s",
+            blob_name,
+            interview_id,
+            session_id,
+            exc_info=True,
+        )
+        return None
+
+
+def _coerce_metadata(raw: Any) -> Dict[str, Any]:
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        try:
+            return json.loads(raw)
+        except Exception:
+            return {}
+    return {}
+
+
+def _blob_name_to_url(blob_name: Optional[str]) -> Optional[str]:
+    if not blob_name:
+        return None
+    blob_name = blob_name.strip()
+    if not blob_name:
+        return None
+    if "://" in blob_name:
+        return blob_name
+    if not azure_blob.enabled:
+        return None
+
+    trimmed = blob_name.lstrip("/")
+    container = azure_blob.videos_container
+    blob_path = trimmed
+    if "/" in trimmed:
+        first, remainder = trimmed.split("/", 1)
+        if remainder:
+            if first == container:
+                blob_path = remainder
+            else:
+                container = first
+                blob_path = remainder
+    ref = BlobReference(container=container, blob=blob_path)
+    return azure_blob.public_url(ref)
+
+
+def _resolve_media_video_url(interview_id: str, session_id: str, media_id: str) -> str:
+    record = _repo.get_media_file(media_id)
+    if not record:
+        raise HTTPException(404, "Media file not found")
+
+    record_interview = record.get("interview_id")
+    if record_interview and str(record_interview) != interview_id:
+        raise HTTPException(400, "Media file does not belong to the interview")
+
+    record_session = record.get("session_id")
+    if record_session and str(record_session) != session_id:
+        raise HTTPException(400, "Media file does not belong to the session")
+
+    file_type = (record.get("file_type") or "").lower()
+    if file_type and file_type != "video":
+        raise HTTPException(400, "Media file is not a video asset")
+
+    metadata = _coerce_metadata(record.get("metadata"))
+    url_candidates = [
+        record.get("storage_uri"),
+        metadata.get("storage_uri"),
+        metadata.get("source_url"),
+        metadata.get("video_url"),
+    ]
+    for candidate in url_candidates:
+        if candidate:
+            return candidate
+
+    blob_name = record.get("blob_name")
+    blob_url = _blob_name_to_url(blob_name)
+    if blob_url:
+        return blob_url
+
+    raise HTTPException(400, "Media file does not have a usable storage_uri or blob_name")
+
+
+def resolve_media_video_url(interview_id: str, session_id: str, media_id: str) -> str:
+    """Public helper for other services (processed_service) to fetch media URLs."""
+    return _resolve_media_video_url(interview_id, session_id, media_id)
 
 
 def _build_upload_target(interview_id: str, session_id: str, filename: str) -> str:
@@ -231,8 +343,12 @@ async def svc_analyze_upload(interview_id: str, session_id: str, file: UploadFil
     src_meta = _upload_source_to_azure(interview_id, session_id, target_path)
     if src_meta:
         _LOG.info("Uploaded source to Azure blob=%s", src_meta.get("blob"))
+    media_file_id = None
+    if src_meta and src_meta.get("blob"):
+        media_file_id = _match_media_file_by_blob(interview_id, session_id, src_meta.get("blob"))
 
     analyzer = _make_analyzer()
+    started_at = time.perf_counter()
     try:
         result = analyzer.analyze(
             target_path,
@@ -240,50 +356,83 @@ async def svc_analyze_upload(interview_id: str, session_id: str, file: UploadFil
             session_id=session_id,
             source_url=(src_meta.get("url") if src_meta else None)
         )
+        processing_time_seconds = time.perf_counter() - started_at
     except Exception as e:
         _LOG.exception("Video analysis failed")
+        elapsed = time.perf_counter() - started_at
+        src_url = src_meta.get("url") if src_meta else None
         failure_result = {
-            "source_blob": src_meta.get("blob") if src_meta else None,
-            "summary": {"error": str(e), "source_url": src_meta.get("url")},
+            "summary": {"error": str(e), "source_url": src_url, "processing_time_seconds": round(elapsed, 3)},
+            "processing_time_seconds": round(elapsed, 3),
+            "media_file_id": media_file_id,
         }
         _log_run(interview_id, session_id, "failed", failure_result)
         raise HTTPException(400, f"Video processing error: {e}")
 
     result = _sync_processed_outputs(interview_id, session_id, result)
     if src_meta:
-        result["source_blob"] = src_meta.get("blob")
         result["source_url"] = src_meta.get("url") or src_meta.get("blob")
     summary = result.get("summary") or {}
     summary["interview_id"] = interview_id
     summary["session_id"] = session_id
+    summary["processing_time_seconds"] = round(processing_time_seconds, 3)
+    if media_file_id:
+        summary["media_file_id"] = media_file_id
+        result["media_file_id"] = media_file_id
     result["summary"] = summary
+    result["processing_time_seconds"] = round(processing_time_seconds, 3)
     _log_run(interview_id, session_id, "completed", result)
     return result
 
 
-def svc_analyze_url(interview_id: str, session_id: str, video_url: str) -> Dict[str, Any]:
+def svc_analyze_url(
+    interview_id: str,
+    session_id: str,
+    video_url: Optional[str] = None,
+    media_id: Optional[str] = None,
+) -> Dict[str, Any]:
     if cv2 is None:
         raise HTTPException(500, "OpenCV not available; install opencv-python-headless")
 
+    if not video_url and not media_id:
+        raise HTTPException(400, "Provide either video_url or media_id")
+
     _ensure_models()
 
-    _LOG.info("Analyze URL requested interview=%s session=%s url=%s", interview_id, session_id, video_url)
-    local_path, blob_ref = _resolve_video_source(interview_id, session_id, video_url)
+    effective_url = video_url
+    media_file_id = media_id
+    if media_id:
+        effective_url = _resolve_media_video_url(interview_id, session_id, media_id)
+
+    _LOG.info(
+        "Analyze URL requested interview=%s session=%s url=%s media_id=%s",
+        interview_id,
+        session_id,
+        effective_url,
+        media_id,
+    )
+    local_path, blob_ref = _resolve_video_source(interview_id, session_id, effective_url)
     cleanup_local = bool(blob_ref)
+    if not media_file_id and blob_ref:
+        media_file_id = _match_media_file_by_blob(interview_id, session_id, blob_ref.blob)
     analyzer = _make_analyzer()
+    started_at = time.perf_counter()
     try:
-        source_url = azure_blob.public_url(blob_ref) if blob_ref else str(video_url)
+        source_url = azure_blob.public_url(blob_ref) if blob_ref else str(effective_url)
         result = analyzer.analyze(
             local_path,
             interview_id=interview_id,
             session_id=session_id,
             source_url=source_url
         )
+        processing_time_seconds = time.perf_counter() - started_at
     except Exception as e:
         _LOG.exception("Video analysis failed")
+        elapsed = time.perf_counter() - started_at
         failure_result = {
-            "source_blob": blob_ref.blob if blob_ref else None,
-            "summary": {"error": str(e), "source_url": source_url},
+            "summary": {"error": str(e), "source_url": source_url, "processing_time_seconds": round(elapsed, 3)},
+            "processing_time_seconds": round(elapsed, 3),
+            "media_file_id": media_file_id,
         }
         _log_run(interview_id, session_id, "failed", failure_result)
         raise HTTPException(400, f"Video processing error: {e}")
@@ -296,12 +445,16 @@ def svc_analyze_url(interview_id: str, session_id: str, video_url: str) -> Dict[
 
     result = _sync_processed_outputs(interview_id, session_id, result)
     if blob_ref:
-        result["source_blob"] = blob_ref.blob
-        result["source_url"] = azure_blob.public_url(blob_ref) or str(video_url)
+        result["source_url"] = azure_blob.public_url(blob_ref) or str(effective_url)
     summary = result.get("summary") or {}
     summary["interview_id"] = interview_id
     summary["session_id"] = session_id
+    summary["processing_time_seconds"] = round(processing_time_seconds, 3)
+    if media_file_id:
+        summary["media_file_id"] = media_file_id
+        result["media_file_id"] = media_file_id
     result["summary"] = summary
+    result["processing_time_seconds"] = round(processing_time_seconds, 3)
     _log_run(interview_id, session_id, "completed", result)
     return result
 

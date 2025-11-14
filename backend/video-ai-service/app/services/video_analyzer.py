@@ -426,6 +426,9 @@ class VideoAnalyzer:
         face_bbox = faces[0]["bbox"] if faces else None
         emo_tmp = self._infer_emotion(frame_bgr, face_bbox)
         objects = self._detect_objects(frame_bgr) if ctx.objects_enabled else None
+        if len(faces) > 1 or len(persons) > 1:
+            tag = "multi_face" if len(faces) > 1 else "multi_person"
+            self._save_thumb(frame_bgr, ctx.thumbs_dir, tag, t_sec, ctx.thumb_counts)
         pose = self._extract_pose(frame_bgr, face_bbox, ctx.pose_available)
         blink_event = self._update_pose_stats(frame_bgr, pose, t_sec, ctx)
         self._update_prohibited_state(objects, t_sec, ctx)

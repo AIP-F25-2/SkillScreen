@@ -191,12 +191,19 @@ def svc_delete_session(interview_id: str, session_id: str, delete_blobs: bool = 
 
 def svc_reprocess_session(interview_id: str, session_id: str) -> Dict[str, Any]:
     row = _ensure_run(interview_id, session_id)
-    source_url = row.get("source_url")
-    if not source_url:
-        blob = row.get("source_blob")
-        if blob and azure_blob.enabled:
-            ref = BlobReference(container=azure_blob.videos_container, blob=blob)
-            source_url = azure_blob.public_url(ref)
+    media_file_id = row.get("media_file_id")
+    if media_file_id:
+        return analysis_svc.svc_analyze_url(
+            interview_id=interview_id,
+            session_id=session_id,
+            media_id=str(media_file_id),
+        )
+    summary = row.get("summary") or {}
+    source_url = summary.get("source_url")
     if not source_url:
         raise HTTPException(400, "Source reference missing; cannot reprocess")
-    return analysis_svc.svc_analyze_url(interview_id=interview_id, session_id=session_id, video_url=source_url)
+    return analysis_svc.svc_analyze_url(
+        interview_id=interview_id,
+        session_id=session_id,
+        video_url=source_url,
+    )
