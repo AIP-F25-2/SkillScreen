@@ -67,7 +67,7 @@ class Settings(BaseSettings):
 
       # Azure Blob Storage
     AZURE_STORAGE_ACCOUNT_NAME: str = "skillscreenstorage"
-    AZURE_STORAGE_CONTAINER_NAME: str = "audio-recordings"
+    AZURE_STORAGE_CONTAINER_NAME: str = "video-recordings"
     AZURE_STORAGE_SAS_TOKEN: str = ""
     
     # AWS Polly (if using AWS)
