@@ -131,10 +131,10 @@ async def get_system_health():
     try:
         from repositories.audio_repository import media_files_table
         from sqlalchemy import select
-        from datetime import datetime, timedelta
+        from datetime import datetime, timedelta, timezone as tz
         
         # Check last hour activity
-        one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+        one_hour_ago = datetime.now(tz.utc) - timedelta(hours=1)
         
         uow = UnitOfWork()
         
@@ -172,7 +172,7 @@ async def get_system_health():
                     "completed": completed,
                     "failed": failed
                 },
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(tz.utc).isoformat()
             }
         }
         
