@@ -151,7 +151,7 @@ class MetricsCollector:
                     results = json.loads(analysis['raw_results']) if isinstance(analysis['raw_results'], str) else analysis['raw_results']
                     language = results.get('language', 'unknown')
                     language_distribution[language] = language_distribution.get(language, 0) + 1
-                except (json.JSONDecodeError, ValueError):
+                except json.JSONDecodeError:
                     pass
         return language_distribution
 
@@ -478,7 +478,7 @@ class MetricsCollector:
             try:
                 metadata = json.loads(file['metadata']) if isinstance(file['metadata'], str) else file['metadata']
                 return metadata.get('retry_count', 0)
-            except (json.JSONDecodeError, ValueError):
+            except json.JSONDecodeError:
                 return 0
         return 0
 
@@ -538,58 +538,74 @@ class MetricsCollector:
         interview_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Get error and failure metrics"""
-        
+
         try:
-            # Get failed media files
-            media_query = select(self.media_files_table).where(
-                and_(
-                    self.media_files_table.c.created_at >= date_threshold,
-                    self.media_files_table.c.status == 'failed'
-                )
-            )
-            
-            if interview_id:
-                media_query = media_query.where(self.media_files_table.c.interview_id == interview_id)
-            
-            media_result = self.db.execute(media_query)
-            failed_files = [dict(row._mapping) for row in media_result]
-            
-            # Parse error types from metadata
-            error_types = {}
-            for file in failed_files:
-                if file.get('metadata'):
-                    try:
-                        metadata = json.loads(file['metadata']) if isinstance(file['metadata'], str) else file['metadata']
-                        error_msg = metadata.get('error', 'Unknown error')
-                        # Categorize errors
-                        if 'timeout' in error_msg.lower():
-                            error_types['timeout'] = error_types.get('timeout', 0) + 1
-                        elif 'download' in error_msg.lower():
-                            error_types['download_failed'] = error_types.get('download_failed', 0) + 1
-                        elif 'transcription' in error_msg.lower():
-                            error_types['transcription_failed'] = error_types.get('transcription_failed', 0) + 1
-                        elif 'diarization' in error_msg.lower():
-                            error_types['diarization_failed'] = error_types.get('diarization_failed', 0) + 1
-                        else:
-                            error_types['other'] = error_types.get('other', 0) + 1
-                    except (json.JSONDecodeError, ValueError, AttributeError):
-                        error_types['parse_error'] = error_types.get('parse_error', 0) + 1
-            
-            # Get total files for failure rate calculation
-            total_query = select(func.count(self.media_files_table.c.id)).where(
-                self.media_files_table.c.created_at >= date_threshold
-            )
-            total_count = self.db.execute(total_query).scalar() or 0
-            
-            return {
-                "total_failures": len(failed_files),
-                "error_type_breakdown": error_types,
-                "failure_rate_percent": round(len(failed_files) / max(1, total_count) * 100, 2) if failed_files else 0
-            }
-            
+            failed_files = self._get_failed_files(date_threshold, interview_id)
+            error_types = self._categorize_error_types(failed_files)
+            total_count = self._get_total_file_count(date_threshold)
+
+            return self._build_error_metrics_response(failed_files, error_types, total_count)
+
         except Exception as e:
             logger.error(f"Error getting error metrics: {str(e)}")
             return {"total_failures": 0, "error_type_breakdown": {}, "failure_rate_percent": 0}
+
+    def _get_failed_files(self, date_threshold: datetime, interview_id: Optional[str]) -> list:
+        """Get failed media files from database"""
+        media_query = select(self.media_files_table).where(
+            and_(
+                self.media_files_table.c.created_at >= date_threshold,
+                self.media_files_table.c.status == 'failed'
+            )
+        )
+
+        if interview_id:
+            media_query = media_query.where(self.media_files_table.c.interview_id == interview_id)
+
+        media_result = self.db.execute(media_query)
+        return [dict(row._mapping) for row in media_result]
+
+    def _categorize_error_types(self, failed_files: list) -> dict:
+        """Categorize errors from failed files metadata"""
+        error_types = {}
+        for file in failed_files:
+            if file.get('metadata'):
+                try:
+                    metadata = json.loads(file['metadata']) if isinstance(file['metadata'], str) else file['metadata']
+                    error_msg = metadata.get('error', 'Unknown error')
+                    self._categorize_single_error(error_msg, error_types)
+                except (json.JSONDecodeError, AttributeError):
+                    error_types['parse_error'] = error_types.get('parse_error', 0) + 1
+        return error_types
+
+    def _categorize_single_error(self, error_msg: str, error_types: dict) -> None:
+        """Categorize a single error message"""
+        error_lower = error_msg.lower()
+        if 'timeout' in error_lower:
+            error_types['timeout'] = error_types.get('timeout', 0) + 1
+        elif 'download' in error_lower:
+            error_types['download_failed'] = error_types.get('download_failed', 0) + 1
+        elif 'transcription' in error_lower:
+            error_types['transcription_failed'] = error_types.get('transcription_failed', 0) + 1
+        elif 'diarization' in error_lower:
+            error_types['diarization_failed'] = error_types.get('diarization_failed', 0) + 1
+        else:
+            error_types['other'] = error_types.get('other', 0) + 1
+
+    def _get_total_file_count(self, date_threshold: datetime) -> int:
+        """Get total file count for failure rate calculation"""
+        total_query = select(func.count(self.media_files_table.c.id)).where(
+            self.media_files_table.c.created_at >= date_threshold
+        )
+        return self.db.execute(total_query).scalar() or 0
+
+    def _build_error_metrics_response(self, failed_files: list, error_types: dict, total_count: int) -> dict:
+        """Build the error metrics response"""
+        return {
+            "total_failures": len(failed_files),
+            "error_type_breakdown": error_types,
+            "failure_rate_percent": round(len(failed_files) / max(1, total_count) * 100, 2) if failed_files else 0
+        }
     
     # Helper methods
     def _calculate_std_dev(self, values):
