@@ -1,0 +1,377 @@
+import sys
+sys.path.append('/common-service')
+
+from repository.base_repository import BaseRepository
+from db import UnitOfWork
+from sqlalchemy import Table, Column, Text, Integer, String, Boolean, DateTime, MetaData, select, insert, update, text, and_
+from sqlalchemy.dialects.postgresql import UUID, JSONB, NUMERIC
+from datetime import datetime, timezone
+from typing import List, Dict, Optional
+import json
+
+
+metadata = MetaData()
+
+# ==========================================
+# TABLE DEFINITIONS
+# ==========================================
+
+interviews_table = Table(
+    "interviews",
+    metadata,
+    Column("id", UUID, primary_key=True),
+    Column("organization_id", UUID),
+    Column("job_position_id", UUID),
+    Column("candidate_id", UUID),
+    Column("interviewer_id", UUID),
+    Column("template_id", UUID),
+    Column("status", String),
+    Column("mode", String),
+    Column("scheduled_at", DateTime),
+    Column("started_at", DateTime),
+    Column("completed_at", DateTime),
+    Column("settings", JSONB),
+    Column("created_at", DateTime),
+    Column("updated_at", DateTime),
+    Column("deleted_at", DateTime),
+)
+
+interview_sessions_table = Table(
+    "interview_sessions",
+    metadata,
+    Column("id", UUID, primary_key=True),
+    Column("interview_id", UUID),
+    Column("question_id", String),
+    Column("question_text", Text),
+    Column("question_type", String),
+    Column("candidate_response", Text),
+    Column("response_duration", Integer),
+    Column("started_at", DateTime),
+    Column("completed_at", DateTime),
+    Column("metadata", JSONB),
+    Column("created_at", DateTime),
+)
+
+ai_analysis_table = Table(
+    "ai_analysis",
+    metadata,
+    Column("id", UUID, primary_key=True),
+    Column("interview_id", UUID),
+    Column("session_id", UUID),
+    Column("analysis_type", String),
+    Column("service_name", String),
+    Column("raw_results", JSONB),
+    Column("confidence_score", NUMERIC),
+    Column("processing_time", Integer),
+    Column("version", String),
+    Column("created_at", DateTime),
+)
+
+assessments_table = Table(
+    "assessments",
+    metadata,
+    Column("id", UUID, primary_key=True),
+    Column("interview_id", UUID),
+    Column("overall_score", NUMERIC(5, 2)),
+    Column("hard_skills_score", NUMERIC(5, 2)),
+    Column("soft_skills_score", NUMERIC(5, 2)),
+    Column("communication_score", NUMERIC(5, 2)),
+    Column("technical_score", NUMERIC(5, 2)),
+    Column("proctoring_risk_score", NUMERIC(5, 2)),
+    Column("recommendation", String),  # hire, no_hire, maybe, needs_review
+    Column("evidence_clips", JSONB),
+    Column("summary", Text),
+    Column("reviewer_notes", Text),
+    Column("reviewed_by", UUID),
+    Column("reviewed_at", DateTime),
+    Column("created_at", DateTime),
+    Column("updated_at", DateTime),
+    Column("deleted_at", DateTime),
+)
+
+job_positions_table = Table(
+    "job_positions",
+    metadata,
+    Column("id", UUID, primary_key=True),
+    Column("organization_id", UUID),
+    Column("title", String),
+    Column("description", Text),
+    Column("required_skills", JSONB),
+    Column("department", String),
+    Column("is_active", Boolean),
+    Column("created_by", UUID),
+    Column("created_at", DateTime),
+    Column("updated_at", DateTime),
+    Column("deleted_at", DateTime),
+)
+
+
+# ==========================================
+# REPOSITORY CLASS
+# ==========================================
+
+class AssessmentRepository(BaseRepository):
+    """Repository for assessment orchestration database operations"""
+    
+    def __init__(self, session_or_uow):
+        """
+        Initialize repository with session or UnitOfWork
+        
+        Args:
+            session_or_uow: Either a SQLAlchemy Session or UnitOfWork object
+        """
+        if hasattr(session_or_uow, 'session'):
+            self.session = session_or_uow.session
+        else:
+            self.session = session_or_uow
+    
+    # ==========================================
+    # FIND READY INTERVIEWS
+    # ==========================================
+    
+    def get_completed_interviews_without_assessment(self, limit: int = 10) -> List[Dict]:
+        """
+        Get interviews that are completed but don't have assessments yet
+        Also applies grace period filter (completed > 5 minutes ago)
+        
+        Returns:
+            List of interview records ready for assessment
+        """
+        from config.settings import settings
+        
+        grace_period_minutes = settings.assessment_grace_period_minutes
+        
+        query = text(f"""
+            SELECT i.id, i.organization_id, i.job_position_id, i.candidate_id, 
+                   i.completed_at, i.settings
+            FROM interviews i
+            LEFT JOIN assessments a ON i.id = a.interview_id
+            WHERE i.status = 'completed'
+              AND a.id IS NULL
+              AND i.completed_at < NOW() - INTERVAL '{grace_period_minutes} minutes'
+            ORDER BY i.completed_at ASC
+            LIMIT :limit
+        """)
+        
+        result = self.session.execute(query, {"limit": limit})
+        interviews = [dict(row._mapping) for row in result]
+        
+        return interviews
+    
+    # ==========================================
+    # VERIFY ALL SERVICES COMPLETED
+    # ==========================================
+    
+    def get_all_sessions_for_interview(self, interview_id: str) -> List[Dict]:
+        """Get all sessions for an interview"""
+        query = select(interview_sessions_table).where(
+            interview_sessions_table.c.interview_id == interview_id
+        ).order_by(interview_sessions_table.c.created_at)
+        
+        result = self.session.execute(query)
+        sessions = [dict(row._mapping) for row in result]
+        
+        return sessions
+    
+    def check_session_has_service_analysis(
+        self, 
+        interview_id: str, 
+        session_id: str, 
+        service_name: str
+    ) -> bool:
+        """
+        Check if a specific service has completed analysis for a session
+        
+        Args:
+            interview_id: Interview UUID
+            session_id: Session UUID
+            service_name: 'audio-ai-service', 'video-ai-service', 'text-ai-service'
+        
+        Returns:
+            True if service analysis exists, False otherwise
+        """
+        query = select(ai_analysis_table).where(
+            and_(
+                ai_analysis_table.c.interview_id == interview_id,
+                ai_analysis_table.c.session_id == session_id,
+                ai_analysis_table.c.service_name == service_name
+            )
+        )
+        
+        result = self.session.execute(query).fetchone()
+        return result is not None
+    
+    def check_coding_analysis_exists(self, interview_id: str) -> bool:
+        """Check if coding analysis exists for interview"""
+        query = select(ai_analysis_table).where(
+            and_(
+                ai_analysis_table.c.interview_id == interview_id,
+                ai_analysis_table.c.service_name == 'coding-service'
+            )
+        )
+        
+        result = self.session.execute(query).fetchone()
+        return result is not None
+    
+    def all_services_completed(self, interview_id: str) -> bool:
+        """
+        Check if all required AI services have completed for ALL sessions
+        
+        Returns:
+            True if all services complete, False otherwise
+        """
+        # Get all sessions
+        sessions = self.get_all_sessions_for_interview(interview_id)
+        
+        if not sessions:
+            return False
+        
+        # Check required services for each session
+        required_services = ['audio-ai-service', 'video-ai-service', 'text-ai-service']
+        
+        for session in sessions:
+            session_id = str(session['id'])
+            
+            for service_name in required_services:
+                if not self.check_session_has_service_analysis(interview_id, session_id, service_name):
+                    return False  # Missing a service for this session
+        
+        # Check if coding is required
+        interview = self.get_interview_info(interview_id)
+        if interview:
+            settings = interview.get('settings', {})
+            requires_coding = settings.get('requires_coding', False)
+            
+            if requires_coding:
+                if not self.check_coding_analysis_exists(interview_id):
+                    return False  # Coding required but not complete
+        
+        # All services completed!
+        return True
+    
+    # ==========================================
+    # GET AI ANALYSIS RESULTS
+    # ==========================================
+    
+    def get_all_ai_analysis_for_interview(self, interview_id: str) -> List[Dict]:
+        """Get all AI analysis results for an interview"""
+        query = select(ai_analysis_table).where(
+            ai_analysis_table.c.interview_id == interview_id
+        ).order_by(ai_analysis_table.c.created_at)
+        
+        result = self.session.execute(query)
+        analyses = [dict(row._mapping) for row in result]
+        
+        return analyses
+    
+    def get_ai_analysis_by_service(
+        self, 
+        interview_id: str, 
+        service_name: str
+    ) -> List[Dict]:
+        """Get all AI analysis results for a specific service"""
+        query = select(ai_analysis_table).where(
+            and_(
+                ai_analysis_table.c.interview_id == interview_id,
+                ai_analysis_table.c.service_name == service_name
+            )
+        ).order_by(ai_analysis_table.c.created_at)
+        
+        result = self.session.execute(query)
+        analyses = [dict(row._mapping) for row in result]
+        
+        return analyses
+    
+    # ==========================================
+    # INTERVIEW & JOB POSITION INFO
+    # ==========================================
+    
+    def get_interview_info(self, interview_id: str) -> Optional[Dict]:
+        """Get interview details"""
+        query = select(interviews_table).where(
+            interviews_table.c.id == interview_id
+        )
+        
+        result = self.session.execute(query).fetchone()
+        
+        if result:
+            return dict(result._mapping)
+        
+        return None
+    
+    def get_job_position(self, job_position_id: str) -> Optional[Dict]:
+        """Get job position details (for job description)"""
+        query = select(job_positions_table).where(
+            job_positions_table.c.id == job_position_id
+        )
+        
+        result = self.session.execute(query).fetchone()
+        
+        if result:
+            return dict(result._mapping)
+        
+        return None
+    
+    # ==========================================
+    # CHECK IF ASSESSMENT ALREADY EXISTS
+    # ==========================================
+    
+    def assessment_exists(self, interview_id: str) -> bool:
+        """Check if assessment already exists for interview"""
+        query = select(assessments_table).where(
+            assessments_table.c.interview_id == interview_id
+        )
+        
+        result = self.session.execute(query).fetchone()
+        return result is not None
+    
+    def get_assessment(self, interview_id: str) -> Optional[Dict]:
+        """Get existing assessment for interview"""
+        query = select(assessments_table).where(
+            assessments_table.c.interview_id == interview_id
+        )
+        
+        result = self.session.execute(query).fetchone()
+        
+        if result:
+            return dict(result._mapping)
+        
+        return None
+    
+    # ==========================================
+    # SAVE ASSESSMENT
+    # ==========================================
+    
+    def save_assessment(self, data: Dict) -> str:
+        """
+        Save final assessment to database
+        
+        Args:
+            data: Assessment data including all scores and recommendation
+        
+        Returns:
+            Assessment ID
+        """
+        if 'created_at' not in data:
+            data['created_at'] = datetime.now(timezone.utc)
+        
+        if 'updated_at' not in data:
+            data['updated_at'] = datetime.now(timezone.utc)
+        
+        query = insert(assessments_table).values(**data)
+        result = self.session.execute(query)
+        self.session.commit()
+        
+        assessment_id = result.inserted_primary_key[0]
+        return str(assessment_id)
+    
+    def update_assessment(self, interview_id: str, data: Dict):
+        """Update existing assessment"""
+        data['updated_at'] = datetime.now(timezone.utc)
+        
+        query = update(assessments_table).where(
+            assessments_table.c.interview_id == interview_id
+        ).values(**data)
+        
+        self.session.execute(query)
+        self.session.commit()
