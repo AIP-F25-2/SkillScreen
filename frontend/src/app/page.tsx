@@ -6,6 +6,7 @@ import NavBar from '@/components/NavBar';
 import Hero from '@/components/Hero';
 import Features from '@/components/Features';
 import Footer from '@/components/Footer';
+import { FeaturesGrid } from '@/components/FeaturesGrid';
 import { useAuth } from '@/contexts/AuthContext';
 
 import { AnimatedGradientBackground } from '@/components/ui/animated-gradient-background';
@@ -41,7 +42,7 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen relative">
+    <div className="relative min-h-screen">
       <AnimatedGradientBackground
         startingGap={110}
         Breathing={true}
@@ -56,13 +57,14 @@ export default function Home() {
         animationSpeed={0.015}
         breathingRange={5}
         topOffset={-20}
-        containerClassName="opacity-90"
+        containerClassName="opacity-90 absolute inset-0 -z-10 min-h-full"
       />
       {/* Main content */}
-      <div className="relative z-10">
+      <div className="relative">
         <NavBar />
         <Hero />
-        <Features />
+        <FeaturesGrid />
+        {/*<Features /> */}
         <Footer />
       </div>
     </div>

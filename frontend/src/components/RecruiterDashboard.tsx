@@ -27,6 +27,13 @@ interface JobPosting {
   status: 'active' | 'paused' | 'closed';
 }
 
+interface JobTemplate {
+  id: string;
+  title: string;
+  department: string;
+  content: string;
+}
+
 const mockCandidates: Candidate[] = [
   {
     id: '1',
@@ -71,32 +78,6 @@ const mockCandidates: Candidate[] = [
   }
 ];
 
-const mockJobPostings: JobPosting[] = [
-  {
-    id: '1',
-    title: 'Senior Software Engineer',
-    department: 'Engineering',
-    applicants: 45,
-    interviews: 8,
-    status: 'active'
-  },
-  {
-    id: '2',
-    title: 'Product Manager',
-    department: 'Product',
-    applicants: 32,
-    interviews: 5,
-    status: 'active'
-  },
-  {
-    id: '3',
-    title: 'UX Designer',
-    department: 'Design',
-    applicants: 28,
-    interviews: 3,
-    status: 'paused'
-  }
-];
 
 export default function RecruiterDashboard() {
   const router = useRouter();
@@ -106,6 +87,18 @@ export default function RecruiterDashboard() {
   const [loadingInterviews, setLoadingInterviews] = useState(true);
   const [candidates, setCandidates] = useState<any[]>([]);
   const [loadingCandidates, setLoadingCandidates] = useState(true);
+
+  // Job Description Management state
+  const [jobTemplates, setJobTemplates] = useState<JobTemplate[]>([{
+    id: 'tmpl-1',
+    title: 'Senior Software Engineer',
+    department: 'Engineering',
+    content: 'We are seeking a Senior Software Engineer with experience in React, Node.js, and cloud-native architectures. Responsibilities include building scalable features, mentoring, and collaborating across teams.'
+  }]);
+  const [templateTitle, setTemplateTitle] = useState('');
+  const [templateDepartment, setTemplateDepartment] = useState('');
+  const [templateContent, setTemplateContent] = useState('');
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
 
   // Fetch all interviews and candidates
   useEffect(() => {
@@ -166,6 +159,50 @@ export default function RecruiterDashboard() {
     }
   };
 
+  const resetTemplateForm = () => {
+    setTemplateTitle('');
+    setTemplateDepartment('');
+    setTemplateContent('');
+    setEditingTemplateId(null);
+  };
+
+  const saveTemplate = () => {
+    const trimmedTitle = templateTitle.trim();
+    const trimmedDept = templateDepartment.trim();
+    const trimmedContent = templateContent.trim();
+    if (!trimmedTitle || !trimmedDept || !trimmedContent) return;
+
+    if (editingTemplateId) {
+      setJobTemplates(prev => prev.map(t => t.id === editingTemplateId ? {
+        ...t,
+        title: trimmedTitle,
+        department: trimmedDept,
+        content: trimmedContent,
+      } : t));
+    } else {
+      const newTemplate: JobTemplate = {
+        id: `tmpl-${Date.now()}`,
+        title: trimmedTitle,
+        department: trimmedDept,
+        content: trimmedContent,
+      };
+      setJobTemplates(prev => [newTemplate, ...prev]);
+    }
+    resetTemplateForm();
+  };
+
+  const editTemplate = (template: JobTemplate) => {
+    setTemplateTitle(template.title);
+    setTemplateDepartment(template.department);
+    setTemplateContent(template.content);
+    setEditingTemplateId(template.id);
+  };
+
+  const deleteTemplate = (id: string) => {
+    setJobTemplates(prev => prev.filter(t => t.id !== id));
+    if (editingTemplateId === id) resetTemplateForm();
+  };
+
   return (
     <div className="min-h-screen p-6">
       {/* Breathing circle background */}
@@ -177,10 +214,6 @@ export default function RecruiterDashboard() {
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-white mb-2">Recruiter Dashboard</h1>
           <p className="text-primary-100">Manage candidates, interviews, and hiring pipeline</p>
-        </div>
-        {/* Document Upload */}
-        <div className="mb-8">
-          <FileUploadDemo />
         </div>
         {/* Stats Overview */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -214,16 +247,7 @@ export default function RecruiterDashboard() {
           >
             Interviews
           </button>
-          <button
-            onClick={() => setActiveTab('candidates')}
-            className={`px-6 py-3 rounded-md font-semibold transition-colors ${
-              activeTab === 'candidates'
-                ? 'bg-white text-primary-300'
-                : 'text-white hover:bg-primary-200/20'
-            }`}
-          >
-            Resume Pipeline
-          </button>
+         
           <button
             onClick={() => setActiveTab('jobs')}
             className={`px-6 py-3 rounded-md font-semibold transition-colors ${
@@ -232,17 +256,7 @@ export default function RecruiterDashboard() {
                 : 'text-white hover:bg-primary-200/20'
             }`}
           >
-            Job Postings
-          </button>
-          <button
-            onClick={() => setActiveTab('analytics')}
-            className={`px-6 py-3 rounded-md font-semibold transition-colors ${
-              activeTab === 'analytics'
-                ? 'bg-white text-primary-300'
-                : 'text-white hover:bg-primary-200/20'
-            }`}
-          >
-            Analytics
+            Active Job Listings
           </button>
         </div>
 
@@ -250,7 +264,12 @@ export default function RecruiterDashboard() {
         {/* Interviews Tab */}
         {activeTab === 'interviews' && (
           <div className="bg-primary-200/20 backdrop-blur-sm rounded-xl p-6 border border-primary-200/30">
+            {/* Document Upload */}
+            <div className="mb-8">
+              <FileUploadDemo />
+            </div>
             <div className="flex justify-between items-center mb-6">
+              
               <h2 className="text-2xl font-semibold text-white flex items-center gap-2">
                 <FileText className="w-6 h-6" />
                 All Interviews
@@ -384,45 +403,108 @@ export default function RecruiterDashboard() {
         )}
 
         {activeTab === 'jobs' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {mockJobPostings.map((job) => (
-              <div key={job.id} className="bg-primary-200/20 backdrop-blur-sm rounded-xl p-6 border border-primary-200/30">
-                <div className="flex justify-between items-start mb-4">
-                  <h3 className="text-xl font-semibold text-white">{job.title}</h3>
-                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                    job.status === 'active' ? 'bg-green-500/20 text-green-300' :
-                    job.status === 'paused' ? 'bg-yellow-500/20 text-yellow-300' :
-                    'bg-red-500/20 text-red-300'
-                  }`}>
-                    {job.status}
-                  </span>
-                </div>
-                <p className="text-primary-100 mb-4">{job.department}</p>
-                <div className="space-y-2 mb-6">
-                  <div className="flex justify-between text-white">
-                    <span>Applicants</span>
-                    <span>{job.applicants}</span>
+          <div className="bg-primary-200/20 backdrop-blur-sm rounded-xl p-6 border border-primary-200/30">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-semibold text-white">Job Description Management</h2>
+            </div>
+
+            {/* Template Form */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-1 bg-primary-200/10 rounded-xl p-5 border border-primary-200/20">
+                <h3 className="text-lg font-semibold text-white mb-4">{editingTemplateId ? 'Edit Template' : 'Add New Template'}</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm text-primary-100 mb-1">Title</label>
+                    <input
+                      value={templateTitle}
+                      onChange={(e) => setTemplateTitle(e.target.value)}
+                      placeholder="e.g., Senior Backend Engineer"
+                      className="w-full rounded-lg bg-transparent border border-primary-200/40 text-white px-3 py-2 focus:outline-none focus:border-white/60"
+                    />
                   </div>
-                  <div className="flex justify-between text-white">
-                    <span>Interviews</span>
-                    <span>{job.interviews}</span>
+                  <div>
+                    <label className="block text-sm text-primary-100 mb-1">Department</label>
+                    <input
+                      value={templateDepartment}
+                      onChange={(e) => setTemplateDepartment(e.target.value)}
+                      placeholder="e.g., Engineering"
+                      className="w-full rounded-lg bg-transparent border border-primary-200/40 text-white px-3 py-2 focus:outline-none focus:border-white/60"
+                    />
                   </div>
-                </div>
-                <div className="flex space-x-2">
-                  <button className="flex-1 bg-white text-primary-300 py-2 px-4 rounded-lg font-semibold hover:bg-primary-100 hover:text-white transition-colors">
-                    Manage
-                  </button>
-                  <button className="flex-1 bg-primary-200 text-white py-2 px-4 rounded-lg font-semibold hover:bg-primary-100 transition-colors">
-                    Analytics
-                  </button>
+                  <div>
+                    <label className="block text-sm text-primary-100 mb-1">Description</label>
+                    <textarea
+                      value={templateContent}
+                      onChange={(e) => setTemplateContent(e.target.value)}
+                      placeholder="Role summary, responsibilities, requirements, and nice-to-haves..."
+                      className="w-full min-h-[140px] rounded-lg bg-transparent border border-primary-200/40 text-white px-3 py-2 focus:outline-none focus:border-white/60"
+                    />
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={saveTemplate}
+                      className="flex-1 bg-white text-primary-300 py-2 px-4 rounded-lg font-semibold hover:bg-primary-100 hover:text-white transition-colors"
+                    >
+                      {editingTemplateId ? 'Update Template' : 'Save Template'}
+                    </button>
+                    {editingTemplateId && (
+                      <button
+                        onClick={resetTemplateForm}
+                        className="px-4 py-2 rounded-lg font-semibold text-white bg-primary-200/40 hover:bg-primary-200/60 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
-            ))}
+
+              {/* Templates List */}
+              <div className="lg:col-span-2">
+                {jobTemplates.length === 0 ? (
+                  <div className="text-center py-12 border border-primary-200/20 rounded-xl">
+                    <p className="text-white/70">No templates yet. Create your first job description template on the left.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {jobTemplates.map((t) => (
+                      <div key={t.id} className="bg-primary-200/10 rounded-xl p-5 border border-primary-200/20">
+                        <div className="flex items-start justify-between gap-3 mb-2">
+                          <div>
+                            <h4 className="text-white font-semibold">{t.title}</h4>
+                            <p className="text-primary-100 text-sm">{t.department}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => editTemplate(t)}
+                              className="text-white/80 hover:text-white text-sm font-medium"
+                            >
+                              Edit
+                            </button>
+                            <span className="text-white/20">|</span>
+                            <button
+                              onClick={() => deleteTemplate(t.id)}
+                              className="text-red-300/80 hover:text-red-300 text-sm font-medium"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                        <p className="text-white/80 text-sm whitespace-pre-line">
+                          {t.content}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
         {activeTab === 'analytics' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-1 gap-8">
             <div className="bg-primary-200/20 backdrop-blur-sm rounded-xl p-6 border border-primary-200/30">
               <h3 className="text-xl font-semibold text-white mb-6">Interview Performance</h3>
               <div className="space-y-4">
@@ -452,32 +534,6 @@ export default function RecruiterDashboard() {
                   <div className="w-full bg-primary-300 rounded-full h-2">
                     <div className="bg-white h-2 rounded-full" style={{ width: '85%' }}></div>
                   </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-primary-200/20 backdrop-blur-sm rounded-xl p-6 border border-primary-200/30">
-              <h3 className="text-xl font-semibold text-white mb-6">Hiring Pipeline</h3>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-white">Applications</span>
-                  <span className="text-white font-semibold">156</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-white">Screening</span>
-                  <span className="text-white font-semibold">45</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-white">Interviews</span>
-                  <span className="text-white font-semibold">24</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-white">Offers</span>
-                  <span className="text-white font-semibold">8</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-white">Hired</span>
-                  <span className="text-white font-semibold">5</span>
                 </div>
               </div>
             </div>
