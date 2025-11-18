@@ -220,6 +220,24 @@ class AssessmentRepository(BaseRepository):
         Returns:
             True if all services complete, False otherwise
         """
+        # Get interview info first
+        interview = self.get_interview_info(interview_id)
+        if not interview:
+            return False
+        
+        # Check if all template questions have sessions
+        settings = interview.get('settings') or {}  # Handle None settings
+        template_id = interview.get('template_id')
+        
+        if template_id:
+            # Get template and check question count
+            expected_question_count = self._get_template_question_count(str(template_id))
+            actual_session_count = len(self.get_all_sessions_for_interview(interview_id))
+            
+            if expected_question_count > 0 and actual_session_count < expected_question_count:
+                # Not all questions answered
+                return False
+        
         # Get all sessions
         sessions = self.get_all_sessions_for_interview(interview_id)
         
@@ -227,7 +245,7 @@ class AssessmentRepository(BaseRepository):
             return False
         
         # Check required services for each session
-        required_services = ['audio-ai-service', 'video-ai-service', 'text-ai-service']
+        required_services = ['audio-ai-service', 'video-ai-service', 'text-service']
         
         for session in sessions:
             session_id = str(session['id'])
@@ -237,17 +255,125 @@ class AssessmentRepository(BaseRepository):
                     return False  # Missing a service for this session
         
         # Check if coding is required
-        interview = self.get_interview_info(interview_id)
-        if interview:
-            settings = interview.get('settings', {})
-            requires_coding = settings.get('requires_coding', False)
-            
-            if requires_coding:
-                if not self.check_coding_analysis_exists(interview_id):
-                    return False  # Coding required but not complete
+        requires_coding = settings.get('requires_coding', False)
+        
+        if requires_coding:
+            if not self.check_coding_analysis_exists(interview_id):
+                return False  # Coding required but not complete
         
         # All services completed!
         return True
+    
+    def check_sessions_with_timeout(self, interview_id: str, timeout_minutes: int = 30) -> dict:
+        """
+        Check AI service completion with timeout logic
+        
+        Args:
+            interview_id: Interview UUID
+            timeout_minutes: Minutes to wait before considering session stuck (default: 30)
+        
+        Returns:
+            {
+                'all_complete': bool,
+                'stuck_sessions': list of session IDs that timed out,
+                'missing_sessions': list of incomplete sessions (no timeout yet)
+            }
+        """
+        from datetime import datetime, timezone, timedelta
+        
+        result = {
+            'all_complete': True,
+            'stuck_sessions': [],
+            'missing_sessions': []
+        }
+        
+        # Get interview info
+        interview = self.get_interview_info(interview_id)
+        if not interview:
+            result['all_complete'] = False
+            return result
+        
+        # Verify template question count matches sessions
+        template_id = interview.get('template_id')
+        if template_id:
+            expected_count = self._get_template_question_count(str(template_id))
+            actual_count = len(self.get_all_sessions_for_interview(interview_id))
+            
+            if expected_count > 0 and actual_count < expected_count:
+                result['all_complete'] = False
+                return result
+        
+        # Get all sessions
+        sessions = self.get_all_sessions_for_interview(interview_id)
+        if not sessions:
+            result['all_complete'] = False
+            return result
+        
+        # Check each session
+        required_services = ['audio-ai-service', 'video-ai-service', 'text-service']
+        timeout_threshold = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
+        
+        for session in sessions:
+            session_id = str(session['id'])
+            completed_at = session.get('completed_at')
+            
+            # Skip if session not completed yet
+            if not completed_at:
+                result['all_complete'] = False
+                result['missing_sessions'].append(session_id)
+                continue
+            
+            # Ensure timezone-aware
+            if completed_at.tzinfo is None:
+                completed_at = completed_at.replace(tzinfo=timezone.utc)
+            
+            for service_name in required_services:
+                if not self.check_session_has_service_analysis(interview_id, session_id, service_name):
+                    # Check if timed out
+                    if completed_at < timeout_threshold:
+                        # Stuck! Session completed > timeout_minutes ago but no AI analysis
+                        if session_id not in result['stuck_sessions']:
+                            result['stuck_sessions'].append(session_id)
+                    else:
+                        # Not timed out yet, still processing
+                        if session_id not in result['missing_sessions']:
+                            result['missing_sessions'].append(session_id)
+                    
+                    result['all_complete'] = False
+        
+        # Check coding if required
+        settings = interview.get('settings') or {}  # Handle None settings
+        if settings.get('requires_coding', False):
+            if not self.check_coding_analysis_exists(interview_id):
+                result['all_complete'] = False
+        
+        return result
+    
+    def _get_template_question_count(self, template_id: str) -> int:
+        """Get number of questions in template"""
+        from sqlalchemy import Table, Column, Text, MetaData, select
+        from sqlalchemy.dialects.postgresql import UUID, JSONB
+        
+        metadata = MetaData()
+        interview_templates_table = Table(
+            "interview_templates",
+            metadata,
+            Column("id", UUID, primary_key=True),
+            Column("questions", JSONB),
+        )
+        
+        query = select(interview_templates_table.c.questions).where(
+            interview_templates_table.c.id == template_id
+        )
+        
+        result = self.session.execute(query).fetchone()
+        
+        if result and result[0]:
+            questions = result[0]
+            if isinstance(questions, list):
+                return len(questions)
+        
+        return 0
     
     # ==========================================
     # GET AI ANALYSIS RESULTS

@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     groq_model: str = Field(default="llama-3.1-70b-versatile", alias="GROQ_MODEL")
     llm_max_tokens: int = Field(default=4096, alias="LLM_MAX_TOKENS")
     llm_temperature: float = Field(default=0.3, alias="LLM_TEMPERATURE")
+    use_llm_weights: bool = Field(default=True, alias="USE_LLM_WEIGHTS")  # Enable/disable LLM weight determination
     
     # Default Scoring Weights (with coding)
     default_weight_coding: float = Field(default=0.40, alias="DEFAULT_WEIGHT_CODING")
