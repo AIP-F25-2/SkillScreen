@@ -7,6 +7,7 @@ import Hero from '@/components/Hero';
 import Features from '@/components/Features';
 import Footer from '@/components/Footer';
 import { FeaturesGrid } from '@/components/FeaturesGrid';
+import { UndetectableSection } from '@/components/UndetectableSection';
 import { useAuth } from '@/contexts/AuthContext';
 
 import { AnimatedGradientBackground } from '@/components/ui/animated-gradient-background';
@@ -64,6 +65,7 @@ export default function Home() {
         <NavBar />
         <Hero />
         <FeaturesGrid />
+        <UndetectableSection />
         {/*<Features /> */}
         <Footer />
       </div>

@@ -134,7 +134,7 @@ export default function NavBar() {
               />
             </div>
             <span className="text-white text-xl font-bold">
-              IntervuAI
+              SkillScreen
             </span>
           </Link>
         </motion.div>
