@@ -153,15 +153,14 @@ class ProcessInterviewAudioRequest(BaseModel):
     interview_id: UUID = Field(..., description="Interview UUID")
     session_id: UUID = Field(..., description="Session UUID (question)")
     media_file_id: UUID = Field(..., description="Media file UUID")
-    blob_name: str = Field(..., description="Blob filename (e.g., 'dick-grayson-q1.mp4')")
+
     
     class Config:
         json_schema_extra = {
             "example": {
                 "interview_id": "d37f8d3d-5c68-5f56-8a9d-59d040850c90",
                 "session_id": "f211e428-3aab-4c52-abb3-c3f5f0a957c6",
-                "media_file_id": "609f1983-1f85-4f33-96a6-fe67d9ba7742",
-                "blob_name": "dick-grayson-q1.mp4"
+                "media_file_id": "609f1983-1f85-4f33-96a6-fe67d9ba7742"
             }
         }
 

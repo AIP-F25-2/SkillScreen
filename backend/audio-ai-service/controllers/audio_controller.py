@@ -25,7 +25,7 @@ router = APIRouter()
     Process interview audio/video with complete analysis pipeline.
     
     **Flow:**
-    1. Receives request with interview IDs and blob name
+    1. Receives request with interview IDs, media file ID and session ID
     2. Returns 202 Accepted immediately
     3. Processes in background (3-5 minutes)
     4. Updates media_files.status and saves results
@@ -58,6 +58,17 @@ async def process_interview_audio_endpoint(request: ProcessInterviewAudioRequest
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Media file {request.media_file_id} not found"
             )
+        # Extract storage_uri from media_file record
+        storage_uri = media_file.get('storage_uri') if isinstance(media_file, dict) else media_file.storage_uri
+
+        if not storage_uri:
+            logger.error(f"❌ Storage URI missing for media file: {request.media_file_id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Storage URI missing for media file {request.media_file_id}"
+            )
+        logger.info(f"storage_uri: {storage_uri}")
+
         
         # Check if already processed (idempotency)
         if repo.check_if_already_processed(
@@ -81,7 +92,7 @@ async def process_interview_audio_endpoint(request: ProcessInterviewAudioRequest
             interview_id=str(request.interview_id),
             session_id=str(request.session_id),
             media_file_id=str(request.media_file_id),
-            blob_name=request.blob_name
+            storage_uri=storage_uri
         )
         
         logger.info("✅Background processing started")
