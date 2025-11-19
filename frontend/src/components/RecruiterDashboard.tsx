@@ -32,6 +32,7 @@ interface JobTemplate {
   title: string;
   department: string;
   content: string;
+  required_skills?: string[];
 }
 
 const mockCandidates: Candidate[] = [
@@ -93,11 +94,14 @@ export default function RecruiterDashboard() {
     id: 'tmpl-1',
     title: 'Senior Software Engineer',
     department: 'Engineering',
-    content: 'We are seeking a Senior Software Engineer with experience in React, Node.js, and cloud-native architectures. Responsibilities include building scalable features, mentoring, and collaborating across teams.'
+    content: 'We are seeking a Senior Software Engineer with experience in React, Node.js, and cloud-native architectures. Responsibilities include building scalable features, mentoring, and collaborating across teams.',
+    required_skills: ['React', 'Node.js', 'TypeScript', 'AWS', 'Docker']
   }]);
   const [templateTitle, setTemplateTitle] = useState('');
   const [templateDepartment, setTemplateDepartment] = useState('');
   const [templateContent, setTemplateContent] = useState('');
+  const [templateSkills, setTemplateSkills] = useState<string[]>([]);
+  const [skillInput, setSkillInput] = useState('');
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
 
   // Fetch all interviews and candidates
@@ -163,6 +167,8 @@ export default function RecruiterDashboard() {
     setTemplateTitle('');
     setTemplateDepartment('');
     setTemplateContent('');
+    setTemplateSkills([]);
+    setSkillInput('');
     setEditingTemplateId(null);
   };
 
@@ -178,6 +184,7 @@ export default function RecruiterDashboard() {
         title: trimmedTitle,
         department: trimmedDept,
         content: trimmedContent,
+        required_skills: templateSkills.length > 0 ? templateSkills : undefined,
       } : t));
     } else {
       const newTemplate: JobTemplate = {
@@ -185,6 +192,7 @@ export default function RecruiterDashboard() {
         title: trimmedTitle,
         department: trimmedDept,
         content: trimmedContent,
+        required_skills: templateSkills.length > 0 ? templateSkills : undefined,
       };
       setJobTemplates(prev => [newTemplate, ...prev]);
     }
@@ -195,7 +203,27 @@ export default function RecruiterDashboard() {
     setTemplateTitle(template.title);
     setTemplateDepartment(template.department);
     setTemplateContent(template.content);
+    setTemplateSkills(template.required_skills || []);
     setEditingTemplateId(template.id);
+  };
+
+  const addSkill = () => {
+    const trimmedSkill = skillInput.trim();
+    if (trimmedSkill && !templateSkills.includes(trimmedSkill)) {
+      setTemplateSkills(prev => [...prev, trimmedSkill]);
+      setSkillInput('');
+    }
+  };
+
+  const removeSkill = (skillToRemove: string) => {
+    setTemplateSkills(prev => prev.filter(skill => skill !== skillToRemove));
+  };
+
+  const handleSkillKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addSkill();
+    }
   };
 
   const deleteTemplate = (id: string) => {
@@ -441,6 +469,45 @@ export default function RecruiterDashboard() {
                     />
                   </div>
 
+                  <div>
+                    <label className="block text-sm text-primary-100 mb-1">Required Skills</label>
+                    <div className="flex gap-2 mb-2">
+                      <input
+                        value={skillInput}
+                        onChange={(e) => setSkillInput(e.target.value)}
+                        onKeyDown={handleSkillKeyDown}
+                        placeholder="e.g., React, Python, AWS"
+                        className="flex-1 rounded-lg bg-transparent border border-primary-200/40 text-white px-3 py-2 focus:outline-none focus:border-white/60"
+                      />
+                      <button
+                        type="button"
+                        onClick={addSkill}
+                        className="px-4 py-2 bg-primary-200/40 hover:bg-primary-200/60 text-white rounded-lg transition-colors"
+                      >
+                        Add
+                      </button>
+                    </div>
+                    {templateSkills.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {templateSkills.map((skill, index) => (
+                          <span
+                            key={index}
+                            className="inline-flex items-center gap-1 px-3 py-1 bg-primary-200/20 border border-primary-200/40 text-white rounded-full text-sm"
+                          >
+                            {skill}
+                            <button
+                              type="button"
+                              onClick={() => removeSkill(skill)}
+                              className="ml-1 hover:text-red-300 transition-colors"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   <div className="flex gap-3">
                     <button
                       onClick={saveTemplate}
@@ -491,9 +558,24 @@ export default function RecruiterDashboard() {
                             </button>
                           </div>
                         </div>
-                        <p className="text-white/80 text-sm whitespace-pre-line">
+                        <p className="text-white/80 text-sm whitespace-pre-line mb-3">
                           {t.content}
                         </p>
+                        {t.required_skills && t.required_skills.length > 0 && (
+                          <div className="mt-3 pt-3 border-t border-primary-200/20">
+                            <p className="text-xs text-primary-100 mb-2">Required Skills:</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {t.required_skills.map((skill, idx) => (
+                                <span
+                                  key={idx}
+                                  className="px-2 py-0.5 bg-primary-200/10 border border-primary-200/30 text-white/90 rounded text-xs"
+                                >
+                                  {skill}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
