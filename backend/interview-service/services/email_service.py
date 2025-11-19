@@ -65,10 +65,10 @@ class EmailService:
             # Calculate expiration time
             expires_at = datetime.utcnow() + timedelta(hours=expires_in_hours)
             
-            # Redirect all emails to dummyintervuai@gmail.com for testing
-            test_email = "dummyintervuai@gmail.com"
+            # Use the actual candidate email
+            test_email = candidate_email
             
-            # Prepare email content with original recipient info
+            # Prepare email content
             subject = f"Interview Invitation for {candidate_name} - {company_name or 'SkillScreen'}"
             
             html_content = self._build_invitation_email_html(
@@ -77,7 +77,7 @@ class EmailService:
                 recruiter_name=recruiter_name,
                 company_name=company_name,
                 expires_at=expires_at,
-                original_email=candidate_email  # Include original email in content
+                original_email=None  # No longer redirecting
             )
             
             # Send email via Resend to test account
@@ -88,7 +88,7 @@ class EmailService:
                 "html": html_content,
             })
             
-            logger.info(f"Interview invitation sent to {test_email} (originally for {candidate_email}, session: {session_id})")
+            logger.info(f"Interview invitation sent to {test_email} (session: {session_id})")
             
             return {
                 "success": True,
