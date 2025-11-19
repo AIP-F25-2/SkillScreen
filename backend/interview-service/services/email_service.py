@@ -41,10 +41,9 @@ class EmailService:
     ) -> dict:
         """
         Send an interview invitation email to a candidate
-        NOTE: Currently redirects all emails to dummyintervuai@gmail.com for testing
         
         Args:
-            candidate_email: Candidate's email address (logged but redirected)
+            candidate_email: Candidate's email address
             candidate_name: Candidate's full name
             candidate_id: Unique candidate identifier
             session_id: Interview session ID
@@ -65,9 +64,6 @@ class EmailService:
             # Calculate expiration time
             expires_at = datetime.utcnow() + timedelta(hours=expires_in_hours)
             
-            # Use the actual candidate email
-            test_email = candidate_email
-            
             # Prepare email content
             subject = f"Interview Invitation for {candidate_name} - {company_name or 'SkillScreen'}"
             
@@ -80,15 +76,15 @@ class EmailService:
                 original_email=None  # No longer redirecting
             )
             
-            # Send email via Resend to test account
+            # Send email via Resend
             response = resend.Emails.send({
                 "from": self.from_email,
-                "to": test_email,
+                "to": candidate_email,
                 "subject": subject,
                 "html": html_content,
             })
             
-            logger.info(f"Interview invitation sent to {test_email} (session: {session_id})")
+            logger.info(f"Interview invitation sent to {candidate_email} (session: {session_id})")
             
             return {
                 "success": True,
@@ -177,10 +173,10 @@ class EmailService:
         original_email_section = ""
         if original_email:
             original_email_section = f"""
-                                    <div style="background-color: #f8f9fa; border-left: 4px solid #007bff; padding: 15px; margin: 20px 0; border-radius: 4px;">
-                                        <p style="margin: 0; color: #495057; font-size: 14px;">
-                                            <strong>📧 Original Recipient:</strong> {original_email}<br>
-                                            <strong>🔄 Redirected to:</strong> dummyintervuai@gmail.com (for testing)
+                                    <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); padding: 18px 20px; margin: 24px 0; border-radius: 12px;">
+                                        <p style="margin: 0; color: rgba(255, 255, 255, 0.76); font-size: 13px; line-height: 1.6;">
+                                            <span style="color: #ffffff; font-weight: 600;">Original Recipient:</span> {original_email}<br>
+                                            <span style="color: rgba(255, 255, 255, 0.6);">Redirected internally for testing</span>
                                         </p>
                                     </div>
             """
@@ -192,79 +188,77 @@ class EmailService:
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Interview Invitation</title>
+            <link rel="preconnect" href="https://fonts.googleapis.com">
+            <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
         </head>
-        <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f4f4f4;">
-            <table role="presentation" style="width: 100%; border-collapse: collapse;">
+        <body style="margin: 0; padding: 0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background-color: #050505; color: #ffffff;">
+            <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #050505;">
                 <tr>
-                    <td align="center" style="padding: 40px 0;">
-                        <table role="presentation" style="width: 600px; border-collapse: collapse; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <td align="center" style="padding: 48px 20px;">
+                        <table role="presentation" style="width: 100%; max-width: 600px; border-collapse: collapse; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 20px; overflow: hidden;">
                             <!-- Header -->
                             <tr>
-                                <td style="padding: 40px 40px 20px; text-align: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px 8px 0 0;">
-                                    <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: bold;">
+                                <td style="padding: 32px 32px 0; text-align: left;">
+                                   
+                                    <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 600; letter-spacing: -0.03em;">
                                         Interview Invitation
                                     </h1>
+
                                 </td>
                             </tr>
                             
                             <!-- Content -->
                             <tr>
-                                <td style="padding: 40px;">
-                                    <p style="margin: 0 0 20px; color: #333333; font-size: 16px; line-height: 1.6;">
-                                        Hello <strong>{candidate_name}</strong>,
+                                <td style="padding: 32px;">
+                                    <p style="margin: 0 0 24px; color: #ffffff; font-size: 17px; line-height: 1.6; font-weight: 400;">
+                                        Hello <strong style="font-weight: 600;">{candidate_name}</strong>,
                                     </p>
                                     
                                     {original_email_section}
                                     
-                                    <p style="margin: 0 0 20px; color: #333333; font-size: 16px; line-height: 1.6;">
-                                        {recruiter_text}<strong>{company_text}</strong> has invited you to complete an AI-powered interview.
+                                    <p style="margin: 0 0 24px; color: rgba(255, 255, 255, 0.82); font-size: 16px; line-height: 1.6; font-weight: 400;">
+                                        {recruiter_text}<strong style="font-weight: 600; color: #ffffff;">{company_text}</strong> has invited you to complete an AI-powered interview experience.
                                     </p>
                                     
-                                    <p style="margin: 0 0 30px; color: #666666; font-size: 14px; line-height: 1.6;">
-                                        This is a secure, one-time link that will guide you through the interview process. 
-                                        Please click the button below to begin:
-                                    </p>
-                                    
-                                    <!-- CTA Button -->
-                                    <table role="presentation" style="margin: 0 auto;">
-                                        <tr>
-                                            <td style="border-radius: 6px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-                                                <a href="{interview_link}" 
-                                                   style="display: inline-block; padding: 16px 40px; color: #ffffff; text-decoration: none; font-size: 16px; font-weight: bold;">
-                                                    Start Your Interview
-                                                </a>
-                                            </td>
-                                        </tr>
-                                    </table>
+                                    <div style="margin: 0 0 32px; padding: 24px; background: linear-gradient(135deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02)); border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 16px;">
+                                        <p style="margin: 0 0 16px; color: rgba(255, 255, 255, 0.7); font-size: 14px; line-height: 1.6;">
+                                            This secure link takes you directly to your personalized interview space. Please use a modern browser and ensure your camera and microphone are enabled.
+                                        </p>
+                                        <a href="{interview_link}" 
+                                           style="display: inline-block; padding: 14px 26px; background-color: #ffffff; color: #050505; text-decoration: none; font-size: 14px; font-weight: 600; border-radius: 999px; letter-spacing: 0.01em;">
+                                            Start Interview
+                                        </a>
+                                    </div>
                                     
                                     <!-- Important Info -->
-                                    <div style="margin: 30px 0; padding: 20px; background-color: #f8f9fa; border-left: 4px solid #667eea; border-radius: 4px;">
-                                        <h3 style="margin: 0 0 10px; color: #333333; font-size: 16px;">
-                                            Important Information:
+                                    <div style="margin: 32px 0; padding: 24px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px;">
+                                        <h3 style="margin: 0 0 16px; color: #ffffff; font-size: 14px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;">
+                                            Key Details
                                         </h3>
-                                        <ul style="margin: 0; padding-left: 20px; color: #666666; font-size: 14px; line-height: 1.8;">
-                                            <li>This link expires on <strong>{expires_at.strftime('%B %d, %Y at %I:%M %p UTC')}</strong></li>
-                                            <li>This is a one-time use link - please do not refresh the page during the interview</li>
-                                            <li>Ensure you have a working camera and microphone</li>
-                                            <li>Find a quiet, well-lit location for the interview</li>
-                                            <li>The interview typically takes 30-45 minutes</li>
+                                        <ul style="margin: 0; padding-left: 18px; color: rgba(255, 255, 255, 0.75); font-size: 14px; line-height: 1.8; font-weight: 400;">
+                                            <li style="margin-bottom: 10px;">Link expires <strong style="color: #ffffff; font-weight: 600;">{expires_at.strftime('%B %d, %Y at %I:%M %p UTC')}</strong></li>
+                                            <li style="margin-bottom: 10px;">One-time access—avoid refreshing or closing the browser mid-interview</li>
+                                            <li style="margin-bottom: 10px;">Use a stable connection with camera + microphone permissions</li>
+                                            <li style="margin-bottom: 10px;">Choose a quiet, well-lit space for best results</li>
+                                            <li>Estimated duration: 30–45 minutes</li>
                                         </ul>
                                     </div>
                                     
-                                    <p style="margin: 20px 0 0; color: #999999; font-size: 12px; line-height: 1.6;">
-                                        If you have any questions or issues accessing the interview, please contact your recruiter.
+                                    <p style="margin: 24px 0 0; color: rgba(255, 255, 255, 0.55); font-size: 12px; line-height: 1.6; font-weight: 400;">
+                                        Need help? Reply to your recruiter or reach us at support@skillscreen.io.
                                     </p>
                                 </td>
                             </tr>
                             
                             <!-- Footer -->
                             <tr>
-                                <td style="padding: 20px 40px; text-align: center; background-color: #f8f9fa; border-radius: 0 0 8px 8px;">
-                                    <p style="margin: 0; color: #999999; font-size: 12px;">
-                                        © 2025 SkillScreen. All rights reserved.
+                                <td style="padding: 24px 32px 32px; background: rgba(255, 255, 255, 0.02); border-top: 1px solid rgba(255, 255, 255, 0.08);">
+                                    <p style="margin: 0; color: rgba(255, 255, 255, 0.5); font-size: 12px; line-height: 1.6; font-weight: 400;">
+                                        © 2025 SkillScreen. Intelligent hiring infrastructure.
                                     </p>
-                                    <p style="margin: 10px 0 0; color: #999999; font-size: 12px;">
-                                        This is an automated email. Please do not reply.
+                                    <p style="margin: 6px 0 0; color: rgba(255, 255, 255, 0.4); font-size: 12px; line-height: 1.6; font-weight: 400;">
+                                        This inbox is unattended. Replies are not monitored.
                                     </p>
                                 </td>
                             </tr>
@@ -292,42 +286,53 @@ class EmailService:
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Interview Completed</title>
+            <link rel="preconnect" href="https://fonts.googleapis.com">
+            <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
         </head>
-        <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f4f4f4;">
-            <table role="presentation" style="width: 100%; border-collapse: collapse;">
+        <body style="margin: 0; padding: 0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background-color: #050505; color: #ffffff;">
+            <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #050505;">
                 <tr>
-                    <td align="center" style="padding: 40px 0;">
-                        <table role="presentation" style="width: 600px; border-collapse: collapse; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <td align="center" style="padding: 48px 20px;">
+                        <table role="presentation" style="width: 100%; max-width: 600px; border-collapse: collapse; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 20px; overflow: hidden;">
                             <!-- Header -->
                             <tr>
-                                <td style="padding: 40px 40px 20px; text-align: center; background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-radius: 8px 8px 0 0;">
-                                    <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: bold;">
-                                        ✓ Interview Completed
+                                <td style="padding: 32px 32px 0; text-align: left;">
+                                    <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.2em; color: rgba(255, 255, 255, 0.55); margin-bottom: 12px;">
+                                        SkillScreen
+                                    </div>
+                                    <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 600; letter-spacing: -0.03em;">
+                                        Interview Completed
                                     </h1>
+                                    <p style="margin: 8px 0 0; color: rgba(255, 255, 255, 0.65); font-size: 14px;">
+                                        Candidate results are ready
+                                    </p>
                                 </td>
                             </tr>
                             
                             <!-- Content -->
                             <tr>
-                                <td style="padding: 40px;">
-                                    <p style="margin: 0 0 20px; color: #333333; font-size: 16px; line-height: 1.6;">
-                                        Hello <strong>{recruiter_name}</strong>,
+                                <td style="padding: 32px;">
+                                    <p style="margin: 0 0 24px; color: #ffffff; font-size: 17px; line-height: 1.6; font-weight: 400;">
+                                        Hello <strong style="font-weight: 600;">{recruiter_name}</strong>,
                                     </p>
                                     
-                                    <p style="margin: 0 0 20px; color: #333333; font-size: 16px; line-height: 1.6;">
-                                        <strong>{candidate_name}</strong> has successfully completed their interview.
-                                    </p>
+                                    <div style="margin: 0 0 24px; padding: 20px 24px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px;">
+                                        <p style="margin: 0; color: rgba(255, 255, 255, 0.82); font-size: 15px; line-height: 1.7;">
+                                            <strong style="font-weight: 600; color: #ffffff;">{candidate_name}</strong> completed their interview. Transcripts, AI notes, and action items are ready for review.
+                                        </p>
+                                    </div>
                                     
-                                    <p style="margin: 0 0 30px; color: #666666; font-size: 14px; line-height: 1.6;">
-                                        The interview has been recorded and transcribed. Click below to view the complete summary and transcript:
+                                    <p style="margin: 0 0 32px; color: rgba(255, 255, 255, 0.7); font-size: 14px; line-height: 1.6; font-weight: 400;">
+                                        Open the summary dashboard to access insights, playback, and recommendations.
                                     </p>
                                     
                                     <!-- CTA Button -->
-                                    <table role="presentation" style="margin: 0 auto;">
+                                    <table role="presentation" style="margin: 0 0 32px;">
                                         <tr>
-                                            <td style="border-radius: 6px; background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                                            <td>
                                                 <a href="{summary_link}" 
-                                                   style="display: inline-block; padding: 16px 40px; color: #ffffff; text-decoration: none; font-size: 16px; font-weight: bold;">
+                                                   style="display: inline-block; padding: 14px 28px; background-color: #ffffff; color: #050505; text-decoration: none; font-size: 14px; font-weight: 600; border-radius: 999px; letter-spacing: 0.01em;">
                                                     View Interview Summary
                                                 </a>
                                             </td>
@@ -335,40 +340,40 @@ class EmailService:
                                     </table>
                                     
                                     <!-- Interview Details -->
-                                    <div style="margin: 30px 0; padding: 20px; background-color: #f8f9fa; border-radius: 4px;">
-                                        <h3 style="margin: 0 0 10px; color: #333333; font-size: 16px;">
-                                            Interview Details:
+                                    <div style="margin: 32px 0; padding: 24px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px;">
+                                        <h3 style="margin: 0 0 16px; color: #ffffff; font-size: 14px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;">
+                                            Interview Details
                                         </h3>
                                         <table style="width: 100%; border-collapse: collapse;">
                                             <tr>
-                                                <td style="padding: 8px 0; color: #666666; font-size: 14px;">Candidate:</td>
-                                                <td style="padding: 8px 0; color: #333333; font-size: 14px; font-weight: bold; text-align: right;">{candidate_name}</td>
+                                                <td style="padding: 10px 0; color: rgba(255, 255, 255, 0.65); font-size: 13px; font-weight: 400;">Candidate</td>
+                                                <td style="padding: 10px 0; color: #ffffff; font-size: 13px; font-weight: 600; text-align: right;">{candidate_name}</td>
                                             </tr>
                                             <tr>
-                                                <td style="padding: 8px 0; color: #666666; font-size: 14px;">Interview ID:</td>
-                                                <td style="padding: 8px 0; color: #333333; font-size: 14px; font-weight: bold; text-align: right;">{interview_id}</td>
+                                                <td style="padding: 10px 0; color: rgba(255, 255, 255, 0.65); font-size: 13px; font-weight: 400;">Interview ID</td>
+                                                <td style="padding: 10px 0; color: #ffffff; font-size: 13px; font-weight: 600; text-align: right;">{interview_id}</td>
                                             </tr>
                                             <tr>
-                                                <td style="padding: 8px 0; color: #666666; font-size: 14px;">Completed:</td>
-                                                <td style="padding: 8px 0; color: #333333; font-size: 14px; font-weight: bold; text-align: right;">{datetime.utcnow().strftime('%B %d, %Y at %I:%M %p UTC')}</td>
+                                                <td style="padding: 10px 0; color: rgba(255, 255, 255, 0.65); font-size: 13px; font-weight: 400;">Completed</td>
+                                                <td style="padding: 10px 0; color: #ffffff; font-size: 13px; font-weight: 600; text-align: right;">{datetime.utcnow().strftime('%B %d, %Y at %I:%M %p UTC')}</td>
                                             </tr>
                                         </table>
                                     </div>
                                     
-                                    <p style="margin: 20px 0 0; color: #999999; font-size: 12px; line-height: 1.6;">
-                                        The AI analysis and transcript are being generated and will be available shortly in the summary.
+                                    <p style="margin: 24px 0 0; color: rgba(255, 255, 255, 0.55); font-size: 12px; line-height: 1.6; font-weight: 400;">
+                                        The AI analysis is still processing. We'll notify you when additional insights are appended to the summary.
                                     </p>
                                 </td>
                             </tr>
                             
                             <!-- Footer -->
                             <tr>
-                                <td style="padding: 20px 40px; text-align: center; background-color: #f8f9fa; border-radius: 0 0 8px 8px;">
-                                    <p style="margin: 0; color: #999999; font-size: 12px;">
-                                        © 2025 SkillScreen. All rights reserved.
+                                <td style="padding: 24px 32px 32px; background: rgba(255, 255, 255, 0.02); border-top: 1px solid rgba(255, 255, 255, 0.08);">
+                                    <p style="margin: 0; color: rgba(255, 255, 255, 0.5); font-size: 12px; line-height: 1.6; font-weight: 400;">
+                                        © 2025 SkillScreen. Intelligent hiring infrastructure.
                                     </p>
-                                    <p style="margin: 10px 0 0; color: #999999; font-size: 12px;">
-                                        This is an automated notification. Please do not reply.
+                                    <p style="margin: 6px 0 0; color: rgba(255, 255, 255, 0.4); font-size: 12px; line-height: 1.6; font-weight: 400;">
+                                        This inbox is unattended. Replies are not monitored.
                                     </p>
                                 </td>
                             </tr>
