@@ -174,15 +174,35 @@ class MediaRepository:
         )
 
 
-    def create_recording_video(self, interview_id: str, session_id: str, expected_total: int | None = None):
+    def create_recording_video(
+        self,
+        interview_id: str,
+        session_id: str,
+        expected_total: int | None = None,
+        file_type: str = "video",
+    ):
         """Creates a new upload entry in media_files table."""
         result = self.uow.session.execute(
             text("""
-                INSERT INTO media_files (interview_id, session_id, expected_total, received_indices, status, created_at, updated_at)
-                VALUES (:iid, CAST(:sid AS uuid), :total, '{}', 'uploading', NOW(), NOW())
+                INSERT INTO media_files (
+                    interview_id,
+                    session_id,
+                    file_type,
+                    expected_total,
+                    received_indices,
+                    status,
+                    created_at,
+                    updated_at
+                )
+                VALUES (:iid, CAST(:sid AS uuid), :ftype, :total, '{}', 'uploading', NOW(), NOW())
                 RETURNING id
             """),
-            {"iid": interview_id, "sid": session_id, "total": expected_total}
+            {
+                "iid": interview_id,
+                "sid": session_id,
+                "ftype": file_type,
+                "total": expected_total,
+            }
         )
         return result.scalar_one()
 
