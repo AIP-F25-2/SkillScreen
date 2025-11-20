@@ -337,3 +337,60 @@ def chunks_status():
             "missing": missing,
             "status": status.get("status", "uploading")
         }), 200
+    
+# ---------------------------------------------------------------------------
+#  /audio/upload → one-shot audio upload per question
+# ---------------------------------------------------------------------------
+@upload_bp.route("/audio/upload", methods=["POST"])
+def upload_audio():
+    file = request.files.get("file")
+    interview_id = request.form.get("interview_id")
+    session_id = request.form.get("session_id")
+    question_id = request.form.get("question_id")
+
+    if not file:
+        return jsonify({"error": "Missing file"}), 400
+    if not interview_id or not session_id:
+        return jsonify({"error": "Missing interview_id or session_id"}), 400
+    if not question_id:
+        return jsonify({"error": "Missing question_id"}), 400
+
+    try:
+        session_id = require_uuid_str(str(session_id), "session_id")
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    ext = os.path.splitext(file.filename or "audio.webm")[1] or ".webm"
+    blob_name = f"{question_id}_{uuid.uuid4().hex}{ext}"
+
+    try:
+        # Upload to storage (Azure or local)
+        storage_uri = storage_service.upload_full_file(
+            interview_id=interview_id,
+            blob_name=blob_name,
+            data=file.read()
+        )
+
+        # Save DB record
+        with UnitOfWork() as uow:
+            repo = MediaRepository(uow)
+            repo.create_audio_record(
+                interview_id=interview_id,
+                session_id=session_id,
+                question_id=question_id,
+                blob_name=blob_name,
+                storage_uri=storage_uri,
+                mime_type=file.mimetype,
+                file_size=len(file.read())
+            )
+            uow.session.commit()
+
+        return jsonify({
+            "status": "audio recorded",
+            "storage_uri": storage_uri,
+            "blob_name": blob_name
+        }), 200
+
+    except Exception as e:
+        current_app.logger.exception("audio upload failed")
+        return jsonify({"error": str(e)}), 500

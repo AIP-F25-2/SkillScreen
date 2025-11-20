@@ -100,3 +100,19 @@ class LocalStorageService:
         dest = os.path.join(LocalStorageService.interview_folder(interview_id), dest_filename)
         shutil.copy2(local_path, dest)
         return dest
+    
+    # For saving audio
+    @staticmethod
+    def save_file(folder: str, blob_name: str, data: bytes) -> str:
+        base = LocalStorageService.base_folder()
+
+        # folder looks like audio/<interview_id>
+        full_folder = os.path.join(base, folder)
+        os.makedirs(full_folder, exist_ok=True)
+
+        dest = os.path.join(full_folder, blob_name)
+        with open(dest, "wb") as f:
+            f.write(data)
+
+        return dest
+

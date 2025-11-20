@@ -139,3 +139,20 @@ class AzureStorageService:
         cc = _container_client()
         blobs = cc.list_blobs(name_starts_with="videos/")
         return [b.name for b in blobs]
+    
+
+    # ------------------------------------------------------------------
+    # Generic single-blob upload for audio
+    # ------------------------------------------------------------------
+    @staticmethod
+    def upload_blob(folder: str, blob_name: str, data: bytes) -> str:
+        cc = _container_client()
+        full_path = f"{folder}/{blob_name}"
+
+        bc = cc.get_blob_client(full_path)
+        bc.upload_blob(
+            data,
+            overwrite=True,
+            content_settings=ContentSettings(content_type="audio/webm")
+        )
+        return bc.url

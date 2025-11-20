@@ -101,3 +101,23 @@ class StorageService:
         if _use_azure():
             return _Cloud.upload_from_path(interview_id, local_path, dest_filename, content_type)
         return LocalStorageService.upload_from_path(interview_id, local_path, dest_filename, content_type)
+
+
+    # -------------------------------------------------------------------
+    # 🔄 Audio upload (non-chunked)
+    # -------------------------------------------------------------------
+    @staticmethod
+    def upload_full_file(interview_id: str, blob_name: str, data: bytes) -> str:
+        """
+        Upload a full single audio file.
+        Stored under audio/<interview_id>/<blob_name>.
+        Returns the storage URI.
+        """
+        folder = f"audio/{interview_id}"
+
+        if _use_azure():
+            # Reuse Azure's upload_blob method (we will add it below)
+            return _Cloud.upload_blob(folder, blob_name, data)
+
+        # Local fallback
+        return LocalStorageService.save_file(folder, blob_name, data)
