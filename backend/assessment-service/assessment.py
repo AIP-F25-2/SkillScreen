@@ -59,7 +59,7 @@ app = FastAPI(
     LLM-based recommendations.
     
     ## Features
-    - **Intelligent Scheduled Checks**: Runs every 10 minutes to detect completed interviews
+    - **Intelligent Scheduled Checks**: Runs every night at 2am to detect completed interviews
     - **Multi-Service Score Aggregation**: Combines audio, video, text, and coding analysis
     - **LLM-Based Weight Determination**: Uses Groq API to determine optimal scoring weights
     - **LLM-Based Recommendations**: Generates hire/no-hire recommendations with reasoning

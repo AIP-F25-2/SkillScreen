@@ -47,7 +47,7 @@ class AssessmentResultResponse(BaseModel):
     recommendation: str
     summary: str
     reviewer_notes: Optional[str]
-    evidence_clips: dict  # Changed from list to dict
+    evidence_clips: dict
     created_at: str
 
 
@@ -149,10 +149,14 @@ async def get_assessment_status(interview_id: str):
         raise HTTPException(status_code=500, detail=f"Error checking status: {str(e)}")
 
 
-@router.get("/results/{interview_id}", response_model=AssessmentResultResponse)
-async def get_assessment_results(interview_id: str):
+@router.get("/interview/{interview_id}", response_model=AssessmentResultResponse)
+async def get_assessment_by_interview(interview_id: str):
     """
-    Get final assessment results for an interview
+    Get assessment results for a specific interview - generates on-demand if not exists
+    
+    **Use Case:** Get assessment for any interview
+    - If assessment exists: Returns immediately from database
+    - If not exists: Generates assessment and saves to database
     
     - **interview_id**: UUID of the interview
     
@@ -162,75 +166,67 @@ async def get_assessment_results(interview_id: str):
         with UnitOfWork() as uow:
             repo = AssessmentRepository(uow)
             
+            # Check if assessment already exists
             assessment = repo.get_assessment(interview_id)
             
-            if not assessment:
-                raise HTTPException(
-                    status_code=404, 
-                    detail="Assessment not found. Use /status endpoint to check progress."
+            if assessment:
+                # Return existing assessment
+                return AssessmentResultResponse(
+                    interview_id=str(assessment['interview_id']),
+                    assessment_id=str(assessment['id']),
+                    overall_score=float(assessment['overall_score']),
+                    soft_skills_score=float(assessment['soft_skills_score']),
+                    communication_score=float(assessment['communication_score']),
+                    technical_score=float(assessment['technical_score']) if assessment['technical_score'] else None,
+                    proctoring_risk_score=float(assessment['proctoring_risk_score']),
+                    recommendation=assessment['recommendation'],
+                    summary=assessment['summary'],
+                    reviewer_notes=assessment['reviewer_notes'],
+                    evidence_clips=assessment['evidence_clips'] or {},
+                    created_at=assessment['created_at'].isoformat()
                 )
-            
-            return AssessmentResultResponse(
-                interview_id=str(assessment['interview_id']),
-                assessment_id=str(assessment['id']),
-                overall_score=float(assessment['overall_score']),
-                soft_skills_score=float(assessment['soft_skills_score']),
-                communication_score=float(assessment['communication_score']),
-                technical_score=float(assessment['technical_score']) if assessment['technical_score'] else None,
-                proctoring_risk_score=float(assessment['proctoring_risk_score']),
-                recommendation=assessment['recommendation'],
-                summary=assessment['summary'],
-                reviewer_notes=assessment['reviewer_notes'],
-                evidence_clips=assessment['evidence_clips'] or [],
-                created_at=assessment['created_at'].isoformat()
+        
+        # Assessment doesn't exist - generate on-demand
+        result = await assessment_service.generate_assessment(interview_id)
+        
+        if result['status'] == 'success':
+            # Fetch the newly created assessment
+            with UnitOfWork() as uow:
+                repo = AssessmentRepository(uow)
+                assessment = repo.get_assessment(interview_id)
+                
+                return AssessmentResultResponse(
+                    interview_id=str(assessment['interview_id']),
+                    assessment_id=str(assessment['id']),
+                    overall_score=float(assessment['overall_score']),
+                    soft_skills_score=float(assessment['soft_skills_score']),
+                    communication_score=float(assessment['communication_score']),
+                    technical_score=float(assessment['technical_score']) if assessment['technical_score'] else None,
+                    proctoring_risk_score=float(assessment['proctoring_risk_score']),
+                    recommendation=assessment['recommendation'],
+                    summary=assessment['summary'],
+                    reviewer_notes=assessment['reviewer_notes'],
+                    evidence_clips=assessment['evidence_clips'] or {},
+                    created_at=assessment['created_at'].isoformat()
+                )
+        elif result['status'] == 'incomplete':
+            raise HTTPException(
+                status_code=202,  # Accepted but not ready
+                detail="Interview is still being processed by AI services. Please try again in a few minutes."
+            )
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail=result.get('message', 'Failed to generate assessment')
             )
     
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving assessment: {str(e)}")
-
-
-@router.post("/regenerate/{interview_id}")
-async def regenerate_assessment(interview_id: str, custom_weights: Optional[Dict[str, float]] = Body(None)):
-    """
-    Regenerate assessment with optional custom weights
-    
-    - **interview_id**: UUID of the interview
-    - **custom_weights**: Optional custom scoring weights
-    
-    Deletes existing assessment and generates a new one
-    """
-    try:
-        with UnitOfWork() as uow:
-            repo = AssessmentRepository(uow)
-            
-            # Delete existing assessment if it exists
-            if repo.assessment_exists(interview_id):
-                # Note: We should add a delete method to repository
-                # For now, we'll just update it
-                print(f"⚠️ Assessment already exists for {interview_id}, will update")
-        
-        # Generate new assessment
-        result = await assessment_service.generate_assessment(interview_id, custom_weights)
-        
-        if result['status'] == 'success':
-            return {
-                "status": "success",
-                "message": "Assessment regenerated successfully",
-                "interview_id": interview_id,
-                "assessment_id": result['assessment_id'],
-                "overall_score": result['overall_score'],
-                "recommendation": result['recommendation'],
-                "custom_weights_used": custom_weights is not None
-            }
-        else:
-            raise HTTPException(status_code=400, detail=result.get('message', 'Failed to regenerate'))
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error regenerating assessment: {str(e)}")
+        import traceback
+        from config.logger import logger
+        logger.error("get_assessment_by_interview_error", interview_id=interview_id, error=str(e), traceback=traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
 @router.get("/scores/{interview_id}", response_model=ScoreBreakdownResponse)
@@ -260,6 +256,15 @@ async def get_detailed_scores(interview_id: str):
             text_analyses = [a for a in all_analyses if a['service_name'] == 'text-service']
             coding_analyses = [a for a in all_analyses if a['service_name'] == 'coding-service']
             
+            # Extract weights from evidence_clips
+            evidence_clips = assessment.get('evidence_clips', {})
+            weights_used = evidence_clips.get('scoring_weights', {
+                "audio": 0.20,
+                "video": 0.20,
+                "text": 0.20,
+                "coding": 0.40 if coding_analyses else 0
+            })
+            
             # Build response
             return ScoreBreakdownResponse(
                 interview_id=str(assessment['interview_id']),
@@ -276,12 +281,7 @@ async def get_detailed_scores(interview_id: str):
                     "text": {"count": len(text_analyses), "service": "text-ai-service"},
                     "coding": {"count": len(coding_analyses), "service": "coding-service"}
                 },
-                weights_used={
-                    "audio": 0.20,
-                    "video": 0.20,
-                    "text": 0.20,
-                    "coding": 0.40 if coding_analyses else 0
-                }
+                weights_used=weights_used
             )
     
     except HTTPException:
@@ -326,7 +326,7 @@ async def get_or_generate_assessment_for_candidate(candidate_id: str):
                     detail="No completed interview found for this candidate"
                 )
             
-            interview_id = str(result.id)  # Use 'id' column, not 'interview_id'
+            interview_id = str(result.id)
             
             # Check if assessment already exists
             assessment = repo.get_assessment(interview_id)
@@ -344,7 +344,7 @@ async def get_or_generate_assessment_for_candidate(candidate_id: str):
                     recommendation=assessment['recommendation'],
                     summary=assessment['summary'],
                     reviewer_notes=assessment['reviewer_notes'],
-                    evidence_clips=assessment['evidence_clips'] or [],
+                    evidence_clips=assessment['evidence_clips'] or {},
                     created_at=assessment['created_at'].isoformat()
                 )
         
@@ -368,7 +368,7 @@ async def get_or_generate_assessment_for_candidate(candidate_id: str):
                     recommendation=assessment['recommendation'],
                     summary=assessment['summary'],
                     reviewer_notes=assessment['reviewer_notes'],
-                    evidence_clips=assessment['evidence_clips'] or [],
+                    evidence_clips=assessment['evidence_clips'] or {},
                     created_at=assessment['created_at'].isoformat()
                 )
         elif result['status'] == 'incomplete':

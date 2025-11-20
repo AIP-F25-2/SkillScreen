@@ -194,9 +194,8 @@ You are an expert interview assessor. Based on the analysis results below, provi
 
 **Decision Criteria:**
 - Overall Score >= 80: Strong Hire candidate
-- Overall Score 70-79: Hire (with some areas for growth)
-- Overall Score 60-69: Maybe (borderline, needs discussion)
-- Overall Score < 60: No Hire
+- Overall Score 70-79: Maybe (needs discussion, borderline candidate)
+- Overall Score < 70: No Hire
 - Proctoring Risk > 50: Automatic "Needs Review" regardless of scores
 - Any critical red flags: "Needs Review"
 
@@ -316,19 +315,15 @@ Be objective and evidence-based. Focus on facts from the data.
                 "reasoning": "High proctoring risk score detected. Manual review recommended before making a decision."
             }
         
-        # Score-based recommendation
+        # Score-based recommendation (FIXED THRESHOLDS)
         if overall_score >= 80:
             recommendation = "Hire"
             summary = f"Strong candidate with overall score of {overall_score:.1f}/100. Demonstrated solid performance across all areas."
             reasoning = "High overall score indicates strong fit for the role."
         elif overall_score >= 70:
-            recommendation = "Hire"
-            summary = f"Good candidate with overall score of {overall_score:.1f}/100. Shows competency with some areas for growth."
-            reasoning = "Above-average performance suggests good potential for the role."
-        elif overall_score >= 60:
             recommendation = "Maybe"
             summary = f"Borderline candidate with overall score of {overall_score:.1f}/100. Mixed performance across assessments."
-            reasoning = "Score in borderline range. Recommend team discussion before decision."
+            reasoning = "Score in borderline range (60-79). Recommend team discussion before decision."
         else:
             recommendation = "No Hire"
             summary = f"Candidate scored {overall_score:.1f}/100 overall. Performance did not meet minimum requirements."
