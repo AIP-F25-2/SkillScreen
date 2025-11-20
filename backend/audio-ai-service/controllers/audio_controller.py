@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from config import logger, settings
-from schemas.audio_schemas import AudioProcessRequest, AudioProcessResponse, ProcessInterviewAudioRequest, ProcessInterviewAudioResponse
+from schemas.audio_schemas import AudioProcessRequest, AudioProcessResponse, ProcessInterviewAudioRequest, ProcessInterviewAudioResponse, CandidateAudioAnalysisResponse, CandidateTranscriptsResponse
 from services.audio_processing_service import AudioProcessingService
 
 from pydantic import BaseModel, Field
@@ -303,5 +303,258 @@ async def transcribe_media(request: AudioProcessRequest):
         downloader.cleanup()
         if media_type != 'audio':
             extractor.cleanup()
+
+
+@router.get(
+    "/candidate-transcripts/{candidate_id}",
+    response_model=CandidateTranscriptsResponse,
+    summary="Get candidate transcripts",
+    description="Get all transcripts with word-level timestamps and transcription confidence"
+)
+async def get_candidate_transcripts(candidate_id: str):
+    """
+    Get all transcripts for a candidate
+    
+    Returns transcription details with:
+    - Full text transcripts
+    - Word-level timestamps with Whisper probabilities
+    - Transcription confidence (Whisper accuracy)
+    """
+    try:
+        logger.info(f"📝 Fetching transcripts for candidate: {candidate_id}")
+        
+        uow = UnitOfWork()
+        repo = AudioRepository(uow)
+        
+        # Get candidate info
+        candidate_name = repo.get_candidate_name(candidate_id)
+        
+        if not candidate_name:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Candidate {candidate_id} not found in the system"
+            )
+        
+        # Check if candidate has any interviews
+        has_interviews = repo.check_candidate_has_interviews(candidate_id)
+        
+        if not has_interviews:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No interviews scheduled or completed for candidate '{candidate_name}'. The candidate has not taken any interviews yet."
+            )
+        
+        # Get transcripts
+        transcripts = repo.get_candidate_transcripts(candidate_id)
+        
+        if not transcripts:
+            # Interviews exist but no transcripts = processing not done
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Transcripts not available for candidate '{candidate_name}'. The interview recordings are still being processed or analysis has not started yet. Please check back in a few minutes."
+            )
+        
+        # Format transcripts
+        formatted_transcripts = [_format_transcript_detail(t) for t in transcripts]
+        
+        # Calculate summary
+        summary = _calculate_transcript_summary(formatted_transcripts)
+        
+        logger.info(f"✅ Found {len(transcripts)} transcripts for {candidate_name}")
+        
+        return CandidateTranscriptsResponse(
+            candidate_id=candidate_id,
+            candidate_name=candidate_name,
+            total_sessions=len({t['session_id'] for t in transcripts}),
+            transcripts=formatted_transcripts,
+            summary=summary
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Failed to get transcripts: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve transcripts: {str(e)}"
+        )
+
+
+@router.get(
+    "/candidate-audio-analysis/{candidate_id}",
+    response_model=CandidateAudioAnalysisResponse,
+    summary="Get candidate audio analysis",
+    description="Get candidate speaking performance: confidence, fillers, vocal quality, cheating detection"
+)
+async def get_candidate_audio_analysis(candidate_id: str):
+    """
+    Get audio performance analysis for a candidate
+    
+    Returns candidate speaking metrics:
+    - Candidate confidence score (0-10)
+    - Communication quality
+    - Filler word analysis
+    - Vocal analytics
+    - Cheating detection
+    """
+    try:
+        logger.info(f"🎤 Fetching audio analysis for candidate: {candidate_id}")
+        
+        uow = UnitOfWork()
+        repo = AudioRepository(uow)
+        
+        # Get candidate info
+        candidate_name = repo.get_candidate_name(candidate_id)
+        
+        if not candidate_name:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Candidate {candidate_id} not found in the system"
+            )
+        
+        # Check if candidate has any interviews
+        has_interviews = repo.check_candidate_has_interviews(candidate_id)
+        
+        if not has_interviews:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No interviews scheduled or completed for candidate '{candidate_name}'. The candidate has not taken any interviews yet."
+            )
+        
+        # Get analyses
+        analyses = repo.get_candidate_audio_analyses(candidate_id)
+        
+        if not analyses:
+            # Interviews exist but no analyses = processing not done
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Audio analysis not available for candidate '{candidate_name}'. The interview recordings are still being processed or analysis has not completed yet. Please check back in a few minutes."
+            )
+        
+        # Format analyses
+        formatted_analyses = [_format_audio_analysis_detail(a) for a in analyses]
+        
+        # Calculate summary
+        summary = _calculate_audio_analysis_summary(formatted_analyses)
+        
+        logger.info(f"✅ Found {len(analyses)} audio analyses for {candidate_name}")
+        
+        return CandidateAudioAnalysisResponse(
+            candidate_id=candidate_id,
+            candidate_name=candidate_name,
+            total_sessions=len({a['session_id'] for a in analyses}),
+            analyses=formatted_analyses,
+            summary=summary
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Failed to get audio analysis: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve audio analysis: {str(e)}"
+        )
+
+
+# Helper functions
+def _format_transcript_detail(transcript: dict) -> dict:
+    """Format transcript with full details"""
+    text = transcript.get('text', '')
+    word_count = len(text.split()) if text else 0
+    start = transcript.get('start_time', 0)
+    end = transcript.get('end_time', 0)
+    
+    return {
+        "interview_id": str(transcript['interview_id']),
+        "session_id": str(transcript['session_id']),
+        "question_number": transcript.get('question_number'),
+        "speaker": transcript.get('speaker', 'candidate'),
+        "text": text,
+        "transcription_confidence": transcript.get('confidence_score', 0.0),
+        "start_time": start,
+        "end_time": end,
+        "duration_seconds": round(end - start, 2),
+        "word_count": word_count,
+        "word_timestamps": transcript.get('word_timestamps', []),
+        "created_at": transcript.get('created_at')
+    }
+
+
+def _calculate_transcript_summary(transcripts: list) -> dict:
+    """Calculate transcript summary statistics"""
+    total_words = sum(t['word_count'] for t in transcripts)
+    total_time = sum(t['duration_seconds'] for t in transcripts)
+    
+    confidences = [t['transcription_confidence'] for t in transcripts if t['transcription_confidence']]
+    avg_confidence = round(sum(confidences) / len(confidences), 3) if confidences else 0
+    
+    avg_wpm = round((total_words / total_time) * 60, 1) if total_time > 0 else 0
+    
+    return {
+        "total_words": total_words,
+        "total_speaking_time_seconds": round(total_time, 1),
+        "avg_transcription_confidence": avg_confidence,
+        "avg_words_per_minute": avg_wpm
+    }
+
+
+def _format_audio_analysis_detail(analysis: dict) -> dict:
+    """Format audio analysis with performance metrics"""
+    raw_results = analysis.get('raw_results', {})
+    
+    return {
+        "interview_id": str(analysis['interview_id']),
+        "session_id": str(analysis['session_id']),
+        "question_number": analysis.get('question_number'),
+        "candidate_confidence_score": analysis.get('confidence_score'),
+        "communication_score": raw_results.get('communication_score', {}).get('communication_score'),
+        "filler_analysis": raw_results.get('filler_analysis', {}),
+        "vocal_analytics": raw_results.get('vocal_analytics', {}),
+        "speaker_analysis": raw_results.get('speaker_analysis', {}),
+        "reading_detection": raw_results.get('reading_detection'),
+        "processing_time_seconds": analysis.get('processing_time', 0),
+        "created_at": analysis.get('created_at')
+    }
+
+
+def _calculate_audio_analysis_summary(analyses: list) -> dict:
+    """Calculate audio performance summary"""
+    
+    # Candidate confidence (0-10 scale)
+    confidence_scores = [a['candidate_confidence_score'] for a in analyses if a['candidate_confidence_score']]
+    avg_confidence = round(sum(confidence_scores) / len(confidence_scores), 2) if confidence_scores else 0
+    
+    # Communication scores
+    comm_scores = [a['communication_score'] for a in analyses if a['communication_score']]
+    avg_comm = round(sum(comm_scores) / len(comm_scores), 2) if comm_scores else 0
+    
+    # Fillers
+    total_fillers = sum(a['filler_analysis'].get('total_fillers', 0) for a in analyses)
+    filler_rates = [a['filler_analysis'].get('filler_rate_per_minute', 0) for a in analyses]
+    avg_filler_rate = round(sum(filler_rates) / len(filler_rates), 2) if filler_rates else 0
+    
+    # Speaking rate
+    speaking_rates = [
+        a['vocal_analytics'].get('speaking_rate', {}).get('words_per_minute', 0) 
+        for a in analyses 
+        if a.get('vocal_analytics')
+    ]
+    avg_speaking_rate = round(sum(speaking_rates) / len(speaking_rates), 1) if speaking_rates else 0
+    
+    # Cheating incidents
+    cheating_incidents = sum(
+        1 for a in analyses 
+        if a['speaker_analysis'].get('cheating_flag', False)
+    )
+    
+    return {
+        "avg_candidate_confidence": avg_confidence,
+        "avg_communication_score": avg_comm,
+        "total_fillers": total_fillers,
+        "avg_filler_rate_per_minute": avg_filler_rate,
+        "cheating_incidents": cheating_incidents,
+        "avg_speaking_rate_wpm": avg_speaking_rate
+    }            
 
           
