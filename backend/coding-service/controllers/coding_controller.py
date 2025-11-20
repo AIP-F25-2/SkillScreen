@@ -59,3 +59,26 @@ async def run_code(body: RunCodeRequest):
     except Exception as e:
         log.error("code_run_error", exc_info=e)
         raise HTTPException(status_code=500, detail="Internal error running code")
+    
+@router.post("/coding/evaluate")
+async def evaluate_code(body: EvaluateCodeRequest):
+    try:
+        result = await executor_service.evaluate_code(
+            language_id=body.languageId,
+            source_code=body.sourceCode,
+            test_cases=[tc.model_dump() for tc in body.testCases],
+        )
+        log.info(
+            "code_evaluate",
+            extra={
+                "score": result["score"],
+                "passedWeight": result["passedWeight"],
+                "totalWeight": result["totalWeight"],
+            },
+        )
+        return create_response(result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error("code_evaluate_error", exc_info=e)
+        raise HTTPException(status_code=500, detail="Internal error evaluating code")
