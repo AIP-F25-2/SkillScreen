@@ -1,4 +1,4 @@
-from datetim import datetime
+from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
@@ -44,7 +44,7 @@ def health():
         "timestamp": datetime.utcnow().isoformat()
     })
 
-@router.post("/coding/run")
+@router.post("/run")
 async def run_code(body: RunCodeRequest):
     try:
         result = await executor_service.run_code(
@@ -60,7 +60,7 @@ async def run_code(body: RunCodeRequest):
         log.error("code_run_error", exc_info=e)
         raise HTTPException(status_code=500, detail="Internal error running code")
     
-@router.post("/coding/evaluate")
+@router.post("/evaluate")
 async def evaluate_code(body: EvaluateCodeRequest):
     try:
         result = await executor_service.evaluate_code(

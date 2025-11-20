@@ -30,7 +30,7 @@ RBAC_RULES = {
     "/user": ["admin"],  # only admins can access user service
     "/auth": ["admin", "user"],  # both admin and user can access auth service
     "/assessment": ["admin", "user"],  # both admin and user can access assessment
-    "/coding": ["user"],  # only normal users can access coding
+    "/coding": ["admin","user"],  # only normal users can access coding
     "/text-service": ["admin", "user"],  # both admin and user can access text service
     "/audio-ai": ["admin", "user"],  # both admin and user can access audio AI
     "/video-ai": ["admin", "user"],  # both admin and user can access video AI
