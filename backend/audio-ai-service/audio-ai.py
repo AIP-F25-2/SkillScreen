@@ -9,6 +9,7 @@ from controllers.test_controller import router as test_router
 from middleware.error_handler import validation_exception_handler, general_exception_handler
 from controllers.tts_controller import router as tts_router
 from controllers.streaming_controller import router as streaming_router
+from controllers.metrics_controller import router as metrics_router
 import warnings
 
 
@@ -63,6 +64,7 @@ app.include_router(audio_router, prefix="/api/audio", tags=["Audio Processing"])
 app.include_router(test_router, prefix="/api/test", tags=["Testing & Debug"])
 app.include_router(tts_router, prefix="/api/tts", tags=["Text-to-Speech"])
 app.include_router(streaming_router, prefix="/api/stream", tags=["Streaming"])
+app.include_router(metrics_router, tags=["Metrics"])
 
 # Root endpoint
 @app.get("/")
