@@ -38,7 +38,7 @@ class AntiCheatingService:
         db,
         response_time_seconds: Optional[float] = None
     ) -> Dict:
-        """Comprehensive anti-cheating analysis"""
+        """Comprehensive anti-cheating analysis - supports both database and in-memory storage"""
         try:
             analysis_results = {
                 'is_duplicate': False,
@@ -53,14 +53,31 @@ class AntiCheatingService:
                 'termination_message': None
             }
             
-            # Get interview and previous responses
-            interview = db.query(Interview).filter(Interview.id == interview_id).first()
-            if not interview:
-                return analysis_results
+            # Support both database and in-memory storage
+            previous_responses = []
             
-            previous_responses = db.query(Response).filter(
-                Response.interview_id == interview_id
-            ).order_by(Response.created_at).all()
+            if db:
+                # Database path
+                interview = db.query(Interview).filter(Interview.id == interview_id).first()
+                if interview:
+                    previous_responses = db.query(Response).filter(
+                        Response.interview_id == interview_id
+                    ).order_by(Response.created_at).all()
+            else:
+                # In-memory storage path
+                try:
+                    from in_memory_storage import get_responses
+                    responses_data = get_responses(interview_id)
+                    # Convert to Response-like objects
+                    class MockResponse:
+                        def __init__(self, data):
+                            self.response_text = data.get("response_text", "")
+                            self.created_at = data.get("created_at")
+                    
+                    previous_responses = [MockResponse(r) for r in responses_data]
+                except Exception as e:
+                    log_warning(f"Could not get previous responses from in-memory storage: {e}")
+                    previous_responses = []
             
             # 1. Duplicate response detection
             duplicate_analysis = await self._detect_duplicate_responses(
@@ -68,25 +85,31 @@ class AntiCheatingService:
             )
             analysis_results.update(duplicate_analysis)
             
-            # 2. Timing analysis
-            timing_analysis = await self._analyze_response_timing(
-                response_time_seconds, interview_id, interview
-            )
-            analysis_results.update(timing_analysis)
+            # 2. Timing analysis (skip if no interview object for in-memory)
+            if db:
+                interview = db.query(Interview).filter(Interview.id == interview_id).first()
+                if interview:
+                    timing_analysis = await self._analyze_response_timing(
+                        response_time_seconds, interview_id, interview
+                    )
+                    analysis_results.update(timing_analysis)
             
-            # 3. Content analysis
-            content_analysis = await self._analyze_response_content(
-                response_text, interview, previous_responses
-            )
-            analysis_results.update(content_analysis)
+            # 3. Content analysis (skip if no interview object for in-memory)
+            if db:
+                interview = db.query(Interview).filter(Interview.id == interview_id).first()
+                if interview:
+                    content_analysis = await self._analyze_response_content(
+                        response_text, interview, previous_responses
+                    )
+                    analysis_results.update(content_analysis)
             
-            # 4. Behavioral pattern analysis
+            # 4. Behavioral pattern analysis (works with in-memory)
             behavior_analysis = await self._analyze_behavioral_patterns(
                 response_text, interview_id, previous_responses
             )
             analysis_results.update(behavior_analysis)
             
-            # 5. AI-generated content analysis
+            # 5. AI-generated content analysis (works with in-memory)
             ai_analysis = await self._analyze_ai_generated_content(
                 response_text, interview_id, previous_responses
             )
@@ -98,10 +121,11 @@ class AntiCheatingService:
             )
             analysis_results.update(termination_decision)
             
-            # 7. Log audit trail
-            await self._log_anti_cheating_analysis(
-                interview_id, response_text, analysis_results, db
-            )
+            # 7. Log audit trail (skip if no db)
+            if db:
+                await self._log_anti_cheating_analysis(
+                    interview_id, response_text, analysis_results, db
+                )
             
             return analysis_results
             
@@ -120,9 +144,9 @@ class AntiCheatingService:
     async def _detect_duplicate_responses(
         self,
         response_text: str,
-        previous_responses: List[Response]
+        previous_responses: List
     ) -> Dict:
-        """Detect duplicate or near-duplicate responses"""
+        """Detect duplicate or near-duplicate responses - supports both database and in-memory"""
         try:
             if not previous_responses:
                 return {
@@ -137,19 +161,35 @@ class AntiCheatingService:
             max_similarity = 0.0
             
             for prev_response in previous_responses:
-                normalized_prev = self._normalize_text(prev_response.response_text)
+                # Support both database Response objects and in-memory dictionaries
+                if isinstance(prev_response, dict):
+                    prev_text = prev_response.get("response_text", "")
+                else:
+                    prev_text = getattr(prev_response, "response_text", "")
+                
+                if not prev_text:
+                    continue
+                
+                normalized_prev = self._normalize_text(prev_text)
                 similarity = self._calculate_similarity(normalized_response, normalized_prev)
                 
                 if similarity >= self.DUPLICATE_THRESHOLD:
                     duplicate_count += 1
                     max_similarity = max(max_similarity, similarity)
             
-            # Check for exact duplicates using SHA-256 for better security
-            # Note: Using SHA-256 instead of MD5 for duplicate detection
-            # This is appropriate for non-cryptographic duplicate detection
+            # Check for exact duplicates using SHA-256
             response_hash = hashlib.sha256(normalized_response.encode()).hexdigest()
-            exact_duplicates = sum(1 for resp in previous_responses 
-                                 if hashlib.sha256(self._normalize_text(resp.response_text).encode()).hexdigest() == response_hash)
+            exact_duplicates = 0
+            for resp in previous_responses:
+                if isinstance(resp, dict):
+                    resp_text = resp.get("response_text", "")
+                else:
+                    resp_text = getattr(resp, "response_text", "")
+                
+                if resp_text:
+                    resp_hash = hashlib.sha256(self._normalize_text(resp_text).encode()).hexdigest()
+                    if resp_hash == response_hash:
+                        exact_duplicates += 1
             
             is_duplicate = duplicate_count > 0 or exact_duplicates > 0
             
@@ -402,7 +442,7 @@ class AntiCheatingService:
         """Generate warning message for AI-generated content"""
         if warning_count == 1:
             return (
-                "⚠️ WARNING: Your response appears to be AI-generated or copied from external sources. "
+                "[WARNING] WARNING: Your response appears to be AI-generated or copied from external sources. "
                 "Please provide original, personal responses based on your own experience. "
                 "This is your first warning - continued use of AI-generated content will result in interview termination."
             )
@@ -466,7 +506,16 @@ class AntiCheatingService:
                 
                 # Check for off-topic responses
                 elif analysis_results.get('is_off_topic', False):
-                    off_topic_count = sum(1 for resp in previous_responses if getattr(resp, 'is_off_topic', False))
+                    # Count off-topic responses (support both database and in-memory)
+                    off_topic_count = 0
+                    for resp in previous_responses:
+                        if isinstance(resp, dict):
+                            if resp.get('is_off_topic', False):
+                                off_topic_count += 1
+                        else:
+                            if getattr(resp, 'is_off_topic', False):
+                                off_topic_count += 1
+                    
                     if off_topic_count >= 3:
                         should_terminate = True
                         termination_reason = 'excessive_off_topic_responses'
@@ -567,16 +616,25 @@ class AntiCheatingService:
     def _detect_repeated_phrases(
         self,
         response_text: str,
-        previous_responses: List[Response]
+        previous_responses: List
     ) -> List[str]:
-        """Detect phrases repeated across responses"""
+        """Detect phrases repeated across responses - supports both database and in-memory"""
         try:
             # Extract phrases (2-4 word combinations)
             current_phrases = self._extract_phrases(response_text)
             repeated_phrases = []
             
             for prev_response in previous_responses[-3:]:  # Check last 3 responses
-                prev_phrases = self._extract_phrases(prev_response.response_text)
+                # Support both database Response objects and in-memory dictionaries
+                if isinstance(prev_response, dict):
+                    prev_text = prev_response.get("response_text", "")
+                else:
+                    prev_text = getattr(prev_response, "response_text", "")
+                
+                if not prev_text:
+                    continue
+                
+                prev_phrases = self._extract_phrases(prev_text)
                 
                 for phrase in current_phrases:
                     if phrase in prev_phrases and len(phrase.split()) >= 3:
@@ -838,7 +896,7 @@ class AntiCheatingService:
             log_warning(f"Error calculating complexity score: {e}")
             return 5.0
     
-    def _calculate_question_engagement(self, response_text: str, previous_responses: List[Response]) -> float:
+    def _calculate_question_engagement(self, response_text: str, previous_responses: List) -> float:
         """Calculate how well the response engages with the question"""
         try:
             if not response_text:

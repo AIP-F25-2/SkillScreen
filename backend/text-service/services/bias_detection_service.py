@@ -355,21 +355,25 @@ class BiasDetectionService:
             return {}
     
     def _extract_demographics(self, candidate: Candidate) -> Dict:
-        """Extract demographic information from candidate"""
-        # In production, this would come from user profile
-        # For now, return empty dict (would need to add demographic fields to Candidate model)
-        return {
-            # 'gender': candidate.gender if hasattr(candidate, 'gender') else None,
-            # 'age_range': candidate.age_range if hasattr(candidate, 'age_range') else None,
-            # 'ethnicity': candidate.ethnicity if hasattr(candidate, 'ethnicity') else None,
-        }
+        """Extract demographic information from candidate (currently disabled)"""
+        # Demographic data collection is disabled - return empty dict
+        return {}
     
     def _get_demographic_key(self, demographics: Dict) -> Optional[str]:
         """Create a key for demographic grouping"""
-        # In production, this would use actual demographic data
-        # For now, return None (no demographic grouping)
-        # Example: return f"{demographics.get('gender', 'unknown')}_{demographics.get('age_range', 'unknown')}"
-        return None
+        if not demographics:
+            return None
+        
+        # Create key from available demographic data
+        parts = []
+        if demographics.get('gender'):
+            parts.append(f"gender_{demographics['gender']}")
+        if demographics.get('age_range'):
+            parts.append(f"age_{demographics['age_range']}")
+        if demographics.get('ethnicity'):
+            parts.append(f"ethnicity_{demographics['ethnicity']}")
+        
+        return "_".join(parts) if parts else None
     
     def _determine_bias(
         self,

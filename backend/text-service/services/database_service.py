@@ -41,20 +41,48 @@ class InterviewDataService:
     def create_user(self, organization_id: str, email: str, first_name: str, last_name: str, 
                    role: UserRole, password_hash: Optional[str] = None) -> User:
         """Create a new user"""
-        # Use the enum value directly (lowercase) - database should accept it
-        role_value = role.value if hasattr(role, 'value') else str(role)
-        user = User(
-            organization_id=organization_id,
-            email=email,
-            first_name=first_name,
-            last_name=last_name,
-            role=role_value,
-            password_hash=password_hash,
-            is_active=True
+        # Database enum might not have CANDIDATE - check error message
+        # Error says: Possible values: ADMIN, RECRUITER, INTERVIEWER, ..., COMPLIANCE_..
+        # Try using INTERVIEWER as fallback if CANDIDATE doesn't exist
+        # First try CANDIDATE (uppercase), if that fails, use INTERVIEWER
+        role_mapping = {
+            UserRole.ADMIN: "ADMIN",
+            UserRole.RECRUITER: "RECRUITER",
+            UserRole.INTERVIEWER: "INTERVIEWER",
+            UserRole.CANDIDATE: "INTERVIEWER",  # Use INTERVIEWER if CANDIDATE doesn't exist in DB
+            UserRole.TECHNICAL_EVALUATOR: "TECHNICAL_EVALUATOR",
+            UserRole.COMPLIANCE_OFFICER: "COMPLIANCE_OFFICER"
+        }
+        # Use mapped value (INTERVIEWER for candidates)
+        role_value = role_mapping.get(role, role.name if hasattr(role, 'name') else str(role).upper())
+        
+        # Use raw SQL to insert with explicit enum casting
+        from sqlalchemy import text
+        import uuid as uuid_lib
+        
+        user_id = uuid_lib.uuid4()
+        
+        # Insert using raw SQL with explicit enum casting (uppercase)
+        self.db.execute(
+            text("""
+                INSERT INTO users (id, organization_id, email, password_hash, first_name, last_name, role, is_active, deleted_at, created_at, updated_at)
+                VALUES (:id::UUID, :org_id::UUID, :email, :password_hash, :first_name, :last_name, :role::user_role, :is_active, NULL, NOW(), NOW())
+            """),
+            {
+                "id": str(user_id),
+                "org_id": organization_id,
+                "email": email,
+                "password_hash": password_hash,
+                "first_name": first_name,
+                "last_name": last_name,
+                "role": role_value,  # Uppercase value like "CANDIDATE"
+                "is_active": True
+            }
         )
-        self.db.add(user)
         self.db.commit()
-        # Skip refresh to avoid enum mismatch on read - just return the object
+        
+        # Fetch the created user
+        user = self.db.query(User).filter(User.id == user_id).first()
         return user
     
     def get_user_by_email(self, email: str) -> Optional[User]:

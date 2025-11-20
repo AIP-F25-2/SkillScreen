@@ -101,7 +101,8 @@ class User(Base, TimestampMixin):
     password_hash = Column(String(255), nullable=True)
     first_name = Column(String(100), nullable=True)
     last_name = Column(String(100), nullable=True)
-    role = Column(Enum(UserRole), nullable=False)
+    # Use native PostgreSQL enum with explicit values to match database
+    role = Column(Enum(UserRole, name='user_role', values_callable=lambda x: [e.value for e in x]), nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     profile_data = Column(JSONB, nullable=True)
     

@@ -24,6 +24,28 @@ class EnhancedLLMService:
         self.is_initialized = False
         self._initialize_apis()
     
+    def _get_gemini_model_name(self) -> str:
+        """Get Gemini model name from config.json, environment, or use fallback"""
+        # Try reading from config.json first
+        try:
+            import json
+            config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.json')
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                    model_name = config.get('llm', {}).get('model_name', '')
+                    if model_name:
+                        # Remove 'models/' prefix if present
+                        model_name = model_name.replace('models/', '').strip()
+                        if model_name:
+                            return model_name
+        except Exception:
+            pass
+        
+        # Try environment variable
+        model_name = os.getenv('GEMINI_MODEL_NAME', 'gemini-1.5-flash')
+        return model_name
+    
     def _initialize_apis(self):
         """Initialize all available APIs"""
         try:
@@ -31,26 +53,41 @@ class EnhancedLLMService:
             gemini_key = os.getenv('GEMINI_API_KEY')
             if gemini_key:
                 genai.configure(api_key=gemini_key)
-                self.gemini_model = genai.GenerativeModel('gemini-pro')
-                log_info("✅ Google Gemini Pro initialized")
+                model_name = self._get_gemini_model_name()
+                try:
+                    self.gemini_model = genai.GenerativeModel(model_name)
+                    log_info(f"[OK] Google Gemini initialized with model: {model_name}")
+                except Exception as e:
+                    log_warning(f"[WARNING] Failed to initialize Gemini model '{model_name}': {e}")
+                    # Try fallback models
+                    fallback_models = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro']
+                    for fallback in fallback_models:
+                        try:
+                            self.gemini_model = genai.GenerativeModel(fallback)
+                            log_info(f"[OK] Google Gemini initialized with fallback model: {fallback}")
+                            break
+                        except Exception:
+                            continue
+                    if not self.gemini_model:
+                        log_warning("[WARNING] Could not initialize any Gemini model, will use fallback questions")
             else:
-                log_warning("⚠️ GEMINI_API_KEY not found")
+                log_warning("[WARNING] GEMINI_API_KEY not found")
             
             # Initialize Wolfram Alpha
             self.wolfram_app_id = os.getenv('WOLFRAM_APP_ID')
             if self.wolfram_app_id:
-                log_info("✅ Wolfram Alpha API configured")
+                log_info("[OK] Wolfram Alpha API configured")
             
             # Initialize SerpApi
             self.serpapi_key = os.getenv('SERPAPI_KEY')
             if self.serpapi_key:
-                log_info("✅ SerpApi configured")
+                log_info("[OK] SerpApi configured")
             
             self.is_initialized = True
-            log_info("🚀 Enhanced LLM Service initialized with multiple APIs")
+            log_info("[INIT] Enhanced LLM Service initialized with multiple APIs")
             
         except Exception as e:
-            log_error(f"❌ Failed to initialize APIs: {e}")
+            log_error(f"[ERROR] Failed to initialize APIs: {e}")
             self.is_initialized = True  # Still allow fallback operation
     
     async def generate_interview_question(
@@ -59,6 +96,7 @@ class EnhancedLLMService:
         candidate_context: Dict[str, Any],
         job_context: Dict[str, Any],
         previous_questions: List[str] = None,
+        previous_responses: List[str] = None,  # Add previous_responses parameter
         question_number: int = 1
     ) -> str:
         """Generate personalized interview question using multiple APIs"""
@@ -67,16 +105,16 @@ class EnhancedLLMService:
             return self._get_fallback_question(question_type, question_number)
         
         try:
-            # Build comprehensive context
+            # Build comprehensive context with previous responses
             context_prompt = self._build_enhanced_prompt(
-                question_type, candidate_context, job_context, previous_questions, question_number
+                question_type, candidate_context, job_context, previous_questions, previous_responses, question_number
             )
             
             # Try Gemini first
             if self.gemini_model:
                 response = await self._generate_with_gemini(context_prompt)
                 if response and len(response.strip()) > 10:
-                    log_info("✅ Generated question using Gemini Pro")
+                    log_info("[OK] Generated question using Gemini Pro")
                     return response.strip()
             
             # Fallback to enhanced mock with real-time data
@@ -84,14 +122,14 @@ class EnhancedLLMService:
                 question_type, candidate_context, job_context, question_number
             )
             if enhanced_question:
-                log_info("✅ Generated enhanced question with real-time data")
+                log_info("[OK] Generated enhanced question with real-time data")
                 return enhanced_question
             
             # Final fallback
             return self._get_fallback_question(question_type, question_number)
                 
         except Exception as e:
-            log_error(f"❌ Error generating question: {e}")
+            log_error(f"[ERROR] Error generating question: {e}")
             return self._get_fallback_question(question_type, question_number)
     
     def _build_enhanced_prompt(
@@ -100,14 +138,16 @@ class EnhancedLLMService:
         candidate_context: Dict[str, Any],
         job_context: Dict[str, Any],
         previous_questions: List[str] = None,
+        previous_responses: List[str] = None,  # Add previous_responses parameter
         question_number: int = 1
     ) -> str:
-        """Build enhanced prompt with real-time data integration"""
+        """Build enhanced prompt with real-time data integration and previous responses"""
         
         # Extract key information
         candidate_name = candidate_context.get('name', 'Candidate')
         candidate_skills = candidate_context.get('skills', [])
         candidate_experience = candidate_context.get('experience_years', 0)
+        resume_text = candidate_context.get('resume_text', '')[:500]  # First 500 chars of resume
         
         job_title = job_context.get('title', 'Position')
         job_company = job_context.get('company', 'Company')
@@ -120,28 +160,39 @@ class EnhancedLLMService:
         if previous_questions:
             prev_questions_text = f"\nPrevious questions asked:\n" + "\n".join([f"- {q}" for q in previous_questions[-3:]])
         
-        # Create comprehensive prompt with real-time context
+        # Build previous responses context (CRITICAL for dynamic question generation)
+        prev_responses_text = ""
+        if previous_responses:
+            prev_responses_text = f"\nPrevious responses given:\n" + "\n".join([f"- {r[:100]}..." if len(r) > 100 else f"- {r}" for r in previous_responses[-3:]])
+        
+        # Create comprehensive prompt with real-time context including previous responses
         prompt = f"""
-You are a senior {job_title} professional conducting a natural, conversational interview. Generate a realistic question that a human interviewer would ask.
+You are a senior {job_title} professional conducting a natural, conversational interview. Generate a realistic question that a human interviewer would ask based on the candidate's previous responses.
 
 CANDIDATE BACKGROUND:
 - Name: {candidate_name}
 - Experience: {candidate_experience} years in the field
 - Skills: {', '.join(candidate_skills[:6]) if candidate_skills else 'Various technical skills'}
+- Resume Summary: {resume_text if resume_text else 'Technical professional'}
 - Current Date: {datetime.now().strftime('%B %Y')}
 
 POSITION DETAILS:
 - Role: {job_title} at {job_company}
 - Level: {job_level} level position
 - Key Requirements: {', '.join(job_skills[:6]) if job_skills else 'Technical expertise'}
-- Job Focus: {job_description[:200] if job_description else 'Technical development'}
+- Job Description: {job_description[:300] if job_description else 'Technical development role'}
 
 INTERVIEW CONTEXT:
 - Question #{question_number} of the interview
 - Question Type: {question_type}
-- Previous topics covered: {prev_questions_text if prev_questions_text else 'None yet'}
+{prev_questions_text if prev_questions_text else ''}
+{prev_responses_text if prev_responses_text else ''}
 
-INSTRUCTIONS:
+CRITICAL INSTRUCTIONS:
+- DO NOT repeat the same question that was already asked
+- Build on the candidate's previous responses - ask follow-up questions or explore new areas
+- If they mentioned specific projects or technologies, ask for more details
+- If they gave brief answers, ask for elaboration
 - Write as a natural, human interviewer would speak
 - Make it conversational and relatable
 - Reference their specific experience level ({candidate_experience} years)
@@ -149,14 +200,17 @@ INSTRUCTIONS:
 - Avoid overly formal or AI-sounding language
 - Focus on practical scenarios they would encounter
 - Keep it specific to the {job_title} role
+- Use information from their resume and previous responses to personalize the question
 
-Generate ONE natural interview question:
+Generate ONE natural interview question that:
 1. Is personalized to this candidate's experience and skills
 2. Relates to the specific job requirements
 3. Tests relevant competencies for a {job_level} level {job_title} position
 4. Encourages detailed, specific responses
 5. Is appropriate for question #{question_number} in the interview flow
-6. Incorporates current industry trends and best practices
+6. Builds on previous responses (if any) or explores new areas
+7. Does NOT repeat previous questions
+8. Incorporates current industry trends and best practices
 
 Return only the question text, no additional formatting or explanations.
 """
@@ -164,7 +218,7 @@ Return only the question text, no additional formatting or explanations.
         return prompt.strip()
     
     async def _generate_with_gemini(self, prompt: str) -> str:
-        """Generate response using Gemini Pro"""
+        """Generate response using Gemini model with improved error handling"""
         try:
             if not self.gemini_model:
                 return ""
@@ -182,7 +236,13 @@ Return only the question text, no additional formatting or explanations.
                 return ""
                 
         except Exception as e:
-            log_error(f"❌ Gemini generation error: {e}")
+            error_msg = str(e)
+            # Check for 404 model not found error
+            if '404' in error_msg or 'not found' in error_msg.lower() or 'not supported' in error_msg.lower():
+                log_warning(f"[WARNING] Gemini model not available: {error_msg}")
+                log_warning("[WARNING] Will use fallback question generation")
+            else:
+                log_error(f"❌ Gemini generation error: {e}")
             return ""
     
     async def _generate_enhanced_mock_question(
@@ -278,7 +338,7 @@ Return only the question text, no additional formatting or explanations.
             return "technology"
             
         except Exception as e:
-            log_warning(f"⚠️ Could not fetch industry trends: {e}")
+            log_warning(f"[WARNING] Could not fetch industry trends: {e}")
             return "technology"
     
     def _get_fallback_question(self, question_type: str, question_number: int) -> str:

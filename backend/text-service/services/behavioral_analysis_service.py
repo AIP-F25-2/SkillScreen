@@ -47,10 +47,10 @@ class BehavioralAnalysisService:
                 n_init=10
             )
             
-            log_info("✅ ML-based behavioral analysis models initialized")
+            log_info("[OK] ML-based behavioral analysis models initialized")
             
         except Exception as e:
-            log_error(f"❌ Failed to initialize behavioral analysis models: {e}")
+            log_error(f"[ERROR] Failed to initialize behavioral analysis models: {e}")
             self.isolation_forest = None
             self.kmeans_clusterer = None
     

@@ -65,7 +65,7 @@ class QualityPredictionService:
                     random_state=42,
                     objective='reg:squarederror'
                 )
-                log_info("✅ XGBoost model initialized")
+                log_info("[OK] XGBoost model initialized")
             
             if LIGHTGBM_AVAILABLE:
                 self.models['lightgbm'] = lgb.LGBMRegressor(
@@ -75,7 +75,7 @@ class QualityPredictionService:
                     random_state=42,
                     objective='regression'
                 )
-                log_info("✅ LightGBM model initialized")
+                log_info("[OK] LightGBM model initialized")
             
             # Fallback models (always available)
             self.models['random_forest'] = RandomForestRegressor(
@@ -93,10 +93,10 @@ class QualityPredictionService:
                 random_state=42
             )
             
-            log_info("✅ Quality prediction models initialized")
+            log_info("[OK] Quality prediction models initialized")
             
         except Exception as e:
-            log_error(f"❌ Failed to initialize quality prediction models: {e}")
+            log_error(f"[ERROR] Failed to initialize quality prediction models: {e}")
             self.models = {}
     
     async def _load_or_train_model(self):
@@ -109,7 +109,7 @@ class QualityPredictionService:
                     self.scaler = model_data['scaler']
                     self.feature_names = model_data['feature_names']
                     self.model_trained = True
-                    log_info("✅ Loaded pre-trained quality prediction model")
+                    log_info("[OK] Loaded pre-trained quality prediction model")
             else:
                 log_info("No pre-trained model found, will train on first use")
                 self.model_trained = False
@@ -280,6 +280,54 @@ class QualityPredictionService:
             else:
                 features['personal_pronoun_ratio'] = 0.0
                 features['example_ratio'] = 0.0
+            
+            # Advanced linguistic features (expanding to 20+ features)
+            # Sentence complexity
+            if sentences:
+                complex_sentences = sum(1 for s in sentences if len(s.split()) > 20)
+                features['complex_sentence_ratio'] = complex_sentences / len(sentences)
+            else:
+                features['complex_sentence_ratio'] = 0.0
+            
+            # Discourse markers
+            discourse_markers = ['however', 'therefore', 'furthermore', 'moreover', 'consequently', 'additionally']
+            features['discourse_markers'] = sum(1 for marker in discourse_markers if marker in response.lower())
+            
+            # Temporal features (if available from context)
+            temporal_indicators = ['recently', 'previously', 'currently', 'previously', 'last year', 'next']
+            features['temporal_references'] = sum(1 for indicator in temporal_indicators if indicator in response.lower())
+            
+            # Question-answer alignment (enhanced)
+            question_wh_words = ['what', 'why', 'how', 'when', 'where', 'who']
+            question_type = next((w for w in question_wh_words if w in question.lower()), 'general')
+            features['question_type_match'] = 1.0 if question_type in response.lower() else 0.5
+            
+            # Technical depth indicators
+            technical_depth_words = ['architecture', 'algorithm', 'optimization', 'scalability', 'performance', 'efficiency']
+            features['technical_depth_score'] = sum(1 for word in technical_depth_words if word in response.lower())
+            
+            # Experience indicators
+            experience_indicators = ['worked on', 'led', 'managed', 'implemented', 'designed', 'developed']
+            features['experience_indicators'] = sum(1 for indicator in experience_indicators if indicator in response.lower())
+            
+            # Quantification
+            numbers = [w for w in words if w.isdigit() or any(char.isdigit() for char in w)]
+            features['quantification_count'] = len(numbers)
+            features['has_metrics'] = 1.0 if any(word in response.lower() for word in ['percent', '%', 'increase', 'decrease', 'improved']) else 0.0
+            
+            # Context features (enhanced)
+            if job_context:
+                job_skills = job_context.get('required_skills', [])
+                if job_skills:
+                    skill_mentions = sum(1 for skill in job_skills if skill.lower() in response.lower())
+                    features['job_skill_alignment'] = skill_mentions / len(job_skills) if job_skills else 0.0
+                else:
+                    features['job_skill_alignment'] = 0.0
+            else:
+                features['job_skill_alignment'] = 0.0
+            
+            # Response coherence (simple measure)
+            features['coherence_score'] = min(1.0, features['has_structure'] + (features['discourse_markers'] / 3.0))
             
             return features
             
@@ -515,7 +563,7 @@ class QualityPredictionService:
                     'trained': True
                 }
                 
-                log_info(f"✅ {model_name} trained - MSE: {results[model_name]['mse']:.3f}, "
+                log_info(f"[OK] {model_name} trained - MSE: {results[model_name]['mse']:.3f}, "
                         f"MAE: {results[model_name]['mae']:.3f}, R²: {results[model_name]['r2']:.3f}")
                 
             except Exception as e:
@@ -554,7 +602,7 @@ class QualityPredictionService:
         async with aiofiles.open(self.model_path, 'wb') as f:
             await f.write(pickle.dumps(model_data))
         
-        log_info(f"✅ Model trained and saved. Best model: {best_model_name} (R²: {best_r2:.3f})")
+        log_info(f"[OK] Model trained and saved. Best model: {best_model_name} (R²: {best_r2:.3f})")
         
         return {
             'success': True,

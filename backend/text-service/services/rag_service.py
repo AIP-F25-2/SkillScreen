@@ -59,7 +59,7 @@ class RAGExplainabilityService:
             # Load knowledge base
             self._load_knowledge_base()
             
-            log_info("✅ RAG explainability system initialized")
+            log_info("[OK] RAG explainability system initialized")
             
         except Exception as e:
             log_error(f"❌ Failed to initialize RAG system: {e}")
@@ -70,7 +70,7 @@ class RAGExplainabilityService:
         try:
             log_info("Initializing fallback RAG system...")
             self.knowledge_base = self._create_basic_knowledge_base()
-            log_info("✅ Fallback RAG system initialized")
+            log_info("[OK] Fallback RAG system initialized")
             
         except Exception as e:
             log_error(f"❌ Failed to initialize fallback system: {e}")
@@ -268,10 +268,12 @@ class RAGExplainabilityService:
     ) -> Dict:
         """Explain a specific score with evidence"""
         try:
-            # Retrieve relevant evidence
+            # Retrieve relevant evidence (with interview context)
             evidence = await self._retrieve_evidence(
                 f"{score_name} scoring criteria for {score_value}",
-                score_name
+                score_name,
+                interview_id=interview_id,
+                db=db
             )
             
             # Analyze response characteristics
@@ -314,39 +316,125 @@ class RAGExplainabilityService:
                 'reasoning': 'Basic scoring applied'
             }
     
-    async def _retrieve_evidence(self, query: str, category: str) -> List[Dict]:
-        """Retrieve relevant evidence for explanation"""
+    async def _retrieve_evidence(self, query: str, category: str, interview_id: Optional[str] = None, db=None) -> List[Dict]:
+        """Retrieve relevant evidence for explanation (enhanced with dynamic interview data)"""
         try:
-            if not self.sentence_transformer or not self.evidence_index:
-                return self._get_fallback_evidence(category)
-            
-            # Create query embedding
-            query_embedding = self.sentence_transformer.encode([query])
-            if FAISS_AVAILABLE and faiss:
-                faiss.normalize_L2(query_embedding)
-            
-            # Search for relevant evidence
-            if self.evidence_index is None:
-                return self._get_fallback_evidence(category)
-            scores, indices = self.evidence_index.search(query_embedding.astype('float32'), k=3)
-            
             evidence = []
-            for score, idx in zip(scores[0], indices[0]):
-                if idx < len(self.evidence_documents):
-                    doc = self.evidence_documents[idx]
-                    evidence.append({
-                        'content': doc['content'],
-                        'category': doc['category'],
-                        'evidence_type': doc['evidence_type'],
-                        'relevance_score': float(score),
-                        'source': doc['source']
-                    })
             
-            return evidence
+            # 1. Retrieve from static knowledge base
+            if self.sentence_transformer and self.evidence_index:
+                query_embedding = self.sentence_transformer.encode([query])
+                if FAISS_AVAILABLE and faiss:
+                    faiss.normalize_L2(query_embedding)
+                
+                if self.evidence_index is not None:
+                    scores, indices = self.evidence_index.search(query_embedding.astype('float32'), k=3)
+                    
+                    for score, idx in zip(scores[0], indices[0]):
+                        if idx < len(self.evidence_documents):
+                            doc = self.evidence_documents[idx]
+                            evidence.append({
+                                'content': doc['content'],
+                                'category': doc['category'],
+                                'evidence_type': doc['evidence_type'],
+                                'relevance_score': float(score),
+                                'confidence': min(1.0, float(score) + 0.2),  # Add confidence score
+                                'source': doc['source'],
+                                'source_type': 'knowledge_base'
+                            })
+            
+            # 2. Retrieve dynamic evidence from interview data (if available)
+            if interview_id and db:
+                dynamic_evidence = await self._retrieve_interview_evidence(query, category, interview_id, db)
+                evidence.extend(dynamic_evidence)
+            
+            # Sort by relevance score and return top results
+            evidence.sort(key=lambda x: x.get('relevance_score', 0), reverse=True)
+            return evidence[:5]  # Return top 5
             
         except Exception as e:
             log_warning(f"Error retrieving evidence: {e}")
             return self._get_fallback_evidence(category)
+    
+    async def _retrieve_interview_evidence(
+        self,
+        query: str,
+        category: str,
+        interview_id: str,
+        db
+    ) -> List[Dict]:
+        """Retrieve evidence from actual interview responses and analysis"""
+        try:
+            from database.models import Response, AIAnalysis, Interview
+            
+            evidence = []
+            
+            # Get interview
+            interview = db.query(Interview).filter(Interview.id == interview_id).first()
+            if not interview:
+                return evidence
+            
+            # Get previous responses from this interview
+            responses = db.query(Response).filter(
+                Response.interview_id == interview_id
+            ).order_by(Response.created_at.desc()).limit(10).all()
+            
+            # Get AI analysis for this interview
+            analyses = db.query(AIAnalysis).filter(
+                AIAnalysis.interview_id == interview_id
+            ).order_by(AIAnalysis.created_at.desc()).limit(5).all()
+            
+            # Create embeddings for query and responses
+            if self.sentence_transformer:
+                query_embedding = self.sentence_transformer.encode([query])[0]
+                
+                # Compare with response texts
+                for response in responses:
+                    if response.response_text:
+                        response_embedding = self.sentence_transformer.encode([response.response_text])[0]
+                        similarity = np.dot(query_embedding, response_embedding) / (
+                            np.linalg.norm(query_embedding) * np.linalg.norm(response_embedding)
+                        )
+                        
+                        if similarity > 0.5:  # Threshold for relevance
+                            evidence.append({
+                                'content': response.response_text[:200] + "...",
+                                'category': category,
+                                'evidence_type': 'interview_response',
+                                'relevance_score': float(similarity),
+                                'confidence': float(similarity),
+                                'source': f'Response from interview {interview_id}',
+                                'source_type': 'dynamic',
+                                'timestamp': response.created_at.isoformat() if response.created_at else None
+                            })
+                
+                # Compare with analysis results
+                for analysis in analyses:
+                    if analysis.raw_results and isinstance(analysis.raw_results, dict):
+                        analysis_text = str(analysis.raw_results.get('feedback', ''))[:200]
+                        if analysis_text:
+                            analysis_embedding = self.sentence_transformer.encode([analysis_text])[0]
+                            similarity = np.dot(query_embedding, analysis_embedding) / (
+                                np.linalg.norm(query_embedding) * np.linalg.norm(analysis_embedding)
+                            )
+                            
+                            if similarity > 0.5:
+                                evidence.append({
+                                    'content': analysis_text,
+                                    'category': category,
+                                    'evidence_type': 'ai_analysis',
+                                    'relevance_score': float(similarity),
+                                    'confidence': float(similarity),
+                                    'source': f'AI Analysis for interview {interview_id}',
+                                    'source_type': 'dynamic',
+                                    'timestamp': analysis.created_at.isoformat() if analysis.created_at else None
+                                })
+            
+            return evidence
+            
+        except Exception as e:
+            log_warning(f"Error retrieving interview evidence: {e}")
+            return []
     
     def _get_fallback_evidence(self, category: str) -> List[Dict]:
         """Get fallback evidence when advanced retrieval fails"""

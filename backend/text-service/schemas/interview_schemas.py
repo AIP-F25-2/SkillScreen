@@ -26,7 +26,7 @@ class Recommendation(str, Enum):
 # Candidate schemas
 class CandidateCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
-    email: EmailStr
+    email: str = Field(..., min_length=1)  # Changed from EmailStr to str to allow placeholder emails
     phone: Optional[str] = Field(None, max_length=50)
     resume_text: Optional[str] = None
     skills: Optional[List[str]] = []
@@ -74,4 +74,6 @@ class InterviewSummary(BaseModel):
     next_steps: List[str] = []
     interviewer_notes: Optional[str] = None
     generated_at: datetime = Field(default_factory=datetime.now)
+
+
 

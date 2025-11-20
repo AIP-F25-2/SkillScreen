@@ -80,8 +80,8 @@ class InterviewStart(BaseModel):
     job_id: str
     interview_type: InterviewType = InterviewType.MIXED
     difficulty: Difficulty = Difficulty.MEDIUM
-    max_questions: int = Field(15, ge=5, le=50)
-    target_duration_minutes: int = Field(12, ge=5, le=60)
+    max_questions: int = Field(12, ge=10, le=15)  # 10-12 questions for proper interview length
+    target_duration_minutes: int = Field(20, ge=15, le=30)  # 15-25 minutes
 
 class InterviewResponse(BaseModel):
     response_text: str = Field(..., min_length=1, max_length=5000)

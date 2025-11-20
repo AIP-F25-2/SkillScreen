@@ -90,7 +90,7 @@ class NLPService:
                 device=0 if torch.cuda.is_available() else -1
             )
             
-            log_info("✅ NLP models initialized successfully")
+            log_info("[OK] NLP models initialized successfully")
             
         except Exception as e:
             log_error(f"❌ Failed to initialize NLP models: {e}")
@@ -116,12 +116,12 @@ class NLPService:
                 )
             
             if self.models:
-                log_info("✅ Fallback NLP models initialized")
+                log_info("[OK] Fallback NLP models initialized")
             else:
-                log_warning("⚠️ No NLP models available - will use rule-based fallbacks")
+                log_warning("[WARNING] No NLP models available - will use rule-based fallbacks")
             
         except Exception as e:
-            log_error(f"❌ Failed to initialize fallback models: {e}")
+            log_error(f"[ERROR] Failed to initialize fallback models: {e}")
             self.models = {}
     
     async def evaluate_response(

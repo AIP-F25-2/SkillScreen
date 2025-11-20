@@ -118,7 +118,95 @@ class InterviewService:
     ) -> Dict:
         """Generate the next question based on interview progress"""
         try:
-            # Get interview and previous questions
+            # Support both database and in-memory storage
+            from in_memory_storage import get_interview_by_session, get_questions, get_candidate, get_job
+            
+            # Try in-memory storage first
+            interview_data = get_interview_by_session(interview_id)
+            if interview_data:
+                # In-memory storage path
+                previous_questions = get_questions(interview_id)
+                current_question_index = len(previous_questions)
+                max_questions = interview_data.get("max_questions", 15)
+                
+                # Check if we're in the last 1-2 questions - generate coding question
+                questions_remaining = max_questions - current_question_index
+                if questions_remaining <= 2 and questions_remaining > 0:
+                    # Create mock Interview object for _generate_coding_question
+                    class MockInterview:
+                        def __init__(self, data):
+                            self.id = data["id"]
+                            self.settings = data.get("settings", {})
+                            self.candidate_id = data.get("candidate_id")
+                            self.job_position_id = data.get("job_id")
+                    
+                    mock_interview = MockInterview(interview_data)
+                    candidate_data = get_candidate(interview_data["candidate_id"])
+                    job_data = get_job(interview_data["job_id"])
+                    
+                    class MockCandidate:
+                        def __init__(self, data):
+                            self.id = data["id"]
+                            self.full_name = data.get("name", "Unknown")
+                            self.skills = data.get("skills", [])
+                            self.experience = {"years": data.get("experience_years", 0.0)}
+                    
+                    class MockJob:
+                        def __init__(self, data):
+                            self.id = data["id"]
+                            self.title = data.get("title", "")
+                            self.required_skills = data.get("required_skills", [])
+                            self.experience_level = data.get("experience_level", "Mid-level")
+                    
+                    mock_candidate = MockCandidate(candidate_data)
+                    mock_job = MockJob(job_data)
+                    
+                    # Generate coding question
+                    coding_result = await self._generate_coding_question_in_memory(
+                        mock_interview, mock_candidate, mock_job, current_question_index
+                    )
+                    return coding_result
+                
+                # Regular question generation for in-memory
+                question_type, round_number = self._determine_question_type(current_question_index)
+                
+                # Get previous responses for context
+                from in_memory_storage import get_responses
+                previous_responses = get_responses(interview_id)
+                previous_responses_text = [r.get("response_text", "") for r in previous_responses]
+                
+                context = {
+                    'candidate_name': candidate_data.get("name", "Candidate"),
+                    'candidate_skills': candidate_data.get("skills", []),
+                    'candidate_experience': candidate_data.get("experience_years", 0),
+                    'candidate_resume': candidate_data.get("raw_text", ""),  # Include resume text
+                    'job_title': job_data.get("title", ""),
+                    'job_company': job_data.get("company", ""),
+                    'job_description': job_data.get("description", ""),  # Include job description
+                    'job_skills': job_data.get("required_skills", []),
+                    'job_level': job_data.get("experience_level", "Mid-level"),
+                    'previous_questions': [q.get("question_text", "") for q in previous_questions],
+                    'previous_responses': previous_responses_text,  # Include previous responses for dynamic generation
+                    'current_round': round_number
+                }
+                
+                interview_type = interview_data.get("settings", {}).get("interview_type", "mixed")
+                question_text = await self._generate_personalized_question(
+                    question_type, context, interview_type
+                )
+                
+                return {
+                    'id': str(uuid.uuid4()),
+                    'question_index': current_question_index,
+                    'question_text': question_text,
+                    'question_type': question_type,
+                    'difficulty': 'medium',
+                    'round_number': round_number,
+                    'is_coding_question': False,
+                    'asked_at': datetime.now(timezone.utc)
+                }
+            
+            # Database path (original logic)
             interview = db.query(Interview).filter(Interview.id == interview_id).first()
             if not interview:
                 raise ValueError(f"Interview {interview_id} not found")
@@ -131,6 +219,16 @@ class InterviewService:
             
             # Determine question type based on progress
             current_question_index = len(previous_questions)
+            
+            # Get max_questions from interview settings or default to 12
+            max_questions = interview.settings.get('max_questions', 12) if interview.settings else 12
+            
+            # Check if we're in the last 1-2 questions - generate coding question
+            questions_remaining = max_questions - current_question_index
+            if questions_remaining <= 2 and questions_remaining > 0:
+                # Generate coding question for last 1-2 questions
+                return await self._generate_coding_question(interview, current_question_index, db)
+            
             question_type, round_number = self._determine_question_type(current_question_index)
             
             # Get candidate and job context
@@ -390,7 +488,7 @@ class InterviewService:
             if should_close:
                 db.close()
             
-            log_info(f"✅ Stored interview summary analysis for interview {interview_id}")
+            log_info(f"[OK] Stored interview summary analysis for interview {interview_id}")
             
         except Exception as e:
             log_error(f"Error storing interview summary analysis: {e}")
@@ -420,49 +518,235 @@ class InterviewService:
         else:
             return 'theoretical', 3
     
+    async def _generate_coding_question_in_memory(
+        self,
+        interview,
+        candidate,
+        job,
+        current_question_index: int
+    ) -> Dict:
+        """Generate coding question for in-memory storage"""
+        try:
+            from services.coding_question_service import coding_question_service
+            
+            # Determine difficulty
+            difficulty = 'medium'
+            job_level = getattr(job, 'experience_level', 'Mid-level') or 'Mid-level'
+            candidate_exp = getattr(candidate, 'experience', {}).get('years', 0) if isinstance(getattr(candidate, 'experience', None), dict) else 0
+            
+            if 'senior' in job_level.lower() or 'lead' in job_level.lower() or candidate_exp >= 5:
+                difficulty = 'hard'
+            elif 'entry' in job_level.lower() or candidate_exp < 2:
+                difficulty = 'easy'
+            
+            # Generate coding question
+            coding_question_data = await coding_question_service.generate_coding_question(
+                interview_id=str(interview.id),
+                job=job,
+                candidate=candidate,
+                difficulty=difficulty,
+                db=None  # No database for in-memory
+            )
+            
+            # Format question text
+            question_text = f"""💻 **Coding Challenge**
+
+**Problem:** {coding_question_data.get('title', 'Coding Challenge')}
+
+**Description:**
+{coding_question_data.get('description', 'Solve the given coding problem.')}
+
+**Difficulty:** {coding_question_data.get('difficulty', 'medium').title()}
+**Time Limit:** {coding_question_data.get('time_limit_minutes', 30)} minutes
+
+**Topics:** {', '.join(coding_question_data.get('topics', []))}
+
+**Examples:**
+{chr(10).join([f"Input: {ex.get('input', '')}{chr(10)}Output: {ex.get('output', '')}" for ex in coding_question_data.get('examples', [])[:2]])}
+
+Please write your solution in the code editor. You can choose from Python, JavaScript, Java, C++, or SQL.
+
+**Coding Session ID:** {coding_question_data.get('session_id', '')}
+"""
+            
+            log_info(f"[OK] Generated coding question (in-memory) for question {current_question_index + 1}")
+            
+            return {
+                'id': str(uuid.uuid4()),
+                'question_index': current_question_index,
+                'question_text': question_text,
+                'question_type': 'coding',
+                'difficulty': difficulty,
+                'round_number': 3,
+                'is_coding_question': True,
+                'coding_session_id': coding_question_data.get('session_id'),
+                'coding_question_id': coding_question_data.get('question_id'),
+                'coding_data': coding_question_data,
+                'asked_at': datetime.now(timezone.utc)
+            }
+            
+        except Exception as e:
+            log_error(f"Error generating coding question (in-memory): {e}")
+            return {
+                'id': str(uuid.uuid4()),
+                'question_index': current_question_index,
+                'question_text': "Can you walk me through a technical problem you've solved recently?",
+                'question_type': 'technical',
+                'difficulty': 'medium',
+                'round_number': 3,
+                'is_coding_question': False,
+                'asked_at': datetime.now(timezone.utc)
+            }
+    
+    async def _generate_coding_question(
+        self,
+        interview: Interview,
+        current_question_index: int,
+        db
+    ) -> Dict:
+        """Generate a coding question for the last 1-2 questions"""
+        try:
+            from services.coding_question_service import coding_question_service
+            
+            # Get candidate and job
+            candidate = None
+            if interview.settings and interview.settings.get('candidate_record_id'):
+                candidate_id = interview.settings.get('candidate_record_id')
+                candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
+            
+            if not candidate:
+                from database.models import User
+                user = db.query(User).filter(User.id == interview.candidate_id).first()
+                if user:
+                    candidate = db.query(Candidate).filter(Candidate.email == user.email).first()
+            
+            job = db.query(JobPosition).filter(JobPosition.id == interview.job_position_id).first()
+            
+            if not candidate or not job:
+                raise ValueError("Candidate or job not found")
+            
+            # Determine difficulty based on job level and candidate experience
+            difficulty = 'medium'  # Default
+            job_level = getattr(job, 'experience_level', 'Mid-level') or 'Mid-level'
+            candidate_exp = getattr(candidate, 'experience', {}).get('years', 0) if isinstance(getattr(candidate, 'experience', None), dict) else 0
+            
+            if 'senior' in job_level.lower() or 'lead' in job_level.lower() or candidate_exp >= 5:
+                difficulty = 'hard'
+            elif 'entry' in job_level.lower() or candidate_exp < 2:
+                difficulty = 'easy'
+            
+            # Generate coding question using coding_question_service
+            coding_question_data = await coding_question_service.generate_coding_question(
+                interview_id=str(interview.id),
+                job=job,
+                candidate=candidate,
+                difficulty=difficulty,
+                db=db
+            )
+            
+            # Format as a question response that can be displayed in chat
+            question_text = f"""💻 **Coding Challenge**
+
+**Problem:** {coding_question_data.get('title', 'Coding Challenge')}
+
+**Description:**
+{coding_question_data.get('description', 'Solve the given coding problem.')}
+
+**Difficulty:** {coding_question_data.get('difficulty', 'medium').title()}
+**Time Limit:** {coding_question_data.get('time_limit_minutes', 30)} minutes
+
+**Topics:** {', '.join(coding_question_data.get('topics', []))}
+
+**Examples:**
+{chr(10).join([f"Input: {ex.get('input', '')}{chr(10)}Output: {ex.get('output', '')}" for ex in coding_question_data.get('examples', [])[:2]])}
+
+Please write your solution in the code editor. You can choose from Python, JavaScript, Java, C++, or SQL.
+
+**Coding Session ID:** {coding_question_data.get('session_id', '')}
+"""
+            
+            log_info(f"[OK] Generated coding question for interview {interview.id} (question {current_question_index + 1})")
+            
+            return {
+                'id': str(uuid.uuid4()),
+                'question_index': current_question_index,
+                'question_text': question_text,
+                'question_type': 'coding',
+                'difficulty': difficulty,
+                'round_number': 3,  # Final round
+                'is_coding_question': True,
+                'coding_session_id': coding_question_data.get('session_id'),
+                'coding_question_id': coding_question_data.get('question_id'),
+                'coding_data': coding_question_data,  # Include full coding question data
+                'asked_at': datetime.now(timezone.utc)
+            }
+            
+        except Exception as e:
+            log_error(f"Error generating coding question: {e}")
+            # Fallback to regular technical question
+            return {
+                'id': str(uuid.uuid4()),
+                'question_index': current_question_index,
+                'question_text': "Can you walk me through a technical problem you've solved recently?",
+                'question_type': 'technical',
+                'difficulty': 'medium',
+                'round_number': 3,
+                'is_coding_question': False,
+                'asked_at': datetime.now(timezone.utc)
+            }
+    
     async def _generate_personalized_question(
         self,
         question_type: str,
         context: Dict,
         interview_type: str
     ) -> str:
-        """Generate personalized question using LLM service"""
+        """Generate personalized question using LLM service with previous responses"""
         try:
             # Prepare candidate context
             candidate_context = {
                 'name': context.get('candidate_name', 'Candidate'),
                 'skills': context.get('candidate_skills', []),
                 'experience_years': context.get('candidate_experience', 0),
-                'resume_text': context.get('candidate_resume', '')
+                'resume_text': context.get('candidate_resume', '')  # Include full resume text
             }
             
             # Prepare job context
             job_context = {
                 'title': context.get('job_title', 'Position'),
                 'company': context.get('job_company', 'Company'),
-                'description': context.get('job_description', ''),
+                'description': context.get('job_description', ''),  # Include full job description
                 'required_skills': context.get('job_skills', []),
                 'experience_level': context.get('job_level', 'mid')
             }
             
-            # Get previous questions
+            # Get previous questions AND responses for dynamic generation
             previous_questions = context.get('previous_questions', [])
+            previous_responses = context.get('previous_responses', [])  # Include previous responses
             question_number = context.get('current_round', 1)
             
-            # Generate question using LLM service
+            # Generate question using LLM service with previous responses
+            # The LLM service should use Gemini to generate questions based on:
+            # 1. Resume content
+            # 2. Job description
+            # 3. Previous questions asked
+            # 4. Previous responses given (to avoid repetition and build on answers)
             question = await llm_service.generate_interview_question(
                 question_type=question_type,
                 candidate_context=candidate_context,
                 job_context=job_context,
                 previous_questions=previous_questions,
+                previous_responses=previous_responses,  # Pass previous responses
                 question_number=question_number
             )
             
-            log_info(f"✅ Generated personalized {question_type} question")
+            log_info(f"[OK] Generated personalized {question_type} question using LLM with context")
             return question
             
         except Exception as e:
             log_error(f"Error generating personalized question: {e}")
+            import traceback
+            log_error(f"Traceback: {traceback.format_exc()}")
             # Fallback to template-based approach
             return self._get_template_question(question_type, context)
     
@@ -1023,8 +1307,8 @@ class InterviewService:
         1. Runs behavioral analysis
         2. Runs quality prediction
         3. Runs bias detection (if applicable)
-        4. Stores analysis results (not the actual response) in raw_results column
-        5. Stores final confidence score in confidence_score column
+        4. Stores analysis results as SEPARATE records in ai_analysis table
+        5. Returns aggregated scores for immediate use
         """
         import time
         start_time = time.time()
@@ -1127,61 +1411,100 @@ class InterviewService:
             # Ensure score is between 1 and 10
             final_confidence_score = max(1.0, min(10.0, final_confidence_score))
             
-            # Prepare raw_results JSON (analysis data, NOT the actual response)
-            # Include all analysis data that the API would return
-            raw_results = {
-                'response_analysis': {
-                    'behavioral_analysis': {
-                        'behavior_type': behavioral_analysis.get('behavior_type', 'unknown'),
-                        'anomaly_score': behavioral_analysis.get('anomaly_score', 0.0),
-                        'engagement_trend': behavioral_analysis.get('engagement_trend', 'stable'),
-                        'consistency_score': behavioral_analysis.get('consistency_score', 0.0),
-                        'behavioral_flags': behavioral_analysis.get('behavioral_flags', []),
-                        'engagement_score': behavioral_analysis.get('engagement_score', 0.5)
-                    },
-                    'quality_prediction': {
-                        'predicted_score': quality_prediction.get('predicted_score', 5.0),
-                        'confidence': quality_prediction.get('confidence', 0.5),
-                        'feature_importance': quality_prediction.get('feature_importance', {}),
-                        'model_used': quality_prediction.get('model_used', 'ensemble')
-                    },
-                    'bias_detection': bias_analysis if bias_analysis else None
-                },
+            # --- STORE RESULTS AS SEPARATE RECORDS ---
+            
+            stored_ids = []
+            
+            # 1. Store Behavioral Analysis
+            behavioral_data = {
+                'behavior_type': behavioral_analysis.get('behavior_type', 'unknown'),
+                'anomaly_score': behavioral_analysis.get('anomaly_score', 0.0),
+                'engagement_trend': behavioral_analysis.get('engagement_trend', 'stable'),
+                'consistency_score': behavioral_analysis.get('consistency_score', 0.0),
+                'behavioral_flags': behavioral_analysis.get('behavioral_flags', []),
+                'engagement_score': behavioral_analysis.get('engagement_score', 0.5),
                 'metadata': {
-                    'question_number': question_number,
-                    'response_length': len(response_text),
                     'response_time_seconds': response_time_seconds,
-                    'timestamp': datetime.now(timezone.utc).isoformat()
+                    'question_number': question_number
                 }
             }
             
-            # Calculate processing time
-            processing_time_ms = int((time.time() - start_time) * 1000)
+            # Calculate specific confidence for behavioral (consistency)
+            behavioral_conf = consistency_10
             
-            # Store in ai_analysis table
-            ai_analysis = db_service.create_ai_analysis(
+            ai_analysis_beh = db_service.create_ai_analysis(
                 interview_id=interview_id,
                 session_id=session_id,
-                analysis_type='text_analysis',
-                service_name='text-service',
-                raw_results=raw_results,
-                confidence_score=float(final_confidence_score),
-                processing_time=processing_time_ms,
+                analysis_type='behavioral_analysis',
+                service_name='behavioral_analysis_service',
+                raw_results=behavioral_data,
+                confidence_score=float(behavioral_conf),
+                processing_time=int((time.time() - start_time) * 1000), # Approx share
                 version='v1.0'
             )
+            stored_ids.append(str(ai_analysis_beh.id))
+            
+            # 2. Store Quality Prediction
+            quality_data = {
+                'predicted_score': quality_prediction.get('predicted_score', 5.0),
+                'confidence': quality_prediction.get('confidence', 0.5),
+                'feature_importance': quality_prediction.get('feature_importance', {}),
+                'model_used': quality_prediction.get('model_used', 'ensemble'),
+                'metadata': {
+                    'response_length': len(response_text),
+                    'question_number': question_number
+                }
+            }
+            
+            # Use model confidence if available, else default
+            quality_conf = quality_prediction.get('confidence', 0.5) * 10.0 # Scale 0-1 to 1-10
+            
+            ai_analysis_qual = db_service.create_ai_analysis(
+                interview_id=interview_id,
+                session_id=session_id,
+                analysis_type='quality_prediction',
+                service_name='quality_prediction_service',
+                raw_results=quality_data,
+                confidence_score=float(quality_conf),
+                processing_time=int((time.time() - start_time) * 1000),
+                version='v1.0'
+            )
+            stored_ids.append(str(ai_analysis_qual.id))
+            
+            # 3. Store Bias Detection (if available)
+            if bias_analysis:
+                bias_data = bias_analysis
+                # Bias confidence? Maybe inverse of bias score?
+                # For now, use default 5.0 or derived from bias probability
+                bias_prob = bias_analysis.get('bias_probability', 0.0)
+                bias_conf = (1.0 - bias_prob) * 10.0
+                
+                ai_analysis_bias = db_service.create_ai_analysis(
+                    interview_id=interview_id,
+                    session_id=session_id,
+                    analysis_type='bias_detection',
+                    service_name='bias_detection_service',
+                    raw_results=bias_data,
+                    confidence_score=float(bias_conf),
+                    processing_time=int((time.time() - start_time) * 1000),
+                    version='v1.0'
+                )
+                stored_ids.append(str(ai_analysis_bias.id))
             
             if should_close:
                 db.close()
             
-            log_info(f"✅ Stored AI analysis for interview {interview_id}, session {session_id}")
+            log_info(f"[OK] Stored {len(stored_ids)} AI analysis records for interview {interview_id}, session {session_id}")
             
+            # Return aggregated results for API response
             return {
-                'analysis_id': str(ai_analysis.id),
+                'analysis_id': stored_ids[0] if stored_ids else None, # Return first ID for compatibility
+                'analysis_ids': stored_ids, # Return all IDs
                 'confidence_score': final_confidence_score,
                 'quality_score': quality_score,
                 'behavioral_consistency': behavioral_consistency,
                 'behavioral_engagement': behavioral_engagement,
-                'processing_time_ms': processing_time_ms,
+                'processing_time_ms': int((time.time() - start_time) * 1000),
                 'analysis_stored': True
             }
             

@@ -14,9 +14,25 @@ from io import BytesIO
 import sys
 import os
 
-# Add the backend utils to the path
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'backend', 'text-service', 'utils'))
-from resume_parser import resume_parser
+# Try to import resume parser, but handle gracefully if it fails
+# We'll use a simple fallback parser instead of importing the complex one
+resume_parser = None
+
+# Try to import if possible, but don't fail if it doesn't work
+try:
+    # Add the backend utils to the path
+    backend_utils_path = os.path.join(os.path.dirname(__file__), '..', '..', 'backend', 'text-service')
+    if backend_utils_path not in sys.path:
+        sys.path.insert(0, backend_utils_path)
+    
+    # Try importing with absolute import
+    from utils import resume_parser as rp_module
+    from utils.resume_parser import ResumeParser
+    resume_parser = ResumeParser()
+except Exception as e:
+    # If import fails, we'll use a simple fallback parser
+    resume_parser = None
+    # Don't show warning on initial load - only when actually needed
 
 # Try to import reportlab for PDF generation
 try:
@@ -111,7 +127,7 @@ def make_api_request(method: str, endpoint: str, data: Optional[Dict] = None) ->
 
 def check_api_health():
     """Check if the API is running"""
-    health_data = make_api_request("GET", "/health")
+    health_data = make_api_request("GET", "/api/health")
     return health_data is not None
 
 def show_welcome_message():
@@ -138,93 +154,348 @@ def show_welcome_message():
 
 def create_candidate(resume_data: Dict) -> Optional[str]:
     """Create candidate in the backend"""
+    # Ensure all fields are properly formatted
+    name = str(resume_data.get("name", "Unknown")).strip()
+    email = str(resume_data.get("email", "")).strip()
+    
+    # Validate required fields - allow "Unknown" but warn user
+    if not name or name == "Unknown" or name == "None":
+        show_warning("Name not found in resume. Using 'Unknown' as placeholder.")
+        name = "Unknown"  # Allow it to proceed with Unknown
+    
+    # Generate placeholder email if not found in resume
+    if not email or "@" not in email:
+        # Create a placeholder email based on the name
+        name_lower = name.lower().replace(" ", ".").replace("'", "").replace("-", ".")
+        email = f"{name_lower}@example.com"
+        show_warning(f"Email not found in resume. Using placeholder: {email}")
+    
+    # Convert education to string if it's a list or dict
+    education = resume_data.get("education", "")
+    if isinstance(education, (list, dict)):
+        if isinstance(education, list):
+            education = ", ".join(str(e) for e in education if e)
+        else:
+            education = str(education)
+    education = str(education) if education else ""
+    
+    # Convert work_experience to string if needed
+    work_experience = resume_data.get("work_experience", "")
+    if isinstance(work_experience, (list, dict)):
+        if isinstance(work_experience, list):
+            work_experience = ", ".join(str(e) for e in work_experience if e)
+        else:
+            work_experience = str(work_experience)
+    work_experience = str(work_experience) if work_experience else ""
+    
+    # Ensure skills is a list
+    skills = resume_data.get("skills", [])
+    if not isinstance(skills, list):
+        skills = [str(skills)] if skills else []
+    
+    # Ensure experience_years is a float
+    experience_years = resume_data.get("experience_years", 0.0)
+    try:
+        experience_years = float(experience_years) if experience_years else 0.0
+    except (ValueError, TypeError):
+        experience_years = 0.0
+    
     candidate_data = {
-        "name": resume_data["name"],
-        "email": resume_data["email"],
-        "skills": resume_data["skills"],
-        "experience_years": resume_data["experience_years"],
-        "education": resume_data["education"],
-        "work_experience": resume_data["work_experience"]
+        "name": name,
+        "email": email,
+        "skills": skills[:20] if skills else [],  # Limit to 20 skills
+        "experience_years": experience_years,
+        "education": education[:500] if education else None,  # Limit length
+        "phone": resume_data.get("phone", None)
     }
     
-    result = make_api_request("POST", "/candidates/", candidate_data)
-    return result["candidate_id"] if result else None
+    result = make_api_request("POST", "/api/candidates/", candidate_data)
+    if result and "id" in result:
+        return result["id"]
+    return None
 
 def create_job(job_data: Dict) -> Optional[str]:
     """Create job in the backend"""
-    result = make_api_request("POST", "/jobs/", job_data)
-    return result["job_id"] if result else None
+    # Ensure all required fields are present and properly formatted
+    title = str(job_data.get("title", "")).strip()
+    company = str(job_data.get("company", "")).strip()
+    
+    if not title:
+        show_api_error("Job title is required.")
+        return None
+    
+    if not company:
+        show_api_error("Company name is required.")
+        return None
+    
+    # Ensure skills_required is a list
+    skills_required = job_data.get("required_skills", [])
+    if not isinstance(skills_required, list):
+        skills_required = [str(skills_required)] if skills_required else []
+    
+    # Ensure requirements is a list
+    requirements = job_data.get("requirements", [])
+    if not isinstance(requirements, list):
+        requirements = [str(requirements)] if requirements else []
+    
+    # Format job data
+    formatted_job_data = {
+        "title": title,
+        "company": company,
+        "description": str(job_data.get("description", ""))[:2000] if job_data.get("description") else None,
+        "skills_required": skills_required[:30] if skills_required else [],  # Limit to 30 skills
+        "requirements": requirements[:20] if requirements else [],  # Limit to 20 requirements
+        "experience_level": str(job_data.get("experience_level", "Mid-level"))[:50],
+        "job_type": str(job_data.get("job_type", "Full-time"))[:50] if job_data.get("job_type") else "Full-time",
+        "location": str(job_data.get("location", ""))[:255] if job_data.get("location") else None,
+        "salary_range": str(job_data.get("salary_range", ""))[:100] if job_data.get("salary_range") else None
+    }
+    
+    result = make_api_request("POST", "/api/jobs/", formatted_job_data)
+    if result and "id" in result:
+        return result["id"]
+    return None
 
 def start_interview(candidate_id: str, job_id: str) -> Optional[Dict]:
     """Start interview session"""
-    return make_api_request("POST", "/interviews/start", {
+    return make_api_request("POST", "/api/interviews/start", {
         "candidate_id": candidate_id,
         "job_id": job_id
     })
 
 def submit_response(session_id: str, response_text: str) -> Optional[Dict]:
     """Submit interview response"""
-    return make_api_request("POST", f"/interviews/{session_id}/respond", {
-        "response_text": response_text
+    return make_api_request("POST", f"/api/interviews/{session_id}/respond", {
+        "response_text": response_text,
+        "response_time_seconds": 30.0
     })
 
 def get_interview_summary(session_id: str) -> Optional[Dict]:
     """Get interview summary"""
-    return make_api_request("GET", f"/interviews/{session_id}/summary")
+    return make_api_request("GET", f"/api/interviews/{session_id}/summary")
 
 def get_ai_summary(session_id: str) -> Optional[Dict]:
     """Get AI-generated summary"""
-    return make_api_request("GET", f"/interviews/{session_id}/ai-summary")
+    # AI summary is included in the regular summary
+    return make_api_request("GET", f"/api/interviews/{session_id}/summary")
 
 def _create_resume_data_dict(parsed_data: Dict) -> Dict:
     """Create standardized resume data dictionary"""
+    # Handle None values properly - convert to empty string or default
+    name = parsed_data.get('name')
+    if name is None or name == 'None' or str(name).strip() == '':
+        name = 'Unknown'
+    else:
+        name = str(name).strip()
+    
+    email = parsed_data.get('email')
+    if email is None or email == 'None':
+        email = ''
+    else:
+        email = str(email).strip()
+    
     return {
-        "name": parsed_data['name'],
-        "email": parsed_data['email'],
-        "experience_years": parsed_data['experience_years'],
-        "skills": parsed_data['skills'] if parsed_data['skills'] else ["General"],
-        "education": parsed_data['education'],
-        "work_experience": parsed_data['work_experience'],
-        "parsing_method": "OpenResume-based parser (Tang, 2024)"
+        "name": name,
+        "email": email,
+        "experience_years": parsed_data.get('experience_years', 0.0),
+        "skills": parsed_data.get('skills', []) if parsed_data.get('skills') else ["General"],
+        "education": parsed_data.get('education', ''),
+        "work_experience": parsed_data.get('work_experience', ''),
+        "parsing_method": parsed_data.get('parsing_method', 'Simple parser')
     }
 
 def parse_resume_file(resume_file, resume_text: str) -> Optional[Dict]:
     """Parse resume file or text with error handling"""
     try:
+        # Extract text from PDF if file provided
         if resume_file is not None:
-            # Use OpenResume-based PDF parser
-            parsed_data = resume_parser.parse_resume_from_pdf(resume_file)
-            resume_text = parsed_data['raw_text']
-            show_success("PDF parsed using OpenResume-based parser")
-        else:
-            resume_text = resume_text or ""
-        
-        # Use OpenResume-based parser
-        parsed_data = resume_parser.parse_resume(resume_text)
-        return _create_resume_data_dict(parsed_data)
-        
-    except Exception as e:
-        show_warning(f"OpenResume parser failed: {str(e)}")
-        # Fallback to basic extraction
-        try:
-            if resume_file is not None:
+            try:
                 import PyPDF2
                 pdf_reader = PyPDF2.PdfReader(resume_file)
                 resume_text = ""
                 for page in pdf_reader.pages:
                     resume_text += page.extract_text() + "\n"
-                show_success("PDF parsed using basic text extraction")
-            else:
-                resume_text = resume_text or ""
-            
-            # Use OpenResume-based parser
-            parsed_data = resume_parser.parse_resume(resume_text)
-            return _create_resume_data_dict(parsed_data)
-            
-        except Exception as e:
-            show_api_error(f"Error reading PDF file: {str(e)}")
-            show_info("**Tip**: Try copying and pasting the text content instead of uploading the PDF file.")
+                show_success("PDF parsed successfully")
+            except Exception as e:
+                show_warning(f"PDF parsing error: {str(e)}")
+                show_info("**Tip**: Try copying and pasting the text content instead.")
+                return None
+        else:
+            resume_text = resume_text or ""
+        
+        if not resume_text.strip():
+            show_api_error("No resume text found. Please provide a resume file or text.")
             return None
+        
+        # Use resume parser if available, otherwise use simple extraction
+        if resume_parser:
+            try:
+                parsed_data = resume_parser.parse_resume(resume_text)
+                return _create_resume_data_dict(parsed_data)
+            except Exception as e:
+                show_warning(f"Advanced parser failed: {str(e)}. Using simple extraction.")
+        
+        # Fallback: Simple text extraction
+        return _simple_resume_parse(resume_text)
+            
+    except Exception as e:
+        show_api_error(f"Error parsing resume: {str(e)}")
+        return None
+
+def _simple_resume_parse(resume_text: str) -> Dict:
+    """Simple resume parsing without external dependencies"""
+    import re
+    
+    # Extract email - improved pattern (case-insensitive, more robust)
+    email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+    emails = re.findall(email_pattern, resume_text, re.IGNORECASE)
+    email = emails[0].lower() if emails else ""
+    
+    # Also check for "Email:" pattern
+    if not email:
+        for line in lines[:10]:
+            if ':' in line:
+                parts = line.split(':', 1)
+                if len(parts) == 2:
+                    label = parts[0].lower().strip()
+                    value = parts[1].strip()
+                    if 'email' in label:
+                        email_match = re.search(email_pattern, value, re.IGNORECASE)
+                        if email_match:
+                            email = email_match.group(0).lower()
+                            break
+    
+    # Extract name - improved extraction logic
+    lines = resume_text.split('\n')
+    name = None
+    
+    # Strategy 1: Look for name in first 3 lines (most resumes have name at top)
+    for i, line in enumerate(lines[:3]):
+        line = line.strip()
+        if not line or len(line) < 5:
+            continue
+        
+        # Skip lines that are clearly not names
+        line_lower = line.lower()
+        skip_words = ['resume', 'cv', 'curriculum', 'vitae', 'phone', 'email', 
+                     'linkedin', 'github', 'objective', 'summary', 'experience',
+                     'education', 'skills', 'projects', 'contact', 'address', 'profile']
+        if any(skip in line_lower for skip in skip_words):
+            continue
+        
+        # Look for name pattern: 2-4 words, each starting with capital
+        words = line.split()
+        if 2 <= len(words) <= 4:
+            # Check if all words are proper nouns (start with capital, rest lowercase)
+            if all(w and w[0].isupper() and (len(w) == 1 or w[1:].islower()) for w in words):
+                # Exclude common false positives
+                if not any(w.lower() in skip_words for w in words):
+                    # Exclude if contains numbers, special chars, or URLs
+                    if not any(char.isdigit() or char in '()[]{}@:/' for char in line):
+                        name = ' '.join(words)
+                        break
+    
+    # Strategy 2: Look for name pattern with regex (First Last or First Middle Last)
+    if not name:
+        for i, line in enumerate(lines[:5]):
+            line = line.strip()
+            if not line or len(line) < 5:
+                continue
+            
+            # Pattern: First Last or First Middle Last (all capitalized words)
+            name_pattern = r'^([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})(?:\s|,|$|•|:)'
+            match = re.match(name_pattern, line)
+            if match:
+                potential_name = match.group(1).strip()
+                if 5 <= len(potential_name) <= 40:
+                    words = potential_name.split()
+                    # Exclude if contains common non-name words
+                    if not any(w.lower() in skip_words for w in words):
+                        name = potential_name
+                        break
+    
+    # Strategy 3: Look for "Name:" pattern
+    if not name:
+        for line in lines[:10]:
+            line = line.strip()
+            if ':' in line:
+                parts = line.split(':', 1)
+                if len(parts) == 2:
+                    label = parts[0].lower().strip()
+                    value = parts[1].strip()
+                    if 'name' in label and len(value) > 3:
+                        words = value.split()
+                        if 2 <= len(words) <= 4:
+                            if all(w and w[0].isupper() for w in words):
+                                name = value
+                                break
+    
+    # Final fallback: Use first substantial non-empty line
+    if not name:
+        for line in lines[:5]:
+            line = line.strip()
+            if line and 5 <= len(line) <= 40:
+                # Check if it looks like a name
+                if (not line.isupper() and 
+                    not line.isdigit() and 
+                    not line.startswith('http') and
+                    ':' not in line and
+                    '@' not in line and
+                    not any(word.lower() in skip_words for word in line.split())):
+                    words = line.split()
+                    if 2 <= len(words) <= 3:
+                        # Check if words look like names (capitalized)
+                        if all(w[0].isupper() for w in words):
+                            name = ' '.join(words)
+                            break
+    
+    # Final fallback
+    if not name or name == "" or name == "None":
+        name = "Unknown"
+    
+    # Extract phone
+    phone_pattern = r'(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}'
+    phones = re.findall(phone_pattern, resume_text)
+    phone = ''.join(phones[0]) if phones else ""
+    
+    # Extract skills (common tech skills)
+    tech_skills = [
+        'python', 'java', 'javascript', 'typescript', 'react', 'angular', 'vue',
+        'node.js', 'express', 'django', 'flask', 'fastapi', 'spring', 'laravel',
+        'sql', 'postgresql', 'mysql', 'mongodb', 'redis', 'elasticsearch',
+        'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'terraform',
+        'git', 'github', 'gitlab', 'jenkins', 'ci/cd', 'devops',
+        'machine learning', 'ai', 'tensorflow', 'pytorch', 'scikit-learn',
+        'data science', 'data analysis', 'tableau', 'power bi', 'excel',
+        'agile', 'scrum', 'kanban', 'project management', 'c++', 'c#', 'go', 'rust'
+    ]
+    
+    resume_lower = resume_text.lower()
+    found_skills = [skill for skill in tech_skills if re.search(r'\b' + re.escape(skill) + r'\b', resume_lower)]
+    
+    # Extract experience years
+    exp_patterns = [
+        r'(\d+)\+?\s*years?\s*(?:of\s*)?experience',
+        r'experience[:\s]+(\d+)\+?\s*years?',
+    ]
+    experience_years = 0.0
+    for pattern in exp_patterns:
+        match = re.search(pattern, resume_lower)
+        if match:
+            experience_years = float(match.group(1))
+            break
+    
+    return {
+        'name': name,
+        'email': email,
+        'phone': phone,
+        'skills': found_skills[:20] if found_skills else ['General'],
+        'experience_years': experience_years,
+        'education': '',  # Simple parser doesn't extract education
+        'work_experience': '',  # Simple parser doesn't extract work experience
+        'raw_text': resume_text,
+        'parsing_method': 'Simple parser'
+    }
 
 def parse_job_description(job_title: str, company_name: str, job_description: str) -> Optional[Dict]:
     """Parse job description with skill extraction"""
@@ -325,14 +596,15 @@ def handle_interview_start():
             result = start_interview(st.session_state.candidate_id, st.session_state.job_id)
             
             if result:
-                st.session_state.current_session_id = result["session_id"]
+                st.session_state.current_session_id = result.get("session_id") or result.get("interview_id")
                 st.session_state.interview_messages = []
                 st.session_state.interview_completed = False
                 
                 # Add initial question
+                first_question = result.get("initial_question") or result.get("question") or result.get("first_question", "Let's begin the interview!")
                 st.session_state.interview_messages.append({
                     "role": "assistant",
-                    "content": result["first_question"]
+                    "content": first_question
                 })
                 # Mark that we've added the first question
                 st.session_state.first_question_added = True
@@ -688,7 +960,7 @@ def show_interview_interface():
     session_id = st.session_state.current_session_id
     
     # Get current interview status
-    interview_data = make_api_request("GET", f"/interviews/{session_id}")
+    interview_data = make_api_request("GET", f"/api/interviews/{session_id}/status")
     if not interview_data:
         show_api_error("Failed to get interview data")
         return
@@ -743,7 +1015,7 @@ def show_termination_summary():
     st.markdown("## ❌ Interview Terminated")
     
     # Get interview data
-    interview_data = make_api_request("GET", f"/interviews/{session_id}")
+    interview_data = make_api_request("GET", f"/api/interviews/{session_id}/status")
     if not interview_data:
         show_api_error("Failed to get interview data")
         return

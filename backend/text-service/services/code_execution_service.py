@@ -55,7 +55,7 @@ class CodeExecutionService:
         }
         
         self.execution_results = {}  # Store execution results
-        log_info("✅ Code Execution Service initialized")
+        log_info("[OK] Code Execution Service initialized")
     
     async def execute_code(
         self,
@@ -119,7 +119,7 @@ class CodeExecutionService:
             # Clean up
             os.unlink(temp_file_path)
             
-            log_info(f"✅ Code executed successfully in {language}")
+            log_info(f"[OK] Code executed successfully in {language}")
             return execution_result
             
         except Exception as e:

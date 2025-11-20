@@ -24,7 +24,8 @@ class ResumeParser:
     
     def __init__(self):
         self.name_patterns = [
-            r'^([A-Z][a-z]+ [A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)',
+            r'^([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})',  # First Last or First Middle Last at start of line
+            r'^([A-Z][a-z]+\s+[A-Z][a-z]+)',  # First Last (simpler pattern)
             r'([A-Z][a-z]+ [A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*\n',
             r'([A-Z][a-z]+ [A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+[A-Z][a-z]+,\s*[A-Z]{2}',
             r'([A-Z][a-z]+ [A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+[A-Z][a-z]+,\s*[A-Z]{2}\s+[A-Z]\d[A-Z]\s*\d[A-Z]\d',
@@ -102,23 +103,44 @@ class ResumeParser:
         """Extract candidate name from resume text"""
         lines = text.split('\n')
         
-        # Check first few lines for name patterns
-        for i, line in enumerate(lines[:5]):
+        # Check first few lines for name patterns (increased to 10 lines)
+        for i, line in enumerate(lines[:10]):
             line = line.strip()
-            if not line:
+            if not line or len(line) < 3:
+                continue
+            
+            # Skip lines that are clearly not names
+            line_lower = line.lower()
+            if any(skip in line_lower for skip in ['resume', 'cv', 'curriculum', 'vitae', 'phone', 'email', 
+                                                   'linkedin', 'github', 'objective', 'summary', 'experience',
+                                                   'education', 'skills', 'projects', 'contact', 'address']):
                 continue
                 
             for pattern in self.name_patterns:
                 match = re.search(pattern, line, re.IGNORECASE)
                 if match:
                     name = match.group(1).strip()
-                    # Validate name (should be 2-3 words, not too long)
+                    # Validate name (should be 2-4 words, not too long)
                     name_parts = name.split()
-                    if 2 <= len(name_parts) <= 3 and len(name) < 50:
+                    if 2 <= len(name_parts) <= 4 and len(name) < 50:
                         # Check if it's not a common false positive
                         if not any(word.lower() in ['resume', 'cv', 'curriculum', 'vitae', 'profile'] 
                                  for word in name_parts):
                             return name.title()
+        
+        # Fallback: Look for capitalized name pattern in first few lines
+        for i, line in enumerate(lines[:8]):
+            line = line.strip()
+            if not line or len(line) < 5:
+                continue
+            # Pattern: First Last or First Middle Last (all capitalized words)
+            words = line.split()
+            if 2 <= len(words) <= 4:
+                # Check if all words start with capital and rest lowercase (typical name pattern)
+                if all(w and w[0].isupper() and (len(w) == 1 or w[1:].islower()) for w in words):
+                    # Exclude common false positives
+                    if not any(w.lower() in ['resume', 'cv', 'phone', 'email', 'linkedin', 'github'] for w in words):
+                        return ' '.join(words)
         
         return None
 

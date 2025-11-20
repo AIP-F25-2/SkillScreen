@@ -26,9 +26,9 @@ class DatabaseManager:
             
             if not database_url:
                 # Fallback to individual components or Azure PostgreSQL defaults
-                host = get_config('DATABASE_HOST', 'skillscreen-db.postgres.database.azure.com')
+                host = get_config('DATABASE_HOST', 'skillscreen-postgres.postgres.database.azure.com')
                 port = get_config('DATABASE_PORT', '5432')
-                dbname = get_config('DATABASE_NAME', 'postgres')
+                dbname = get_config('DATABASE_NAME', 'skillscreen_database')
                 user = get_config('DATABASE_USER', 'intervuai')
                 password = get_config('DATABASE_PASSWORD', 'LOYALlist_2025')
                 ssl_mode = get_config('DATABASE_SSL_MODE', 'require')
@@ -58,17 +58,26 @@ class DatabaseManager:
             
             # Import models to ensure they're registered
             from .models import Base
-            Base.metadata.create_all(bind=self.engine)
-            
-            print(f"Database initialized: {database_url.split('@')[1] if '@' in database_url else 'Azure PostgreSQL'}")
+            try:
+                Base.metadata.create_all(bind=self.engine)
+                print(f"Database initialized: {database_url.split('@')[1] if '@' in database_url else 'Azure PostgreSQL'}")
+            except Exception as create_error:
+                print(f"Warning: Could not create tables (database may not be accessible): {create_error}")
+                print("Application will continue but database operations may fail.")
             
         except Exception as e:
-            print(f"Database initialization failed: {e}")
-            raise
+            print(f"Warning: Database connection failed: {e}")
+            print("Application will start but database operations will fail.")
+            print("To fix: Add your IP to Azure PostgreSQL firewall rules.")
+            # Don't raise - allow application to start without database for testing
+            self.engine = None
+            self.SessionLocal = None
     
     @contextmanager
     def get_session(self) -> Generator[Session, None, None]:
         """Get database session with automatic cleanup"""
+        if not self.SessionLocal:
+            raise ConnectionError("Database not connected. Please check Azure PostgreSQL firewall settings.")
         session = self.SessionLocal()
         try:
             yield session
@@ -82,6 +91,8 @@ class DatabaseManager:
     
     def get_session_sync(self) -> Session:
         """Get database session (caller responsible for cleanup)"""
+        if not self.SessionLocal:
+            raise ConnectionError("Database not connected. Please check Azure PostgreSQL firewall settings.")
         return self.SessionLocal()
     
     def close_all_sessions(self):
@@ -95,5 +106,12 @@ db_manager = DatabaseManager()
 # Dependency for FastAPI
 def get_db() -> Generator[Session, None, None]:
     """FastAPI dependency for database sessions"""
-    with db_manager.get_session() as session:
-        yield session
+    try:
+        with db_manager.get_session() as session:
+            yield session
+    except ConnectionError as e:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=503,
+            detail="Database not available. Please check Azure PostgreSQL firewall settings and ensure your IP is whitelisted."
+        )

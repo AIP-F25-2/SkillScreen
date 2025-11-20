@@ -13,8 +13,11 @@
 2. [Candidates](#candidates)
 3. [Jobs](#jobs)
 4. [Interviews](#interviews)
-5. [Code Execution](#code-execution)
-6. [Statistics](#statistics)
+5. [Coding Questions & Sessions](#coding-questions--sessions)
+6. [Code Execution](#code-execution)
+7. [ML & AI Analysis](#ml--ai-analysis)
+8. [File Operations](#file-operations)
+9. [Statistics](#statistics)
 
 ---
 
@@ -41,7 +44,7 @@
 
 ---
 
-### GET `/health`
+### GET `/api/health`
 **Description:** Health check endpoint with service status
 
 **Response:**
@@ -49,8 +52,11 @@
 {
   "status": "healthy",
   "timestamp": "2024-12-15T10:30:00",
-  "database": "postgresql" | "in-memory" | "postgresql-error: <error>",
-  "services": ["interview", "nlp", "anti-cheating", "code-execution", "database"]
+  "services": {
+    "database": "connected",
+    "nlp": "active",
+    "anti_cheating": "active"
+  }
 }
 ```
 
@@ -61,7 +67,7 @@
 
 ## Candidates
 
-### POST `/candidates`
+### POST `/api/candidates/`
 **Description:** Create a new candidate
 
 **Request Body:**
@@ -88,7 +94,7 @@
 
 ---
 
-### GET `/candidates`
+### GET `/api/candidates`
 **Description:** List all candidates
 
 **Response:**
@@ -111,7 +117,7 @@
 
 ---
 
-### GET `/candidates/{candidate_id}`
+### GET `/api/candidates/{candidate_id}`
 **Description:** Get candidate details by ID
 
 **Path Parameters:**
@@ -141,7 +147,7 @@
 
 ## Jobs
 
-### POST `/jobs`
+### POST `/api/jobs/`
 **Description:** Create a new job posting
 
 **Request Body:**
@@ -168,7 +174,7 @@
 
 ---
 
-### GET `/jobs`
+### GET `/api/jobs`
 **Description:** List all jobs
 
 **Response:**
@@ -191,7 +197,7 @@
 
 ---
 
-### GET `/jobs/{job_id}`
+### GET `/api/jobs/{job_id}`
 **Description:** Get job details by ID
 
 **Path Parameters:**
@@ -221,7 +227,7 @@
 
 ## Interviews
 
-### POST `/interviews/start`
+### POST `/api/interviews/start`
 **Description:** Start a new interview session
 
 **Request Body:**
@@ -251,7 +257,7 @@
 
 ---
 
-### GET `/interviews/{session_id}`
+### GET `/api/interviews/{session_id}/status`
 **Description:** Get interview session details
 
 **Path Parameters:**
@@ -289,7 +295,7 @@
 
 ---
 
-### POST `/interviews/{session_id}/respond`
+### POST `/api/interviews/{session_id}/respond`
 **Description:** Submit candidate response to current question
 
 **Path Parameters:**
@@ -355,7 +361,7 @@
 
 ---
 
-### GET `/interviews/{session_id}/summary`
+### GET `/api/interviews/{session_id}/summary`
 **Description:** Get interview summary (only available after completion)
 
 **Path Parameters:**
@@ -414,7 +420,7 @@
 
 ---
 
-### GET `/interviews/{session_id}/ai-summary`
+### GET `/api/interviews/{session_id}/ai-summary`
 **Description:** Get AI-generated human-like interview summary
 
 **Path Parameters:**
@@ -442,7 +448,7 @@
 
 ---
 
-### GET `/interviews`
+### GET `/api/interviews`
 **Description:** List all interview sessions
 
 **Response:**
@@ -463,7 +469,7 @@
 
 ---
 
-### DELETE `/interviews/{session_id}`
+### DELETE `/api/interviews/{session_id}`
 **Description:** Delete interview session
 
 **Path Parameters:**
@@ -478,6 +484,118 @@
 
 **Error Responses:**
 - `404`: Interview session not found
+
+---
+
+## Coding Questions & Sessions
+
+### POST `/api/interviews/{session_id}/coding-question`
+**Description:** Generate a coding question for an interview session
+
+**Path Parameters:**
+- `session_id` (string): Interview session identifier
+
+**Request Body:**
+```json
+{
+  "difficulty": "medium",
+  "language": "python"
+}
+```
+
+**Response:**
+```json
+{
+  "coding_session_id": "coding_session_123",
+  "question_id": "question_456",
+  "title": "Two Sum",
+  "description": "Given an array of integers nums and an integer target...",
+  "language": "python",
+  "starter_code": "def two_sum(nums, target):\n    # Your code here\n    pass",
+  "difficulty": "medium",
+  "started_at": "2024-12-15T10:30:00"
+}
+```
+
+---
+
+### POST `/api/coding-sessions/{session_id}/submit`
+**Description:** Submit code solution for evaluation
+
+**Path Parameters:**
+- `session_id` (string): Coding session identifier
+
+**Request Body:**
+```json
+{
+  "code": "def two_sum(nums, target):\n    # solution code",
+  "language": "python"
+}
+```
+
+**Response:**
+```json
+{
+  "coding_session_id": "coding_session_123",
+  "is_correct": true,
+  "execution_output": "Test passed",
+  "execution_error": null,
+  "test_results": [
+    {"passed": true, "input": {"nums": [2,7,11,15], "target": 9}, "expected": [0,1], "actual": [0,1]}
+  ],
+  "submitted_at": "2024-12-15T10:35:00"
+}
+```
+
+---
+
+### GET `/api/coding-sessions/{session_id}/status`
+**Description:** Get coding session status and results
+
+**Path Parameters:**
+- `session_id` (string): Coding session identifier
+
+**Response:**
+```json
+{
+  "coding_session_id": "coding_session_123",
+  "question_id": "question_456",
+  "question_title": "Two Sum",
+  "language": "python",
+  "code": "def two_sum(nums, target):...",
+  "is_correct": true,
+  "execution_results": {...},
+  "started_at": "2024-12-15T10:30:00",
+  "submitted_at": "2024-12-15T10:35:00",
+  "status": "completed"
+}
+```
+
+---
+
+### POST `/api/coding-sessions/{session_id}/execute`
+**Description:** Execute code without submitting (for testing)
+
+**Path Parameters:**
+- `session_id` (string): Coding session identifier
+
+**Request Body:**
+```json
+{
+  "code": "def test():\n    print('Hello')",
+  "language": "python"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "output": "Hello",
+  "error": null,
+  "execution_time": 0.02
+}
+```
 
 ---
 
@@ -601,9 +719,245 @@
 
 ---
 
+## ML & AI Analysis
+
+### GET `/api/interviews/{interview_id}/behavioral-analysis`
+**Description:** Get behavioral analysis for an interview
+
+**Path Parameters:**
+- `interview_id` (string): Interview identifier
+
+**Response:**
+```json
+{
+  "interview_id": "interview_123",
+  "total_responses": 9,
+  "behavioral_patterns": [
+    {
+      "behavior_type": "engaged",
+      "anomaly_score": 0.2,
+      "engagement_trend": "increasing",
+      "consistency_score": 0.85
+    }
+  ],
+  "overall_behavior_type": "engaged",
+  "summary": {
+    "consistent_behavior": true,
+    "behavior_diversity": 1
+  }
+}
+```
+
+---
+
+### GET `/api/interviews/{interview_id}/bias-report`
+**Description:** Generate comprehensive bias detection report
+
+**Path Parameters:**
+- `interview_id` (string): Interview identifier
+
+**Response:**
+```json
+{
+  "interview_id": "interview_123",
+  "bias_detected": false,
+  "bias_type": "none",
+  "bias_details": {
+    "statistical_tests": {...},
+    "score_distributions": {...}
+  },
+  "bias_summary": {...},
+  "recommendations": [],
+  "generated_at": "2024-12-15T10:30:00"
+}
+```
+
+---
+
+### GET `/api/interviews/{interview_id}/ml-predictions`
+**Description:** Get all ML predictions for an interview
+
+**Path Parameters:**
+- `interview_id` (string): Interview identifier
+
+**Response:**
+```json
+{
+  "interview_id": "interview_123",
+  "total_predictions": 9,
+  "predictions": [
+    {
+      "response_id": "response_456",
+      "quality_prediction": {
+        "predicted_score": 7.5,
+        "confidence": 0.85
+      },
+      "behavioral_analysis": {...},
+      "timestamp": "2024-12-15T10:30:00"
+    }
+  ]
+}
+```
+
+---
+
+### POST `/api/ml/train-quality-model`
+**Description:** Train the quality prediction model
+
+**Request Body:**
+```json
+{
+  "training_data": [
+    {
+      "question": "Tell me about yourself",
+      "response": "I am a software engineer...",
+      "actual_score": 8.0,
+      "candidate_context": {"experience_years": 5},
+      "job_context": {"title": "Senior Engineer"}
+    }
+  ]
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Model trained successfully",
+  "training_result": {
+    "best_model": "xgboost",
+    "mse": 0.45,
+    "r2": 0.82
+  }
+}
+```
+
+---
+
+### GET `/api/ml/model-info`
+**Description:** Get model information and performance metrics
+
+**Response:**
+```json
+{
+  "quality_prediction": {
+    "model_trained": true,
+    "models_available": ["primary", "xgboost", "random_forest"],
+    "feature_count": 25,
+    "features": ["response_length", "technical_depth", ...],
+    "performance": {
+      "accuracy": 0.85,
+      "mse": 0.45
+    }
+  }
+}
+```
+
+---
+
+### POST `/api/ml/retrain`
+**Description:** Trigger model retraining
+
+**Request Body:**
+```json
+{
+  "use_historical_data": true
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Model retrained using historical data",
+  "training_samples": 150,
+  "result": {...}
+}
+```
+
+---
+
+### GET `/api/ml/feature-importance`
+**Description:** Get feature importance for models
+
+**Response:**
+```json
+{
+  "model": "quality_prediction",
+  "feature_importance": {
+    "response_length": 0.15,
+    "technical_depth": 0.12,
+    "job_skill_alignment": 0.10
+  },
+  "total_features": 25,
+  "features": ["response_length", "technical_depth", ...]
+}
+```
+
+---
+
+### POST `/api/ml/explain-prediction`
+**Description:** Get SHAP/LIME explanation for a prediction
+
+**Request Body:**
+```json
+{
+  "question": "Tell me about yourself",
+  "response": "I am a software engineer...",
+  "candidate_context": {"experience_years": 5},
+  "job_context": {"title": "Senior Engineer"}
+}
+```
+
+**Response:**
+```json
+{
+  "prediction": {
+    "predicted_score": 7.5,
+    "confidence": 0.85
+  },
+  "shap_explanation": {
+    "feature_contributions": {...},
+    "base_value": 5.0
+  },
+  "features_used": {...}
+}
+```
+
+---
+
+## File Operations
+
+### POST `/api/upload/resume`
+**Description:** Upload resume file
+
+**Request:** Multipart form data
+- `file`: Resume file (PDF or text)
+
+**Response:**
+```json
+{
+  "file_id": "resume_123",
+  "filename": "john_doe_resume.pdf",
+  "uploaded_at": "2024-12-15T10:30:00"
+}
+```
+
+---
+
+### GET `/api/interviews/{session_id}/export/pdf`
+**Description:** Export interview report as PDF
+
+**Path Parameters:**
+- `session_id` (string): Interview session identifier
+
+**Response:** PDF file download
+
+---
+
 ## Statistics
 
-### GET `/stats`
+### GET `/api/stats`
 **Description:** Get system statistics
 
 **Response:**
@@ -625,28 +979,28 @@
 
 **Functions that call API endpoints:**
 
-1. **`check_api_health()`** → `GET /health`
+1. **`check_api_health()`** → `GET /api/health`
    - Checks backend availability on startup
 
-2. **`create_candidate(resume_data)`** → `POST /candidates`
+2. **`create_candidate(resume_data)`** → `POST /api/candidates/`
    - Creates candidate after resume parsing
 
-3. **`create_job(job_data)`** → `POST /jobs`
+3. **`create_job(job_data)`** → `POST /api/jobs/`
    - Creates job after job description parsing
 
-4. **`start_interview(candidate_id, job_id)`** → `POST /interviews/start`
+4. **`start_interview(candidate_id, job_id)`** → `POST /api/interviews/start`
    - Starts interview session
 
-5. **`submit_response(session_id, response_text)`** → `POST /interviews/{session_id}/respond`
+5. **`submit_response(session_id, response_text)`** → `POST /api/interviews/{session_id}/respond`
    - Submits candidate response
 
-6. **`get_interview_summary(session_id)`** → `GET /interviews/{session_id}/summary`
+6. **`get_interview_summary(session_id)`** → `GET /api/interviews/{session_id}/summary`
    - Gets interview summary after completion
 
-7. **`get_ai_summary(session_id)`** → `GET /interviews/{session_id}/ai-summary`
+7. **`get_ai_summary(session_id)`** → `GET /api/interviews/{session_id}/ai-summary`
    - Gets AI-generated summary
 
-8. **`make_api_request("GET", f"/interviews/{session_id}")`** → `GET /interviews/{session_id}`
+8. **`make_api_request("GET", f"/api/interviews/{session_id}/status")`** → `GET /api/interviews/{session_id}/status`
    - Gets current interview status
 
 9. **`make_api_request("POST", "/api/code/execute", {...})`** → `POST /api/code/execute`
@@ -749,7 +1103,21 @@ Database status is reported in `/health` endpoint.
 
 ---
 
-**Last Updated:** December 2024  
+---
+
+## Quick Access
+
+**Interactive API Documentation:**
+- **Swagger UI:** `http://localhost:8000/api/docs` (Interactive testing interface)
+- **ReDoc:** `http://localhost:8000/api/redoc` (Beautiful documentation)
+
+**Base URL:** `http://localhost:8000`  
+**API Prefix:** All endpoints are prefixed with `/api/`  
+**API Version:** 2.0.0
+
+---
+
+**Last Updated:** November 2025  
 **API Version:** 2.0.0  
-**Contact:** [Your Team Contact Information]
+**Total Endpoints:** 24+ endpoints covering candidates, jobs, interviews, coding sessions, ML analysis, and file operations
 
