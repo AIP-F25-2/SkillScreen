@@ -365,7 +365,7 @@ async def get_candidate_transcripts(candidate_id: str):
         return CandidateTranscriptsResponse(
             candidate_id=candidate_id,
             candidate_name=candidate_name,
-            total_sessions=len(set(t['session_id'] for t in transcripts)),
+            total_sessions=len({t['session_id'] for t in transcripts}),
             transcripts=formatted_transcripts,
             summary=summary
         )
@@ -442,7 +442,7 @@ async def get_candidate_audio_analysis(candidate_id: str):
         return CandidateAudioAnalysisResponse(
             candidate_id=candidate_id,
             candidate_name=candidate_name,
-            total_sessions=len(set(a['session_id'] for a in analyses)),
+            total_sessions=len({a['session_id'] for a in analyses}),
             analyses=formatted_analyses,
             summary=summary
         )
