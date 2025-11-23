@@ -73,6 +73,7 @@ export default function ChatPage() {
                           src="/logo.png"
                           alt="IntervuAI"
                           fill
+                          sizes="32px"
                           className="object-contain"
                         />
                       </div>

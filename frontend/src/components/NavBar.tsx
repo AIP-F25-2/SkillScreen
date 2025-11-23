@@ -129,11 +129,12 @@ export default function NavBar() {
                 src="/logo.png"
                 alt="IntervuAI Logo"
                 fill
+                sizes="(max-width: 768px) 32px, (max-width: 1200px) 32px, 32px"
                 className="object-contain"
               />
             </div>
             <span className="text-white text-xl font-bold">
-              IntervuAI
+              SkillScreen
             </span>
           </Link>
         </motion.div>
