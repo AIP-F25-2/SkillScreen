@@ -104,6 +104,36 @@ def _build_generation_response(status: str, interview_id: str, result: dict = No
     return response
 
 
+async def _get_or_generate_assessment(interview_id: str) -> AssessmentResultResponse:
+    """Get existing assessment or generate new one"""
+    with UnitOfWork() as uow:
+        repo = AssessmentRepository(uow)
+        assessment = repo.get_assessment(interview_id)
+
+        if assessment:
+            return _build_assessment_response(assessment)
+
+    # Assessment doesn't exist - generate on-demand
+    result = await assessment_service.generate_assessment(interview_id)
+
+    if result['status'] in ['success', 'rejected_cheating']:
+        # Fetch the newly created assessment
+        with UnitOfWork() as uow:
+            repo = AssessmentRepository(uow)
+            assessment = repo.get_assessment(interview_id)
+            return _build_assessment_response(assessment)
+    elif result['status'] == 'incomplete':
+        raise HTTPException(
+            status_code=202,
+            detail="Interview is still being processed by AI services. Please try again in a few minutes."
+        )
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail=result.get('message', 'Failed to generate assessment')
+        )
+
+
 # ==========================================
 # ENDPOINTS
 # ==========================================
@@ -188,35 +218,7 @@ async def get_assessment_by_interview(interview_id: str):
     Returns complete assessment data
     """
     try:
-        with UnitOfWork() as uow:
-            repo = AssessmentRepository(uow)
-
-            # Check if assessment already exists
-            assessment = repo.get_assessment(interview_id)
-
-            if assessment:
-                return _build_assessment_response(assessment)
-
-        # Assessment doesn't exist - generate on-demand
-        result = await assessment_service.generate_assessment(interview_id)
-
-        if result['status'] in ['success', 'rejected_cheating']:
-            # Fetch the newly created assessment
-            with UnitOfWork() as uow:
-                repo = AssessmentRepository(uow)
-                assessment = repo.get_assessment(interview_id)
-                return _build_assessment_response(assessment)
-        elif result['status'] == 'incomplete':
-            raise HTTPException(
-                status_code=202,  # Accepted but not ready
-                detail="Interview is still being processed by AI services. Please try again in a few minutes."
-            )
-        else:
-            raise HTTPException(
-                status_code=500,
-                detail=result.get('message', 'Failed to generate assessment')
-            )
-    
+        return await _get_or_generate_assessment(interview_id)
     except HTTPException:
         raise
     except Exception as e:
@@ -291,66 +293,42 @@ async def get_detailed_scores(interview_id: str):
 async def get_or_generate_assessment_for_candidate(candidate_id: str):
     """
     Get assessment for a candidate - generates on-demand if not exists
-    
+
     **Use Case:** Recruiter views candidate profile
     - If assessment exists: Returns immediately from database
     - If not exists: Generates assessment and saves to database
-    
+
     - **candidate_id**: UUID of the candidate
-    
+
     Returns complete assessment data
     """
     try:
         with UnitOfWork() as uow:
             repo = AssessmentRepository(uow)
-            
+
             # Find the most recent completed interview for this candidate
             from sqlalchemy import select, and_
-            from repositories.assessment_repository import interviews_table, assessments_table
-            
+            from repositories.assessment_repository import interviews_table
+
             query = select(interviews_table).where(
                 and_(
                     interviews_table.c.candidate_id == candidate_id,
                     interviews_table.c.status == 'completed'
                 )
             ).order_by(interviews_table.c.completed_at.desc()).limit(1)
-            
+
             result = uow.session.execute(query).fetchone()
-            
+
             if not result:
                 raise HTTPException(
                     status_code=404,
                     detail="No completed interview found for this candidate"
                 )
-            
+
             interview_id = str(result.id)
 
-            # Check if assessment already exists
-            assessment = repo.get_assessment(interview_id)
+        return await _get_or_generate_assessment(interview_id)
 
-            if assessment:
-                return _build_assessment_response(assessment)
-
-        # Assessment doesn't exist - generate on-demand
-        result = await assessment_service.generate_assessment(interview_id)
-
-        if result['status'] in ['success', 'rejected_cheating']:
-            # Fetch the newly created assessment
-            with UnitOfWork() as uow:
-                repo = AssessmentRepository(uow)
-                assessment = repo.get_assessment(interview_id)
-                return _build_assessment_response(assessment)
-        elif result['status'] == 'incomplete':
-            raise HTTPException(
-                status_code=202,  # Accepted but not ready
-                detail="Interview is still being processed by AI services. Please try again in a few minutes."
-            )
-        else:
-            raise HTTPException(
-                status_code=500,
-                detail=result.get('message', 'Failed to generate assessment')
-            )
-    
     except HTTPException:
         raise
     except Exception as e:
