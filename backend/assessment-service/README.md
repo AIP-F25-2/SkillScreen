@@ -1,92 +1,129 @@
-# Assessment Service
+# Assessment Orchestration Service
 
-FastAPI-based microservice for handling assessments and evaluations.
+The Assessment Orchestration Service aggregates AI analysis results from multiple services (audio, video, text, coding) and generates comprehensive candidate assessments with LLM-based recommendations.
 
 ## Features
-- ✅ FastAPI framework with automatic API documentation
-- ✅ Standardized API response structure
-- ✅ Health check endpoints
-- ✅ Docker containerization
-- ✅ Environment configuration
 
-## Quick Start
+- **Intelligent Scheduled Checks**: Runs every 10 minutes to detect completed interviews
+- **Multi-Service Score Aggregation**: Combines audio, video, text, and coding analysis
+- **LLM-Based Weight Determination**: Uses Claude API to determine optimal scoring weights from job descriptions
+- **LLM-Based Recommendations**: Generates hire/no-hire recommendations with reasoning
+- **Evidence Linking**: Aggregates evidence across all modalities
+- **Flexible Scoring**: Supports custom weight overrides via API
 
-### Docker Deployment
-```bash
-# Build the image
-docker build -t assessment-service .
+## Architecture
 
-# Run with environment file
-docker run -d --name assessment-service-container -p 8080:8080 --env-file .env assessment-service
-
-# Test the service
-curl http://localhost:8080
 ```
-
-### Local Development
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Run locally
-uvicorn assessment:app --host 0.0.0.0 --port 8080
+Scheduled Job (10 min) → Check Completed Interviews
+                       ↓
+                 Verify All AI Services Complete
+                       ↓
+                 Aggregate Scores (Audio + Video + Text + Coding)
+                       ↓
+                 LLM Determines Weights (from Job Description)
+                       ↓
+                 LLM Generates Recommendation + Summary
+                       ↓
+                 Insert into assessments Table
 ```
 
 ## API Endpoints
 
-### Health Check
-- `GET /` - Service status and deployment check
-- `GET /health` - Detailed health information
+### Assessment Operations
+- `POST /v1/assessment/start/{interview_id}` - Manually trigger assessment
+- `GET /v1/assessment/status/{interview_id}` - Check assessment progress  
+- `GET /v1/assessment/results/{interview_id}` - Get final assessment
+- `POST /v1/assessment/regenerate/{interview_id}` - Regenerate with new weights
+- `GET /v1/assessment/scores/{interview_id}` - Get detailed score breakdown
+- `POST /v1/assessment/customize-weights` - Set custom scoring weights
 
-### Assessment Endpoints
-- `GET /questions` - Get assessment questions
-- `POST /submit` - Submit assessment answers
+### Health & Monitoring
+- `GET /health` - Service health check
+- `GET /v1/scheduler/status` - Check scheduler status
 
-## Environment Configuration
+## Environment Variables
 
-Copy `.env.example` to `.env` and configure:
+See `.env.example` for configuration options.
+
+Key variables:
+- `DATABASE_URL` - PostgreSQL connection string
+- `ANTHROPIC_API_KEY` - Claude API key for LLM features
+- `ASSESSMENT_CHECK_INTERVAL_MINUTES` - Scheduler interval (default: 10)
+- `DEFAULT_WEIGHT_*` - Default scoring weights
+
+## Default Scoring Weights
+
+**With Coding:**
+- Coding: 40%
+- Text: 20%
+- Audio: 20%
+- Video: 20%
+
+**Without Coding:**
+- Text: 34%
+- Audio: 33%
+- Video: 33%
+
+## Database Tables
+
+**Reads from:**
+- `interviews` - Interview status and metadata
+- `interview_sessions` - Questions/sessions per interview
+- `ai_analysis` - Raw results from AI services
+- `job_positions` - Job descriptions for LLM weight determination
+
+**Writes to:**
+- `assessments` - Final aggregated assessments
+
+## Running Locally
 
 ```bash
-# Server Configuration
-PORT=8080
-HOST=0.0.0.0
+# Install dependencies
+pip install -r requirements.txt
 
-# Environment
-ENVIRONMENT=development
-DEBUG=true
+# Set environment variables
+cp .env.example .env
+# Edit .env with your configuration
 
-# Logging
-LOG_LEVEL=INFO
+# Run the service
+uvicorn assessment:app --host 0.0.0.0 --port 8005 --reload
 ```
 
-## API Response Format
+## Running with Docker
 
-All endpoints return standardized responses:
+```bash
+# Build image
+docker build -t assessment-service .
 
-```json
-{
-  "success": true,
-  "data": {
-    // Actual response data
-  },
-  "meta": {
-    "timestamp": "2024-01-15T10:30:00.000Z",
-    "request_id": "req_abc123",
-    "version": "v1"
-  }
-}
+# Run container
+docker run -p 8005:8005 --env-file .env assessment-service
 ```
 
-## Files Structure
+## Scheduled Check Logic
+
+The service runs a background job every 10 minutes that:
+
+1. Finds interviews with `status='completed'` that don't have assessments yet
+2. Verifies all required AI services have completed for ALL sessions
+3. Aggregates scores from `ai_analysis` table
+4. Calls Claude API for weight determination and final recommendation
+5. Inserts results into `assessments` table
+
+## Development
+
+```bash
+# Run tests
+pytest
+
+# Format code
+black .
+
+# Lint
+flake8 .
 ```
-assessment-service/
-├── assessment.py           # Main FastAPI application
-├── Dockerfile             # Docker configuration
-├── requirements.txt       # Python dependencies
-├── .env.example           # Environment template
-├── controllers/           # API controllers
-├── repositories/          # Data access layer
-├── services/              # Business logic
-├── tests/                 # Test files
-└── README.md             # This file
-```
+
+## Team
+
+**Owner**: Assessment AI Team  
+**Project**: SkillScreen  
+**Tech Stack**: FastAPI, PostgreSQL, Claude API, APScheduler
