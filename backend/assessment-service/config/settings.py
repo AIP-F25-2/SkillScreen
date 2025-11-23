@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     log_format: str = Field(default="json", alias="LOG_FORMAT")
     
     # CORS Settings
+    # Note: http://localhost is acceptable for development. Production should use https URLs via ALLOWED_ORIGINS env var
     allowed_origins: str = Field(default="http://localhost:3000,http://localhost:5173", alias="ALLOWED_ORIGINS")
     
     # Health Check
