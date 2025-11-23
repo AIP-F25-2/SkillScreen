@@ -18,8 +18,9 @@ export default function TestPage() {
         codingProblems: await apiClient.getProblems(),
       };
       setTestResults(results);
-    } catch (error) {
-      setTestResults({ error: error.message });
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setTestResults({ error: errorMessage });
     } finally {
       setIsLoading(false);
     }

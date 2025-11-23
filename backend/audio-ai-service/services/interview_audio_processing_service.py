@@ -40,7 +40,7 @@ class InterviewAudioProcessingService:
         interview_id: str,
         session_id: str,
         media_file_id: str,
-        blob_name: str
+        storage_uri: str
     ):
         """
         Start asynchronous audio processing in background thread
@@ -56,7 +56,7 @@ class InterviewAudioProcessingService:
         # Start background thread
         processing_thread = threading.Thread(
             target=self._process_background,
-            args=(interview_id, session_id, media_file_id, blob_name),
+            args=(interview_id, session_id, media_file_id, storage_uri),
             daemon=True
         )
         processing_thread.start()
@@ -68,7 +68,7 @@ class InterviewAudioProcessingService:
         interview_id: str,
         session_id: str,
         media_file_id: str,
-        blob_name: str
+        storage_uri: str
     ):
         """
         Background worker for audio processing
@@ -89,7 +89,7 @@ class InterviewAudioProcessingService:
             logger.info(f"   Media File: {media_file_id}")
             logger.info(f"   Interview: {interview_id}")
             logger.info(f"   Session: {session_id}")
-            logger.info(f"   Blob: {blob_name}")
+            logger.info(f"   Blob url: {storage_uri}")
 
             # Initialize database
             uow = UnitOfWork()
@@ -120,14 +120,14 @@ class InterviewAudioProcessingService:
             downloader = MediaDownloader()
 
             media_path, _, download_error = self._download_media(
-                downloader, blob_name, media_file_id
+                downloader, storage_uri, media_file_id
             )
 
             if download_error:
                 self._handle_processing_error(
                     repo, media_file_id, interview_id, session_id,
                     f"Download failed: {download_error}",
-                    retry_count, blob_name
+                    retry_count, storage_uri
                 )
                 return
 
@@ -138,7 +138,7 @@ class InterviewAudioProcessingService:
                 error_msg = f"Processing failed: {processing_result.get('error', 'Unknown')}"
                 self._handle_processing_error(
                     repo, media_file_id, interview_id, session_id,
-                    error_msg, retry_count, blob_name
+                    error_msg, retry_count, storage_uri
                 )
                 return
 
@@ -196,15 +196,14 @@ class InterviewAudioProcessingService:
     def _download_media(
         self,
         downloader: MediaDownloader,
-        blob_name: str,
+        storage_uri: str,
         media_file_id: str
     ) -> tuple:
         """Download media from Azure Blob Storage"""
-        blob_url = self._build_blob_url(blob_name)
-        logger.info(f"📥 Downloading: {blob_url}")
+        logger.info(f"📥 Downloading: {storage_uri}")
 
         media_path, media_type, download_error = downloader.download(
-            blob_url,
+            storage_uri,
             media_file_id=media_file_id
         )
 
@@ -248,12 +247,8 @@ class InterviewAudioProcessingService:
             except Exception as db_error:
                 logger.error(f"Failed to save error: {db_error}")
     
-    def _build_blob_url(self, blob_name: str) -> str:
-        """Build full Azure Blob Storage URL"""
-        return (
-            f"https://{settings.AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net/"
-            f"{settings.AZURE_STORAGE_CONTAINER_NAME}/{blob_name}"
-        )
+
+
     
     def _handle_processing_error(
         self,
@@ -263,7 +258,7 @@ class InterviewAudioProcessingService:
         session_id: str,
         error_msg: str,
         retry_count: int,
-        blob_name: str
+        storage_uri: str
     ):
         """
         Handle processing error with retry logic
@@ -291,7 +286,7 @@ class InterviewAudioProcessingService:
                     interview_id, 
                     session_id,
                     media_file_id,
-                    blob_name
+                    storage_uri
                 ),
                 daemon=True
             ).start()

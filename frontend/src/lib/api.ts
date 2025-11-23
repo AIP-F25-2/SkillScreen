@@ -199,7 +199,24 @@ class ApiClient {
   }
 
   async getAllInterviews(): Promise<ApiResponse<{ interviews: any[]; count: number }>> {
-    return this.request<{ interviews: any[]; count: number }>('/media/api/interviews');
+    // Fetch from media-service and interview-service, then merge
+    const [mediaRes, interviewSvcRes] = await Promise.all([
+      this.request<{ interviews: any[]; count: number }>('/media/api/interviews'),
+      this.request<{ interviews: any[]; count: number }>('/interview/api/interviews').catch(() => ({ success: true, data: { interviews: [], count: 0 }, meta: { timestamp: '', request_id: '', version: '' } } as any))
+    ]);
+
+    const mediaList = mediaRes?.data?.interviews ?? [];
+    const svcList = interviewSvcRes?.data?.interviews ?? [];
+
+    // De-duplicate by interview_id if present, else by session_id
+    const map = new Map<string, any>();
+    [...mediaList, ...svcList].forEach((i: any) => {
+      const key = i.interview_id || i.session_id || JSON.stringify(i);
+      if (!map.has(key)) map.set(key, i);
+    });
+
+    const merged = Array.from(map.values());
+    return { success: true, data: { interviews: merged, count: merged.length }, meta: mediaRes.meta } as ApiResponse<any>;
   }
 
   async getInterviewDetails(interviewId: string): Promise<ApiResponse<any>> {
@@ -334,6 +351,36 @@ class ApiClient {
     return response.json();
   }
 
+  // Use interview-service resume upload/parsing instead of text-service
+  async uploadResumeForParsing(files: File | File[], organizationId: string = "00000000-0000-0000-0000-000000000001"): Promise<ApiResponse<any>> {
+    const formData = new FormData();
+    const fileArray = Array.isArray(files) ? files : [files];
+    
+    // Append all files to formData
+    fileArray.forEach((file) => {
+      formData.append('files', file);
+    });
+    
+    // Append organization_id (use default UUID if not provided)
+    formData.append('organization_id', organizationId);
+
+    const url = `${this.baseUrl}/interview/resumes/upload`;
+    const token = this.getToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    // Don't set Content-Type - let browser set it with boundary for multipart/form-data
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    return response.json();
+  }
+
   async createAICandidate(candidateData: {
     name: string;
     email: string;
@@ -419,6 +466,30 @@ class ApiClient {
         'Content-Type': 'application/json',
         ...(token && { 'Authorization': `Bearer ${token}` })
       },
+    });
+
+    return response.json();
+  }
+
+  async sendInterviewInvitation(data: {
+    candidate_email: string;
+    candidate_name: string;
+    candidate_id: string;
+    session_id: string;
+    recruiter_name?: string;
+    company_name?: string;
+    expires_in_hours?: number;
+  }): Promise<ApiResponse<any>> {
+    const url = `${this.baseUrl}/interview/api/email/send-invitation`;
+    const token = this.getToken();
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` })
+      },
+      body: JSON.stringify(data),
     });
 
     return response.json();

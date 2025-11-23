@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timezone
 import uuid
 import logging
@@ -12,8 +13,12 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'common-service'))
 # Import local database setup
 from db import DBFactory
 
-# Import resume controller
+# Import controllers
 from controllers.resume_controller import router as resume_router
+from controllers.job_position_controller import router as job_position_router
+
+# Import services
+from services.email_service import EmailService
 
 # Load environment variables
 load_dotenv()
@@ -31,12 +36,25 @@ except Exception as e:
 
 app = FastAPI(title="Interview Service")
 
-# Include resume router
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for development
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include routers
 app.include_router(resume_router)
+app.include_router(job_position_router)
 
 # In-memory storage for sessions
 sessions_db = {}
 token_store = {}
+
+# Initialize email service
+email_service = EmailService()
 
 def create_response(data, success=True):
     """Create standardized API response"""
@@ -59,6 +77,7 @@ def health_check():
         "service": "interview-service",
         "endpoints": {
             "resume_upload": "/resumes/upload",
+            "job_positions": "/job-positions",
             "health": "/health"
         }
     })
@@ -70,7 +89,7 @@ def health():
         "service": "interview-service",
         "status": "healthy",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "features": ["resume_upload", "file_processing", "email_extraction"]
+        "features": ["resume_upload", "file_processing", "email_extraction", "job_positions_crud"]
     })
 
 @app.post("/api/session/create")
