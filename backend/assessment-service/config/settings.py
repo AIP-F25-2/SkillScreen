@@ -43,9 +43,9 @@ class Settings(BaseSettings):
     log_format: str = Field(default="json", alias="LOG_FORMAT")
     
     # CORS Settings
-    # Note: http://localhost is acceptable for development. Production should use https URLs via ALLOWED_ORIGINS env var
-    allowed_origins: str = Field(  # noqa: S308,B101
-        default="http://localhost:3000,http://localhost:5173",
+    # Must be set via ALLOWED_ORIGINS environment variable
+    allowed_origins: str = Field( 
+        default="",
         alias="ALLOWED_ORIGINS"
     )
     
@@ -58,10 +58,17 @@ class Settings(BaseSettings):
         case_sensitive = False
         extra = "ignore"
     
+   
     @property
     def cors_origins_list(self) -> list[str]:
         """Convert comma-separated CORS origins to list"""
+        if not self.allowed_origins:
+            raise ValueError(
+                "ALLOWED_ORIGINS environment variable is required. "
+                "Example: ALLOWED_ORIGINS=https://app.example.com"
+        )
         return [origin.strip() for origin in self.allowed_origins.split(",")]
+
     
     @property
     def default_weights_with_coding(self) -> dict[str, float]:
