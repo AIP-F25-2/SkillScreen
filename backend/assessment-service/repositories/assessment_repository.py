@@ -112,11 +112,11 @@ job_positions_table = Table(
 
 class AssessmentRepository(BaseRepository):
     """Repository for assessment orchestration database operations"""
-    
+
     def __init__(self, session_or_uow):
         """
         Initialize repository with session or UnitOfWork
-        
+
         Args:
             session_or_uow: Either a SQLAlchemy Session or UnitOfWork object
         """
@@ -124,6 +124,16 @@ class AssessmentRepository(BaseRepository):
             self.session = session_or_uow.session
         else:
             self.session = session_or_uow
+
+    def _fetch_one(self, query) -> Optional[Dict]:
+        """Helper to fetch one row and convert to dict"""
+        result = self.session.execute(query).fetchone()
+        return dict(result._mapping) if result else None
+
+    def _fetch_all(self, query) -> List[Dict]:
+        """Helper to fetch all rows and convert to list of dicts"""
+        result = self.session.execute(query)
+        return [dict(row._mapping) for row in result]
     
     # ==========================================
     # FIND READY INTERVIEWS
@@ -167,11 +177,8 @@ class AssessmentRepository(BaseRepository):
         query = select(interview_sessions_table).where(
             interview_sessions_table.c.interview_id == interview_id
         ).order_by(interview_sessions_table.c.created_at)
-        
-        result = self.session.execute(query)
-        sessions = [dict(row._mapping) for row in result]
-        
-        return sessions
+
+        return self._fetch_all(query)
     
     def check_session_has_service_analysis(
         self, 
@@ -528,15 +535,12 @@ class AssessmentRepository(BaseRepository):
         query = select(ai_analysis_table).where(
             ai_analysis_table.c.interview_id == interview_id
         ).order_by(ai_analysis_table.c.created_at)
-        
-        result = self.session.execute(query)
-        analyses = [dict(row._mapping) for row in result]
-        
-        return analyses
-    
+
+        return self._fetch_all(query)
+
     def get_ai_analysis_by_service(
-        self, 
-        interview_id: str, 
+        self,
+        interview_id: str,
         service_name: str
     ) -> List[Dict]:
         """Get all AI analysis results for a specific service"""
@@ -546,11 +550,8 @@ class AssessmentRepository(BaseRepository):
                 ai_analysis_table.c.service_name == service_name
             )
         ).order_by(ai_analysis_table.c.created_at)
-        
-        result = self.session.execute(query)
-        analyses = [dict(row._mapping) for row in result]
-        
-        return analyses
+
+        return self._fetch_all(query)
     
     # ==========================================
     # INTERVIEW & JOB POSITION INFO
@@ -561,26 +562,16 @@ class AssessmentRepository(BaseRepository):
         query = select(interviews_table).where(
             interviews_table.c.id == interview_id
         )
-        
-        result = self.session.execute(query).fetchone()
-        
-        if result:
-            return dict(result._mapping)
-        
-        return None
-    
+
+        return self._fetch_one(query)
+
     def get_job_position(self, job_position_id: str) -> Optional[Dict]:
         """Get job position details (for job description)"""
         query = select(job_positions_table).where(
             job_positions_table.c.id == job_position_id
         )
-        
-        result = self.session.execute(query).fetchone()
-        
-        if result:
-            return dict(result._mapping)
-        
-        return None
+
+        return self._fetch_one(query)
     
     # ==========================================
     # CHECK IF ASSESSMENT ALREADY EXISTS
@@ -591,22 +582,16 @@ class AssessmentRepository(BaseRepository):
         query = select(assessments_table).where(
             assessments_table.c.interview_id == interview_id
         )
-        
-        result = self.session.execute(query).fetchone()
-        return result is not None
-    
+
+        return self._fetch_one(query) is not None
+
     def get_assessment(self, interview_id: str) -> Optional[Dict]:
         """Get existing assessment for interview"""
         query = select(assessments_table).where(
             assessments_table.c.interview_id == interview_id
         )
-        
-        result = self.session.execute(query).fetchone()
-        
-        if result:
-            return dict(result._mapping)
-        
-        return None
+
+        return self._fetch_one(query)
     
     # ==========================================
     # SAVE ASSESSMENT

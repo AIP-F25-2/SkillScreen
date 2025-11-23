@@ -61,6 +61,28 @@ class ScoreBreakdownResponse(BaseModel):
 
 
 # ==========================================
+# HELPER FUNCTIONS
+# ==========================================
+
+def _build_assessment_response(assessment: dict) -> AssessmentResultResponse:
+    """Convert assessment dict to AssessmentResultResponse"""
+    return AssessmentResultResponse(
+        interview_id=str(assessment['interview_id']),
+        assessment_id=str(assessment['id']),
+        overall_score=float(assessment['overall_score']),
+        soft_skills_score=float(assessment['soft_skills_score']),
+        communication_score=float(assessment['communication_score']),
+        technical_score=float(assessment['technical_score']) if assessment['technical_score'] else None,
+        proctoring_risk_score=float(assessment['proctoring_risk_score']),
+        recommendation=assessment['recommendation'],
+        summary=assessment['summary'],
+        reviewer_notes=assessment['reviewer_notes'],
+        evidence_clips=assessment['evidence_clips'] or {},
+        created_at=assessment['created_at'].isoformat()
+    )
+
+
+# ==========================================
 # ENDPOINTS
 # ==========================================
 
@@ -153,62 +175,34 @@ async def get_assessment_status(interview_id: str):
 async def get_assessment_by_interview(interview_id: str):
     """
     Get assessment results for a specific interview - generates on-demand if not exists
-    
+
     **Use Case:** Get assessment for any interview
     - If assessment exists: Returns immediately from database
     - If not exists: Generates assessment and saves to database
-    
+
     - **interview_id**: UUID of the interview
-    
+
     Returns complete assessment data
     """
     try:
         with UnitOfWork() as uow:
             repo = AssessmentRepository(uow)
-            
+
             # Check if assessment already exists
             assessment = repo.get_assessment(interview_id)
-            
+
             if assessment:
-                # Return existing assessment
-                return AssessmentResultResponse(
-                    interview_id=str(assessment['interview_id']),
-                    assessment_id=str(assessment['id']),
-                    overall_score=float(assessment['overall_score']),
-                    soft_skills_score=float(assessment['soft_skills_score']),
-                    communication_score=float(assessment['communication_score']),
-                    technical_score=float(assessment['technical_score']) if assessment['technical_score'] else None,
-                    proctoring_risk_score=float(assessment['proctoring_risk_score']),
-                    recommendation=assessment['recommendation'],
-                    summary=assessment['summary'],
-                    reviewer_notes=assessment['reviewer_notes'],
-                    evidence_clips=assessment['evidence_clips'] or {},
-                    created_at=assessment['created_at'].isoformat()
-                )
-        
+                return _build_assessment_response(assessment)
+
         # Assessment doesn't exist - generate on-demand
         result = await assessment_service.generate_assessment(interview_id)
-        
+
         if result['status'] in ['success', 'rejected_cheating']:
             # Fetch the newly created assessment
             with UnitOfWork() as uow:
                 repo = AssessmentRepository(uow)
                 assessment = repo.get_assessment(interview_id)
-                
-                return AssessmentResultResponse(
-                    interview_id=str(assessment['interview_id']),
-                    assessment_id=str(assessment['id']),
-                    overall_score=float(assessment['overall_score']),
-                    soft_skills_score=float(assessment['soft_skills_score']),
-                    communication_score=float(assessment['communication_score']),
-                    technical_score=float(assessment['technical_score']) if assessment['technical_score'] else None,
-                    proctoring_risk_score=float(assessment['proctoring_risk_score']),
-                    recommendation=assessment['recommendation'],
-                    summary=assessment['summary'],
-                    reviewer_notes=assessment['reviewer_notes'],
-                    evidence_clips=assessment['evidence_clips'] or {},
-                    created_at=assessment['created_at'].isoformat()
-                )
+                return _build_assessment_response(assessment)
         elif result['status'] == 'incomplete':
             raise HTTPException(
                 status_code=202,  # Accepted but not ready
@@ -327,50 +321,22 @@ async def get_or_generate_assessment_for_candidate(candidate_id: str):
                 )
             
             interview_id = str(result.id)
-            
+
             # Check if assessment already exists
             assessment = repo.get_assessment(interview_id)
-            
+
             if assessment:
-                # Return existing assessment
-                return AssessmentResultResponse(
-                    interview_id=str(assessment['interview_id']),
-                    assessment_id=str(assessment['id']),
-                    overall_score=float(assessment['overall_score']),
-                    soft_skills_score=float(assessment['soft_skills_score']),
-                    communication_score=float(assessment['communication_score']),
-                    technical_score=float(assessment['technical_score']) if assessment['technical_score'] else None,
-                    proctoring_risk_score=float(assessment['proctoring_risk_score']),
-                    recommendation=assessment['recommendation'],
-                    summary=assessment['summary'],
-                    reviewer_notes=assessment['reviewer_notes'],
-                    evidence_clips=assessment['evidence_clips'] or {},
-                    created_at=assessment['created_at'].isoformat()
-                )
-        
+                return _build_assessment_response(assessment)
+
         # Assessment doesn't exist - generate on-demand
         result = await assessment_service.generate_assessment(interview_id)
-        
+
         if result['status'] in ['success', 'rejected_cheating']:
             # Fetch the newly created assessment
             with UnitOfWork() as uow:
                 repo = AssessmentRepository(uow)
                 assessment = repo.get_assessment(interview_id)
-                
-                return AssessmentResultResponse(
-                    interview_id=str(assessment['interview_id']),
-                    assessment_id=str(assessment['id']),
-                    overall_score=float(assessment['overall_score']),
-                    soft_skills_score=float(assessment['soft_skills_score']),
-                    communication_score=float(assessment['communication_score']),
-                    technical_score=float(assessment['technical_score']) if assessment['technical_score'] else None,
-                    proctoring_risk_score=float(assessment['proctoring_risk_score']),
-                    recommendation=assessment['recommendation'],
-                    summary=assessment['summary'],
-                    reviewer_notes=assessment['reviewer_notes'],
-                    evidence_clips=assessment['evidence_clips'] or {},
-                    created_at=assessment['created_at'].isoformat()
-                )
+                return _build_assessment_response(assessment)
         elif result['status'] == 'incomplete':
             raise HTTPException(
                 status_code=202,  # Accepted but not ready
