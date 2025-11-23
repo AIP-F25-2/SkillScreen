@@ -82,6 +82,28 @@ def _build_assessment_response(assessment: dict) -> AssessmentResultResponse:
     )
 
 
+def _build_generation_response(status: str, interview_id: str, result: dict = None) -> dict:
+    """Build assessment generation status response"""
+    response = {
+        "status": status,
+        "interview_id": interview_id,
+    }
+
+    if status == 'success':
+        response.update({
+            "message": "Assessment generated successfully",
+            "assessment_id": result['assessment_id'],
+            "overall_score": result['overall_score'],
+            "recommendation": result['recommendation']
+        })
+    elif status == 'incomplete':
+        response["message"] = "AI services have not completed analysis for all sessions yet"
+    elif status == 'already_exists':
+        response["message"] = "Assessment already exists for this interview"
+
+    return response
+
+
 # ==========================================
 # ENDPOINTS
 # ==========================================
@@ -90,38 +112,19 @@ def _build_assessment_response(assessment: dict) -> AssessmentResultResponse:
 async def start_assessment(interview_id: str):
     """
     Manually trigger assessment generation for a completed interview
-    
+
     - **interview_id**: UUID of the interview
-    
+
     Returns assessment result or status
     """
     try:
         result = await assessment_service.generate_assessment(interview_id)
-        
-        if result['status'] == 'success':
-            return {
-                "status": "success",
-                "message": "Assessment generated successfully",
-                "interview_id": interview_id,
-                "assessment_id": result['assessment_id'],
-                "overall_score": result['overall_score'],
-                "recommendation": result['recommendation']
-            }
-        elif result['status'] == 'incomplete':
-            return {
-                "status": "incomplete",
-                "message": "AI services have not completed analysis for all sessions yet",
-                "interview_id": interview_id
-            }
-        elif result['status'] == 'already_exists':
-            return {
-                "status": "already_exists",
-                "message": "Assessment already exists for this interview",
-                "interview_id": interview_id
-            }
+
+        if result['status'] in ['success', 'incomplete', 'already_exists']:
+            return _build_generation_response(result['status'], interview_id, result if result['status'] == 'success' else None)
         else:
             raise HTTPException(status_code=400, detail=result.get('message', 'Unknown error'))
-    
+
     except Exception as e:
         import traceback
         from config.logger import logger
