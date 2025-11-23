@@ -5,7 +5,7 @@ from repository.base_repository import BaseRepository
 from db import UnitOfWork
 from sqlalchemy import Table, Column, Text, Integer, String, Boolean, DateTime, MetaData, select, insert, update, text, and_
 from sqlalchemy.dialects.postgresql import UUID, JSONB, NUMERIC
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional
 import json
 
@@ -185,7 +185,7 @@ class AssessmentRepository(BaseRepository):
         Args:
             interview_id: Interview UUID
             session_id: Session UUID
-            service_name: 'audio-ai-service', 'video-ai-service', 'text-ai-service'
+            service_name: 'audio-ai-service', 'video-ai-service', 'text-service'
         
         Returns:
             True if service analysis exists, False otherwise
@@ -268,6 +268,11 @@ class AssessmentRepository(BaseRepository):
         """
         Check AI service completion with timeout logic
         
+        This method handles three scenarios:
+        1. All services completed → all_complete = True
+        2. Services incomplete but within timeout → all_complete = False, empty stuck_sessions (still processing)
+        3. Services incomplete and timed out → all_complete = False, with stuck_sessions (generate partial assessment)
+        
         Args:
             interview_id: Interview UUID
             timeout_minutes: Minutes to wait before considering session stuck (default: 30)
@@ -276,76 +281,179 @@ class AssessmentRepository(BaseRepository):
             {
                 'all_complete': bool,
                 'stuck_sessions': list of session IDs that timed out,
-                'missing_sessions': list of incomplete sessions (no timeout yet)
+                'missing_sessions': list of incomplete sessions (no timeout yet),
+                'template_mismatch': bool (if expected questions != actual sessions)
             }
         """
-        from datetime import datetime, timezone, timedelta
+        from config.logger import logger
         
         result = {
             'all_complete': True,
             'stuck_sessions': [],
-            'missing_sessions': []
+            'missing_sessions': [],
+            'template_mismatch': False
         }
         
         # Get interview info
         interview = self.get_interview_info(interview_id)
         if not interview:
             result['all_complete'] = False
+            logger.error("interview_not_found_in_timeout_check", interview_id=interview_id)
             return result
         
-        # Verify template question count matches sessions
-        template_id = interview.get('template_id')
-        if template_id:
-            expected_count = self._get_template_question_count(str(template_id))
-            actual_count = len(self.get_all_sessions_for_interview(interview_id))
-            
-            if expected_count > 0 and actual_count < expected_count:
-                result['all_complete'] = False
-                return result
-        
-        # Get all sessions
-        sessions = self.get_all_sessions_for_interview(interview_id)
-        if not sessions:
+        # Get interview completion time for timeout calculation
+        interview_completed_at = interview.get('completed_at')
+        if not interview_completed_at:
+            # Interview not completed yet
             result['all_complete'] = False
+            logger.warning("interview_not_completed_yet", interview_id=interview_id)
             return result
         
-        # Check each session
-        required_services = ['audio-ai-service', 'video-ai-service', 'text-service']
+        # Ensure timezone-aware
+        if interview_completed_at.tzinfo is None:
+            interview_completed_at = interview_completed_at.replace(tzinfo=timezone.utc)
+        
+        # Calculate timeout threshold
         timeout_threshold = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
         
-        for session in sessions:
+        # Check template question count
+        template_id = interview.get('template_id')
+        expected_question_count = 0
+        actual_sessions = self.get_all_sessions_for_interview(interview_id)
+        actual_session_count = len(actual_sessions)
+        
+        if template_id:
+            expected_question_count = self._get_template_question_count(str(template_id))
+            
+            if expected_question_count > 0 and actual_session_count < expected_question_count:
+                result['template_mismatch'] = True
+                result['all_complete'] = False
+                
+                # Check if interview completed long enough ago to consider it stuck
+                if interview_completed_at < timeout_threshold:
+                    # Interview completed > timeout_minutes ago but missing sessions
+                    # Treat this as stuck - generate partial assessment with available sessions
+                    logger.warning(
+                        "template_session_mismatch_timed_out",
+                        interview_id=interview_id,
+                        expected=expected_question_count,
+                        actual=actual_session_count,
+                        completed_at=interview_completed_at
+                    )
+                    # Add a special marker for template mismatch timeout
+                    result['stuck_sessions'].append('__template_mismatch__')
+                else:
+                    # Still within grace period - might be waiting for more sessions
+                    logger.info(
+                        "template_session_mismatch_within_grace_period",
+                        interview_id=interview_id,
+                        expected=expected_question_count,
+                        actual=actual_session_count
+                    )
+                    return result
+        
+        # Get all sessions
+        if not actual_sessions:
+            result['all_complete'] = False
+            logger.warning("no_sessions_found", interview_id=interview_id)
+            return result
+        
+        # Check each session for AI service completion
+        required_services = ['audio-ai-service', 'video-ai-service', 'text-service']
+        
+        for session in actual_sessions:
             session_id = str(session['id'])
-            completed_at = session.get('completed_at')
+            session_completed_at = session.get('completed_at')
             
             # Skip if session not completed yet
-            if not completed_at:
+            if not session_completed_at:
                 result['all_complete'] = False
                 result['missing_sessions'].append(session_id)
+                logger.info(
+                    "session_not_completed",
+                    interview_id=interview_id,
+                    session_id=session_id
+                )
                 continue
             
             # Ensure timezone-aware
-            if completed_at.tzinfo is None:
-                completed_at = completed_at.replace(tzinfo=timezone.utc)
+            if session_completed_at.tzinfo is None:
+                session_completed_at = session_completed_at.replace(tzinfo=timezone.utc)
             
+            # Check each required service for this session
             for service_name in required_services:
                 if not self.check_session_has_service_analysis(interview_id, session_id, service_name):
-                    # Check if timed out
-                    if completed_at < timeout_threshold:
-                        # Stuck! Session completed > timeout_minutes ago but no AI analysis
+                    result['all_complete'] = False
+                    
+                    # CRITICAL: Check if session completed > timeout_minutes ago
+                    if session_completed_at < timeout_threshold:
+                        # Session completed 35 minutes ago but no AI analysis
+                        # This is STUCK - add to stuck_sessions for partial assessment
                         if session_id not in result['stuck_sessions']:
                             result['stuck_sessions'].append(session_id)
+                            logger.warning(
+                                "session_timed_out",
+                                interview_id=interview_id,
+                                session_id=session_id,
+                                service_name=service_name,
+                                completed_at=session_completed_at,
+                                timeout_threshold=timeout_threshold
+                            )
                     else:
-                        # Not timed out yet, still processing
+                        # Session completed < timeout_minutes ago
+                        # Still within grace period - AI services might still be processing
                         if session_id not in result['missing_sessions']:
                             result['missing_sessions'].append(session_id)
-                    
-                    result['all_complete'] = False
+                            logger.info(
+                                "session_processing",
+                                interview_id=interview_id,
+                                session_id=session_id,
+                                service_name=service_name,
+                                completed_at=session_completed_at
+                            )
         
         # Check coding if required
-        settings = interview.get('settings') or {}  # Handle None settings
+        settings = interview.get('settings') or {}
         if settings.get('requires_coding', False):
             if not self.check_coding_analysis_exists(interview_id):
                 result['all_complete'] = False
+                
+                # Check if interview completed > timeout_minutes ago
+                if interview_completed_at < timeout_threshold:
+                    # Coding stuck
+                    result['stuck_sessions'].append('__coding_service__')
+                    logger.warning(
+                        "coding_service_timed_out",
+                        interview_id=interview_id,
+                        completed_at=interview_completed_at
+                    )
+                else:
+                    # Still processing
+                    result['missing_sessions'].append('__coding_service__')
+                    logger.info(
+                        "coding_service_processing",
+                        interview_id=interview_id
+                    )
+        
+        # Log final result
+        if result['all_complete']:
+            logger.info(
+                "all_services_completed",
+                interview_id=interview_id
+            )
+        elif result['stuck_sessions']:
+            logger.warning(
+                "partial_assessment_ready",
+                interview_id=interview_id,
+                stuck_count=len(result['stuck_sessions']),
+                stuck_sessions=result['stuck_sessions']
+            )
+        else:
+            logger.info(
+                "services_still_processing",
+                interview_id=interview_id,
+                missing_count=len(result['missing_sessions'])
+            )
         
         return result
     

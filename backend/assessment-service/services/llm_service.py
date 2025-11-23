@@ -141,7 +141,11 @@ Ensure weights sum to exactly 1.0.
         coding_highlights: Optional[Dict] = None
     ) -> Dict[str, str]:
         """
-        Use LLM to generate final hiring recommendation and summary
+        Generate final hiring recommendation using rule-based decision + LLM explanation
+        
+        Process:
+        1. Apply hard threshold rules to determine recommendation
+        2. Use LLM to generate summary and reasoning based on the rule-based decision
         
         Returns:
             {
@@ -149,6 +153,122 @@ Ensure weights sum to exactly 1.0.
                 "summary": "Executive summary...",
                 "reasoning": "Detailed reasoning..."
             }
+        """
+        
+        # STEP 1: Rule-based decision (deterministic, auditable)
+        rule_based_decision = self._apply_decision_rules(
+            overall_score=overall_score,
+            proctoring_risk_score=proctoring_risk_score
+        )
+        
+        logger.info(
+            "rule_based_decision_applied",
+            interview_id=interview_id,
+            overall_score=overall_score,
+            proctoring_risk_score=proctoring_risk_score,
+            decision=rule_based_decision["recommendation"],
+            reason=rule_based_decision["rule_reason"]
+        )
+        
+        # STEP 2: Use LLM to explain WHY this decision was made
+        llm_explanation = self._generate_llm_explanation(
+            rule_based_recommendation=rule_based_decision["recommendation"],
+            rule_reason=rule_based_decision["rule_reason"],
+            overall_score=overall_score,
+            soft_skills_score=soft_skills_score,
+            communication_score=communication_score,
+            technical_score=technical_score,
+            proctoring_risk_score=proctoring_risk_score,
+            audio_highlights=audio_highlights,
+            video_highlights=video_highlights,
+            text_highlights=text_highlights,
+            coding_highlights=coding_highlights
+        )
+        
+        # Combine rule-based decision with LLM explanation
+        return {
+            "recommendation": rule_based_decision["recommendation"],
+            "summary": llm_explanation.get("summary", rule_based_decision["default_summary"]),
+            "reasoning": llm_explanation.get("reasoning", rule_based_decision["default_reasoning"])
+        }
+    
+    def _apply_decision_rules(
+        self,
+        overall_score: float,
+        proctoring_risk_score: float
+    ) -> Dict[str, str]:
+        """
+        Apply hard threshold rules to determine recommendation
+        
+        Rules (in priority order):
+        1. Proctoring Risk > 50 → "Needs Review" (security concern)
+        2. Overall Score >= 80 → "Hire" (strong candidate)
+        3. Overall Score >= 70 → "Maybe" (borderline, needs discussion)
+        4. Overall Score < 70 → "No Hire" (below threshold)
+        
+        Returns:
+            {
+                "recommendation": str,
+                "rule_reason": str,  # Why this rule was triggered
+                "default_summary": str,  # Fallback if LLM fails
+                "default_reasoning": str  # Fallback if LLM fails
+            }
+        """
+        
+        # Rule 1: Proctoring concerns override everything
+        if proctoring_risk_score > 50:
+            return {
+                "recommendation": "Needs Review",
+                "rule_reason": f"Proctoring risk score ({proctoring_risk_score:.1f}) exceeds threshold of 50",
+                "default_summary": f"Candidate scored {overall_score:.1f}/100 overall, but high proctoring risk ({proctoring_risk_score:.1f}/100) requires manual review before proceeding.",
+                "default_reasoning": "Proctoring concerns detected (cheating probability, environment issues, or behavioral anomalies). Human verification required to validate assessment integrity."
+            }
+        
+        # Rule 2: Strong performer
+        if overall_score >= 80:
+            return {
+                "recommendation": "Hire",
+                "rule_reason": f"Overall score ({overall_score:.1f}) meets 'Hire' threshold (>= 80)",
+                "default_summary": f"Strong candidate with overall score of {overall_score:.1f}/100. Demonstrated solid performance across technical and soft skills assessments.",
+                "default_reasoning": "High overall score indicates strong fit for the role. Candidate exceeded the hiring threshold with consistent performance."
+            }
+        
+        # Rule 3: Borderline candidate
+        if overall_score >= 70:
+            return {
+                "recommendation": "Maybe",
+                "rule_reason": f"Overall score ({overall_score:.1f}) falls in 'Maybe' range (70-79)",
+                "default_summary": f"Borderline candidate with overall score of {overall_score:.1f}/100. Mixed performance across assessments warrants team discussion.",
+                "default_reasoning": "Score falls in the borderline range (70-79). Recommend reviewing detailed evidence and discussing with hiring team before making final decision."
+            }
+        
+        # Rule 4: Below threshold
+        return {
+            "recommendation": "No Hire",
+            "rule_reason": f"Overall score ({overall_score:.1f}) below 'No Hire' threshold (< 70)",
+            "default_summary": f"Candidate scored {overall_score:.1f}/100 overall. Performance did not meet minimum requirements for this role.",
+            "default_reasoning": "Below-threshold performance across multiple assessment areas. Candidate does not demonstrate the required competencies at this time."
+        }
+    
+    def _generate_llm_explanation(
+        self,
+        rule_based_recommendation: str,
+        rule_reason: str,
+        overall_score: float,
+        soft_skills_score: float,
+        communication_score: float,
+        technical_score: float,
+        proctoring_risk_score: float,
+        audio_highlights: Dict,
+        video_highlights: Dict,
+        text_highlights: Dict,
+        coding_highlights: Optional[Dict] = None
+    ) -> Dict[str, str]:
+        """
+        Use LLM to generate human-readable summary and reasoning for the rule-based decision
+        
+        The LLM does NOT make the decision - it only explains WHY the decision was made
+        based on the evidence.
         """
         
         # Build coding section
@@ -163,7 +283,18 @@ Ensure weights sum to exactly 1.0.
 """
         
         prompt = f"""
-You are an expert interview assessor. Based on the analysis results below, provide a final hiring recommendation.
+You are an expert interview assessor writing a report for a hiring manager.
+
+A candidate has been assessed and the **DECISION HAS ALREADY BEEN MADE** using our scoring thresholds:
+
+**FINAL DECISION (ALREADY DETERMINED):** {rule_based_recommendation}
+**REASON FOR DECISION:** {rule_reason}
+
+Your task is to write a compelling summary and reasoning that explains WHY this decision makes sense based on the evidence below. Do NOT change the decision - only explain it.
+
+---
+
+**Assessment Results:**
 
 **Overall Score:** {overall_score:.1f}/100
 **Soft Skills:** {soft_skills_score:.1f}/100
@@ -192,21 +323,27 @@ You are an expert interview assessor. Based on the analysis results below, provi
 
 {coding_section}
 
-**Decision Criteria:**
-- Overall Score >= 80: Strong Hire candidate
-- Overall Score 70-79: Maybe (needs discussion, borderline candidate)
-- Overall Score < 70: No Hire
-- Proctoring Risk > 50: Automatic "Needs Review" regardless of scores
-- Any critical red flags: "Needs Review"
+---
 
-Provide your assessment in this EXACT JSON format:
+**Your Task:**
+
+Write a professional assessment report explaining why "{rule_based_recommendation}" is the appropriate decision. Focus on:
+1. **Summary**: 2-3 sentences for the hiring manager highlighting key strengths and concerns
+2. **Reasoning**: 2-3 sentences providing evidence-based justification for the "{rule_based_recommendation}" decision
+
+Be objective, factual, and reference specific scores/evidence. Match the tone to the decision:
+- "Hire": Positive and confident
+- "Maybe": Balanced, noting both strengths and concerns
+- "No Hire": Professional but clear about gaps
+- "Needs Review": Emphasize the need for human verification
+
+Return ONLY valid JSON in this exact format:
 {{
-    "recommendation": "Hire|No Hire|Maybe|Needs Review",
-    "summary": "2-3 sentence executive summary for hiring manager",
-    "reasoning": "Brief explanation for your recommendation (2-3 sentences)"
+    "summary": "Your executive summary here (2-3 sentences)",
+    "reasoning": "Your detailed reasoning here (2-3 sentences)"
 }}
 
-Be objective and evidence-based. Focus on facts from the data.
+DO NOT include the recommendation field - it has already been determined as "{rule_based_recommendation}".
 """
         
         try:
@@ -223,25 +360,27 @@ Be objective and evidence-based. Focus on facts from the data.
             result = self._extract_json(response_text)
             
             # Validate result has required fields
-            if result and all(k in result for k in ["recommendation", "summary", "reasoning"]):
-                # Validate recommendation value
-                valid_recommendations = ["Hire", "No Hire", "Maybe", "Needs Review"]
-                if result["recommendation"] in valid_recommendations:
-                    log_llm_call(
-                        operation="generate_recommendation",
-                        model=self.model,
-                        success=True,
-                        tokens_used=response.usage.total_tokens if hasattr(response, 'usage') else None
-                    )
-                    return result
-            
-            # Fallback
-            logger.warning("llm_recommendation_invalid", result=result)
-            return self._generate_fallback_recommendation(overall_score, proctoring_risk_score)
+            if result and "summary" in result and "reasoning" in result:
+                log_llm_call(
+                    operation="generate_explanation",
+                    model=self.model,
+                    success=True,
+                    tokens_used=response.usage.total_tokens if hasattr(response, 'usage') else None
+                )
+                logger.info(
+                    "llm_explanation_generated",
+                    recommendation=rule_based_recommendation,
+                    summary_length=len(result["summary"]),
+                    reasoning_length=len(result["reasoning"])
+                )
+                return result
+            else:
+                logger.warning("llm_explanation_invalid_structure", result=result)
+                return {}
         
         except Exception as e:
-            logger.error("llm_recommendation_failed", error=str(e))
-            return self._generate_fallback_recommendation(overall_score, proctoring_risk_score)
+            logger.error("llm_explanation_failed", error=str(e))
+            return {}
     
     def _extract_json(self, text: str) -> Optional[Dict]:
         """Extract JSON from LLM response"""
@@ -299,38 +438,3 @@ Be objective and evidence-based. Focus on facts from the data.
             return settings.default_weights_with_coding
         else:
             return settings.default_weights_without_coding
-    
-    def _generate_fallback_recommendation(
-        self, 
-        overall_score: float, 
-        proctoring_risk_score: float
-    ) -> Dict[str, str]:
-        """Generate rule-based recommendation as fallback"""
-        
-        # Check proctoring risk first
-        if proctoring_risk_score > 50:
-            return {
-                "recommendation": "Needs Review",
-                "summary": f"Candidate scored {overall_score:.1f}/100 overall, but proctoring concerns require human review.",
-                "reasoning": "High proctoring risk score detected. Manual review recommended before making a decision."
-            }
-        
-        # Score-based recommendation (FIXED THRESHOLDS)
-        if overall_score >= 80:
-            recommendation = "Hire"
-            summary = f"Strong candidate with overall score of {overall_score:.1f}/100. Demonstrated solid performance across all areas."
-            reasoning = "High overall score indicates strong fit for the role."
-        elif overall_score >= 70:
-            recommendation = "Maybe"
-            summary = f"Borderline candidate with overall score of {overall_score:.1f}/100. Mixed performance across assessments."
-            reasoning = "Score in borderline range (60-79). Recommend team discussion before decision."
-        else:
-            recommendation = "No Hire"
-            summary = f"Candidate scored {overall_score:.1f}/100 overall. Performance did not meet minimum requirements."
-            reasoning = "Below-threshold performance across multiple assessment areas."
-        
-        return {
-            "recommendation": recommendation,
-            "summary": summary,
-            "reasoning": reasoning
-        }

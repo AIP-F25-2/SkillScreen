@@ -189,7 +189,7 @@ async def get_assessment_by_interview(interview_id: str):
         # Assessment doesn't exist - generate on-demand
         result = await assessment_service.generate_assessment(interview_id)
         
-        if result['status'] == 'success':
+        if result['status'] in ['success', 'rejected_cheating']:
             # Fetch the newly created assessment
             with UnitOfWork() as uow:
                 repo = AssessmentRepository(uow)
@@ -351,7 +351,7 @@ async def get_or_generate_assessment_for_candidate(candidate_id: str):
         # Assessment doesn't exist - generate on-demand
         result = await assessment_service.generate_assessment(interview_id)
         
-        if result['status'] == 'success':
+        if result['status'] in ['success', 'rejected_cheating']:
             # Fetch the newly created assessment
             with UnitOfWork() as uow:
                 repo = AssessmentRepository(uow)
