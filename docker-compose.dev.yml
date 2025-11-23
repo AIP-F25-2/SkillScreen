@@ -78,7 +78,6 @@ services:
     environment:
       - PORT=8080
       - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
       - USE_LLM_WEIGHTS=false   
     volumes:
       - ./backend/assessment-service:/app

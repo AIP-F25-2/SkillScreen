@@ -11,6 +11,9 @@ import uuid
 from config.logger import logger, log_assessment_started, log_assessment_completed, log_assessment_failed
 
 
+UNKNOWN_TIME = 'Unknown time'
+
+
 class AssessmentService:
     """Core service for assessment orchestration"""
     
@@ -18,158 +21,240 @@ class AssessmentService:
         """Initialize services"""
         self.llm_service = LLMService()
     
+    def _determine_weights(
+        self,
+        interview_id: str,
+        custom_weights: Optional[Dict[str, float]],
+        interview: Dict,
+        repo: AssessmentRepository,
+        has_coding: bool
+    ) -> tuple[Dict[str, float], str]:
+        """Determine weights from custom, LLM, or defaults"""
+        if custom_weights:
+            logger.info("using_custom_weights", interview_id=interview_id, weights=custom_weights)
+            return custom_weights, "custom"
+
+        if not settings.use_llm_weights:
+            weights = self._get_default_weights(has_coding)
+            logger.info("using_default_weights_llm_disabled", interview_id=interview_id, weights=weights)
+            return weights, "default"
+
+        job_position_id = interview.get('job_position_id')
+        if not job_position_id:
+            weights = self._get_default_weights(has_coding)
+            logger.info("using_default_weights", interview_id=interview_id, weights=weights)
+            return weights, "default"
+
+        job_position = repo.get_job_position(str(job_position_id))
+        if not job_position:
+            weights = self._get_default_weights(has_coding)
+            logger.info("using_default_weights_no_job", interview_id=interview_id, weights=weights)
+            return weights, "default"
+
+        weights = self.llm_service.determine_weights_from_job_description(
+            job_description=job_position.get('description', ''),
+            job_title=job_position.get('title', ''),
+            required_skills=job_position.get('required_skills', []),
+            has_coding=has_coding
+        )
+
+        default_weights = self._get_default_weights(has_coding)
+        if weights == default_weights:
+            logger.info("using_default_weights_llm_failed", interview_id=interview_id, weights=weights)
+            return weights, "default"
+
+        logger.info("llm_determined_weights", interview_id=interview_id, weights=weights)
+        return weights, "llm_determined"
+
+    def _process_partial_assessment(
+        self,
+        interview_id: str,
+        repo: AssessmentRepository,
+        stuck_session_ids: list,
+        llm_result: Dict
+    ) -> Dict:
+        """Process partial assessment when some sessions timed out"""
+        sessions = repo.get_all_sessions_for_interview(interview_id)
+        stuck_question_ids = [
+            session.get('question_id', 'unknown')
+            for session in sessions
+            if str(session['id']) in stuck_session_ids
+        ]
+
+        llm_result['recommendation'] = 'Needs Review'
+        partial_note = f"\n\n⚠️ INCOMPLETE ASSESSMENT: AI analysis timed out for question(s): {', '.join(stuck_question_ids)}. This assessment is based on partial data only. Manual review required."
+        llm_result['reasoning'] = llm_result.get('reasoning', '') + partial_note
+
+        logger.warning(
+            "partial_assessment_generated",
+            interview_id=interview_id,
+            stuck_questions=stuck_question_ids
+        )
+        return llm_result
+
+    def _build_assessment_data(
+        self,
+        interview_id: str,
+        overall_score: float,
+        soft_skills_score: float,
+        communication_score: float,
+        technical_score: float,
+        proctoring_risk_score: float,
+        llm_result: Dict,
+        audio_analyses: List[Dict],
+        video_analyses: List[Dict],
+        text_analyses: List[Dict],
+        coding_analyses: List[Dict],
+        weights: Dict[str, float],
+        weights_source: str,
+        is_partial_assessment: bool,
+        stuck_session_ids: list,
+        repo: AssessmentRepository
+    ) -> Dict:
+        """Build complete assessment data structure"""
+        service_raw_results = {
+            'audio': [a.get('raw_results', {}) for a in audio_analyses],
+            'video': [v.get('raw_results', {}) for v in video_analyses],
+            'text': [t.get('raw_results', {}) for t in text_analyses],
+            'coding': [c.get('raw_results', {}) for c in coding_analyses]
+        }
+
+        evidence_clips = self._collect_evidence_clips(video_analyses)
+
+        return {
+            'id': uuid.uuid4(),
+            'interview_id': uuid.UUID(interview_id),
+            'overall_score': round(overall_score, 2),
+            'hard_skills_score': round(technical_score, 2) if technical_score else None,
+            'soft_skills_score': round(soft_skills_score, 2),
+            'communication_score': round(communication_score, 2),
+            'technical_score': round(technical_score, 2) if technical_score else None,
+            'proctoring_risk_score': round(proctoring_risk_score, 2),
+            'recommendation': llm_result['recommendation'].lower().replace(' ', '_'),
+            'evidence_clips': {
+                'video_clips': evidence_clips,
+                'proctoring_events': self._collect_proctoring_events(interview_id, repo),
+                'service_results': service_raw_results,
+                'scoring_weights': weights,
+                'weights_source': weights_source,
+                'is_partial_assessment': is_partial_assessment,
+                'stuck_session_ids': stuck_session_ids if is_partial_assessment else []
+            },
+            'summary': llm_result['summary'],
+            'reviewer_notes': llm_result['reasoning'],
+            'created_at': datetime.now(timezone.utc),
+            'updated_at': datetime.now(timezone.utc)
+        }
+
     async def generate_assessment(self, interview_id: str, custom_weights: Optional[Dict[str, float]] = None) -> Dict:
         """
         Generate final assessment for a completed interview
-        
+
         Args:
             interview_id: Interview UUID
             custom_weights: Optional custom weights override
-        
+
         Returns:
             Assessment data or error
         """
-        
+
         log_assessment_started(interview_id)
-        
+
         try:
             with UnitOfWork() as uow:
                 repo = AssessmentRepository(uow)
-                
+
                 # 1. Check if assessment already exists
                 if repo.assessment_exists(interview_id):
                     logger.warning("assessment_already_exists", interview_id=interview_id)
                     return {"status": "already_exists", "interview_id": interview_id}
-                
-                # 2. Verify all AI services completed (with timeout logic)
+
+                # 2. Verify all AI services completed
                 completion_status = repo.check_sessions_with_timeout(interview_id, timeout_minutes=30)
-            
+
+            # Handle incomplete services
             if not completion_status['all_complete']:
-                if completion_status['stuck_sessions']:
-                    logger.warning(
-                        "generating_partial_assessment_timeout",
-                        interview_id=interview_id,
-                        stuck_sessions=completion_status['stuck_sessions']
-                    )
-                    is_partial_assessment = True
-                    stuck_session_ids = completion_status['stuck_sessions']
-                else:
+                if not completion_status['stuck_sessions']:
                     logger.info("services_incomplete", interview_id=interview_id)
                     return {"status": "incomplete", "interview_id": interview_id}
+
+                is_partial_assessment = True
+                stuck_session_ids = completion_status['stuck_sessions']
+                logger.warning(
+                    "generating_partial_assessment_timeout",
+                    interview_id=interview_id,
+                    stuck_sessions=stuck_session_ids
+                )
             else:
                 is_partial_assessment = False
                 stuck_session_ids = []
-            
+
             # 3. Get interview info
             interview = repo.get_interview_info(interview_id)
             if not interview:
                 logger.error("interview_not_found", interview_id=interview_id)
                 return {"status": "error", "message": "Interview not found"}
-            
+
             # 4. Get all AI analysis results
             all_analyses = repo.get_all_ai_analysis_for_interview(interview_id)
-            
-            # If partial assessment, filter out analyses from stuck sessions
             if is_partial_assessment:
                 all_analyses = [
-                    a for a in all_analyses 
+                    a for a in all_analyses
                     if str(a.get('session_id')) not in stuck_session_ids
                 ]
-            
+
             # 5. Group analyses by service
             audio_analyses = [a for a in all_analyses if a['service_name'] == 'audio-ai-service']
             video_analyses = [a for a in all_analyses if a['service_name'] == 'video-ai-service']
             text_analyses = [a for a in all_analyses if a['service_name'] == 'text-service']
             coding_analyses = [a for a in all_analyses if a['service_name'] == 'coding-service']
-            
             has_coding = len(coding_analyses) > 0
-            
-            # ============================================================
-            # CRITICAL: Check for cheating BEFORE calculating scores
-            # ============================================================
+
+            # Check for cheating BEFORE calculating scores
             cheating_detected, cheating_evidence = self._detect_cheating_violations(
                 audio_analyses, video_analyses
             )
-            
+
             if cheating_detected:
                 logger.error(
                     "cheating_detected_auto_reject",
                     interview_id=interview_id,
                     evidence_count=len(cheating_evidence)
                 )
-                
-                # AUTO-REJECT: Generate rejection assessment immediately
                 return await self._generate_cheating_rejection_assessment(
                     interview_id=interview_id,
                     cheating_evidence=cheating_evidence,
                     repo=repo
                 )
-            # ============================================================
-            
-            # 6. Determine weights (LLM or custom or default)
-            weights_source = "default"
-            
-            if custom_weights:
-                weights = custom_weights
-                weights_source = "custom"
-                logger.info("using_custom_weights", interview_id=interview_id, weights=weights)
-            elif not settings.use_llm_weights:
-                weights = self._get_default_weights(has_coding)
-                weights_source = "default"
-                logger.info("using_default_weights_llm_disabled", interview_id=interview_id, weights=weights)
-            else:
-                job_position_id = interview.get('job_position_id')
-                if job_position_id:
-                    job_position = repo.get_job_position(str(job_position_id))
-                    if job_position:
-                        weights = self.llm_service.determine_weights_from_job_description(
-                            job_description=job_position.get('description', ''),
-                            job_title=job_position.get('title', ''),
-                            required_skills=job_position.get('required_skills', []),
-                            has_coding=has_coding
-                        )
-                        default_weights = self._get_default_weights(has_coding)
-                        if weights == default_weights:
-                            weights_source = "default"
-                            logger.info("using_default_weights_llm_failed", interview_id=interview_id, weights=weights)
-                        else:
-                            weights_source = "llm_determined"
-                            logger.info("llm_determined_weights", interview_id=interview_id, weights=weights)
-                    else:
-                        weights = self._get_default_weights(has_coding)
-                        logger.info("using_default_weights_no_job", interview_id=interview_id, weights=weights)
-                else:
-                    weights = self._get_default_weights(has_coding)
-                    logger.info("using_default_weights", interview_id=interview_id, weights=weights)
-            
+
+            # 6. Determine weights
+            weights, weights_source = self._determine_weights(
+                interview_id, custom_weights, interview, repo, has_coding
+            )
+
             # 7. Aggregate scores from each service
             audio_score = self._aggregate_audio_scores(audio_analyses)
             video_score = self._aggregate_video_scores(video_analyses)
             text_score = self._aggregate_text_scores(text_analyses)
             coding_score = self._aggregate_coding_scores(coding_analyses) if has_coding else None
-            
-            # 8. Calculate weighted overall score
+
+            # 8-10. Calculate scores
             overall_score = self._calculate_overall_score(
                 audio_score, video_score, text_score, coding_score, weights
             )
-            
-            # 9. Calculate component scores
             soft_skills_score = self._calculate_soft_skills_score(audio_score, video_score)
             communication_score = self._calculate_communication_score(audio_score, text_score)
             technical_score = self._calculate_technical_score(text_score, coding_score)
-            
-            # Calculate proctoring risk from actual data
             proctoring_risk_score = self._calculate_proctoring_risk_from_video_audio(
                 audio_analyses, video_analyses
             )
-            
-            # 10. Prepare highlights for LLM
+
+            # 11. Prepare highlights and get LLM recommendation
             audio_highlights = self._extract_audio_highlights(audio_analyses)
             video_highlights = self._extract_video_highlights(video_analyses)
             text_highlights = self._extract_text_highlights(text_analyses)
             coding_highlights = self._extract_coding_highlights(coding_analyses) if has_coding else None
-            
-            # 11. Get LLM recommendation and summary
+
             llm_result = self.llm_service.generate_final_recommendation(
                 interview_id=interview_id,
                 overall_score=overall_score,
@@ -182,74 +267,30 @@ class AssessmentService:
                 text_highlights=text_highlights,
                 coding_highlights=coding_highlights
             )
-            
-            # Override recommendation if partial assessment
+
+            # Handle partial assessment
             if is_partial_assessment:
-                sessions = repo.get_all_sessions_for_interview(interview_id)
-                stuck_question_ids = []
-                for session in sessions:
-                    if str(session['id']) in stuck_session_ids:
-                        stuck_question_ids.append(session.get('question_id', 'unknown'))
-                
-                llm_result['recommendation'] = 'Needs Review'
-                partial_note = f"\n\n⚠️ INCOMPLETE ASSESSMENT: AI analysis timed out for question(s): {', '.join(stuck_question_ids)}. This assessment is based on partial data only. Manual review required."
-                llm_result['reasoning'] = llm_result.get('reasoning', '') + partial_note
-                
-                logger.warning(
-                    "partial_assessment_generated",
-                    interview_id=interview_id,
-                    stuck_questions=stuck_question_ids
+                llm_result = self._process_partial_assessment(
+                    interview_id, repo, stuck_session_ids, llm_result
                 )
-            
-            # 12. Collect evidence clips
-            evidence_clips = self._collect_evidence_clips(video_analyses)
-            
-            # 13. Collect proctoring events
-            proctoring_events = self._collect_proctoring_events(interview_id, repo)
-            
-            # 14. Build detailed raw results for each service
-            service_raw_results = {
-                'audio': [a.get('raw_results', {}) for a in audio_analyses],
-                'video': [v.get('raw_results', {}) for v in video_analyses],
-                'text': [t.get('raw_results', {}) for t in text_analyses],
-                'coding': [c.get('raw_results', {}) for c in coding_analyses] if has_coding else []
-            }
-            
-            # 15. Save assessment to database
-            assessment_data = {
-                'id': uuid.uuid4(),
-                'interview_id': uuid.UUID(interview_id),
-                'overall_score': round(overall_score, 2),
-                'hard_skills_score': round(technical_score, 2) if technical_score else None,
-                'soft_skills_score': round(soft_skills_score, 2),
-                'communication_score': round(communication_score, 2),
-                'technical_score': round(technical_score, 2) if technical_score else None,
-                'proctoring_risk_score': round(proctoring_risk_score, 2),
-                'recommendation': llm_result['recommendation'].lower().replace(' ', '_'),
-                'evidence_clips': {
-                    'video_clips': evidence_clips,
-                    'proctoring_events': proctoring_events,
-                    'service_results': service_raw_results,
-                    'scoring_weights': weights,
-                    'weights_source': weights_source,
-                    'is_partial_assessment': is_partial_assessment,
-                    'stuck_session_ids': stuck_session_ids if is_partial_assessment else []
-                },
-                'summary': llm_result['summary'],
-                'reviewer_notes': llm_result['reasoning'],
-                'created_at': datetime.now(timezone.utc),
-                'updated_at': datetime.now(timezone.utc)
-            }
-            
+
+            # Build and save assessment
+            assessment_data = self._build_assessment_data(
+                interview_id, overall_score, soft_skills_score, communication_score,
+                technical_score, proctoring_risk_score, llm_result,
+                audio_analyses, video_analyses, text_analyses, coding_analyses,
+                weights, weights_source, is_partial_assessment, stuck_session_ids, repo
+            )
+
             assessment_id = repo.save_assessment(assessment_data)
-            
+
             log_assessment_completed(
                 interview_id=interview_id,
                 assessment_id=str(assessment_id),
                 overall_score=overall_score,
                 recommendation=llm_result['recommendation']
             )
-            
+
             return {
                 "status": "success",
                 "interview_id": interview_id,
@@ -257,7 +298,7 @@ class AssessmentService:
                 "overall_score": overall_score,
                 "recommendation": llm_result['recommendation']
             }
-        
+
         except Exception as e:
             logger.error(
                 "assessment_generation_failed",
@@ -266,7 +307,7 @@ class AssessmentService:
                 error_type=type(e).__name__
             )
             log_assessment_failed(interview_id, str(e))
-            
+
             return {
                 "status": "error",
                 "interview_id": interview_id,
@@ -304,7 +345,7 @@ class AssessmentService:
                     'severity': 'critical',
                     'description': 'Multiple speakers or external assistance detected in audio',
                     'risk_level': cheating_detection.get('risk_level', 'high'),
-                    'timestamp_range': str(analysis.get('created_at', 'Unknown time')),
+                    'timestamp_range': str(analysis.get('created_at', UNKNOWN_TIME)),
                     'details': cheating_detection
                 })
                 
@@ -325,7 +366,7 @@ class AssessmentService:
                     'severity': 'critical',
                     'description': 'Critical risk level detected in audio analysis',
                     'risk_level': 'critical',
-                    'timestamp_range': str(analysis.get('created_at', 'Unknown time')),
+                    'timestamp_range': str(analysis.get('created_at', UNKNOWN_TIME)),
                     'details': cheating_detection
                 })
         
@@ -346,7 +387,7 @@ class AssessmentService:
                     'severity': 'critical',
                     'description': f'Multiple people detected in {multi_person_ratio * 100:.1f}% of video frames',
                     'multi_person_ratio': multi_person_ratio,
-                    'timestamp_range': str(analysis.get('created_at', 'Unknown time')),
+                    'timestamp_range': str(analysis.get('created_at', UNKNOWN_TIME)),
                     'details': {
                         'multi_person_ratio': multi_person_ratio,
                         'face_presence': raw_results.get('face_presence', 0)
@@ -371,7 +412,7 @@ class AssessmentService:
                     'severity': 'critical',
                     'description': f'High cheating probability detected: {cheating_prob * 100:.1f}%',
                     'cheating_probability': cheating_prob,
-                    'timestamp_range': str(analysis.get('created_at', 'Unknown time')),
+                    'timestamp_range': str(analysis.get('created_at', UNKNOWN_TIME)),
                     'details': {
                         'cheating_probability': cheating_prob,
                         'performance_score': raw_results.get('performance', {}).get('score', 0)

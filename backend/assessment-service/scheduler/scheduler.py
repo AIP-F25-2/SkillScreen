@@ -8,6 +8,9 @@ from datetime import datetime
 import asyncio
 
 
+DAILY_SCHEDULE = "daily at 02:00 AM"
+
+
 class AssessmentScheduler:
     """Scheduler for periodic assessment checks"""
     
@@ -37,7 +40,7 @@ class AssessmentScheduler:
         
         logger.info(
             "scheduler_started",
-            schedule="daily at 02:00 AM",
+            schedule=DAILY_SCHEDULE,
             grace_period_minutes=settings.assessment_grace_period_minutes
         )
     
@@ -56,24 +59,24 @@ class AssessmentScheduler:
             return {
                 "running": False,
                 "next_run": None,
-                "schedule": "daily at 02:00 AM"
+                "schedule": DAILY_SCHEDULE
             }
-        
+
         jobs = self.scheduler.get_jobs()
         if jobs:
             job = jobs[0]
             return {
                 "running": True,
                 "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
-                "schedule": "daily at 02:00 AM",
+                "schedule": DAILY_SCHEDULE,
                 "job_id": job.id,
                 "job_name": job.name
             }
-        
+
         return {
             "running": True,
             "next_run": None,
-            "schedule": "daily at 02:00 AM"
+            "schedule": DAILY_SCHEDULE
         }
     
     async def _run_assessment_check(self):
