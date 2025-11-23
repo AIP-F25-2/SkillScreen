@@ -44,7 +44,10 @@ class Settings(BaseSettings):
     
     # CORS Settings
     # Note: http://localhost is acceptable for development. Production should use https URLs via ALLOWED_ORIGINS env var
-    allowed_origins: str = Field(default="http://localhost:3000,http://localhost:5173", alias="ALLOWED_ORIGINS")  # noqa: S308
+    allowed_origins: str = Field(  # noqa: S308,B101
+        default="http://localhost:3000,http://localhost:5173",
+        alias="ALLOWED_ORIGINS"
+    )
     
     # Health Check
     health_check_timeout_seconds: int = Field(default=30, alias="HEALTH_CHECK_TIMEOUT_SECONDS")
