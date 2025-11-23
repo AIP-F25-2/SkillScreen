@@ -95,41 +95,46 @@ class AssessmentService:
     def _build_assessment_data(
         self,
         interview_id: str,
-        overall_score: float,
-        soft_skills_score: float,
-        communication_score: float,
-        technical_score: float,
-        proctoring_risk_score: float,
+        scores: Dict[str, float],
         llm_result: Dict,
-        audio_analyses: List[Dict],
-        video_analyses: List[Dict],
-        text_analyses: List[Dict],
-        coding_analyses: List[Dict],
+        analyses: Dict[str, List[Dict]],
         weights: Dict[str, float],
         weights_source: str,
         is_partial_assessment: bool,
         stuck_session_ids: list,
         repo: AssessmentRepository
     ) -> Dict:
-        """Build complete assessment data structure"""
+        """Build complete assessment data structure
+
+        Args:
+            interview_id: Interview UUID
+            scores: Dict with overall, soft_skills, communication, technical, proctoring_risk
+            llm_result: LLM recommendation and summary
+            analyses: Dict with audio, video, text, coding lists
+            weights: Scoring weights
+            weights_source: Source of weights (custom/llm/default)
+            is_partial_assessment: Whether assessment is partial
+            stuck_session_ids: List of timed-out session IDs
+            repo: AssessmentRepository for proctoring events
+        """
         service_raw_results = {
-            'audio': [a.get('raw_results', {}) for a in audio_analyses],
-            'video': [v.get('raw_results', {}) for v in video_analyses],
-            'text': [t.get('raw_results', {}) for t in text_analyses],
-            'coding': [c.get('raw_results', {}) for c in coding_analyses]
+            'audio': [a.get('raw_results', {}) for a in analyses['audio']],
+            'video': [v.get('raw_results', {}) for v in analyses['video']],
+            'text': [t.get('raw_results', {}) for t in analyses['text']],
+            'coding': [c.get('raw_results', {}) for c in analyses['coding']]
         }
 
-        evidence_clips = self._collect_evidence_clips(video_analyses)
+        evidence_clips = self._collect_evidence_clips(analyses['video'])
 
         return {
             'id': uuid.uuid4(),
             'interview_id': uuid.UUID(interview_id),
-            'overall_score': round(overall_score, 2),
-            'hard_skills_score': round(technical_score, 2) if technical_score else None,
-            'soft_skills_score': round(soft_skills_score, 2),
-            'communication_score': round(communication_score, 2),
-            'technical_score': round(technical_score, 2) if technical_score else None,
-            'proctoring_risk_score': round(proctoring_risk_score, 2),
+            'overall_score': round(scores['overall'], 2),
+            'hard_skills_score': round(scores['technical'], 2) if scores.get('technical') else None,
+            'soft_skills_score': round(scores['soft_skills'], 2),
+            'communication_score': round(scores['communication'], 2),
+            'technical_score': round(scores['technical'], 2) if scores.get('technical') else None,
+            'proctoring_risk_score': round(scores['proctoring_risk'], 2),
             'recommendation': llm_result['recommendation'].lower().replace(' ', '_'),
             'evidence_clips': {
                 'video_clips': evidence_clips,
@@ -221,7 +226,7 @@ class AssessmentService:
                     interview_id=interview_id,
                     evidence_count=len(cheating_evidence)
                 )
-                return await self._generate_cheating_rejection_assessment(
+                return self._generate_cheating_rejection_assessment(
                     interview_id=interview_id,
                     cheating_evidence=cheating_evidence,
                     repo=repo
@@ -276,10 +281,26 @@ class AssessmentService:
 
             # Build and save assessment
             assessment_data = self._build_assessment_data(
-                interview_id, overall_score, soft_skills_score, communication_score,
-                technical_score, proctoring_risk_score, llm_result,
-                audio_analyses, video_analyses, text_analyses, coding_analyses,
-                weights, weights_source, is_partial_assessment, stuck_session_ids, repo
+                interview_id=interview_id,
+                scores={
+                    'overall': overall_score,
+                    'soft_skills': soft_skills_score,
+                    'communication': communication_score,
+                    'technical': technical_score,
+                    'proctoring_risk': proctoring_risk_score
+                },
+                llm_result=llm_result,
+                analyses={
+                    'audio': audio_analyses,
+                    'video': video_analyses,
+                    'text': text_analyses,
+                    'coding': coding_analyses
+                },
+                weights=weights,
+                weights_source=weights_source,
+                is_partial_assessment=is_partial_assessment,
+                stuck_session_ids=stuck_session_ids,
+                repo=repo
             )
 
             assessment_id = repo.save_assessment(assessment_data)
@@ -429,7 +450,7 @@ class AssessmentService:
         # Return True if ANY hard violations found
         return (len(evidence) > 0, evidence)
     
-    async def _generate_cheating_rejection_assessment(
+    def _generate_cheating_rejection_assessment(
         self,
         interview_id: str,
         cheating_evidence: List[Dict],

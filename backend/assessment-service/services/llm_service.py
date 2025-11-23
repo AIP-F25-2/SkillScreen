@@ -387,7 +387,7 @@ DO NOT include the recommendation field - it has already been determined as "{ru
         try:
             # Try direct parse first
             return json.loads(text)
-        except (json.JSONDecodeError, ValueError):
+        except json.JSONDecodeError:
             pass
 
         # Try to find JSON in markdown code blocks
@@ -395,7 +395,7 @@ DO NOT include the recommendation field - it has already been determined as "{ru
             try:
                 json_str = text.split("```json")[1].split("```")[0].strip()
                 return json.loads(json_str)
-            except (json.JSONDecodeError, ValueError, IndexError):
+            except (json.JSONDecodeError, IndexError):
                 pass
 
         # Try to find JSON between curly braces
@@ -404,7 +404,7 @@ DO NOT include the recommendation field - it has already been determined as "{ru
             end = text.rindex("}") + 1
             json_str = text[start:end]
             return json.loads(json_str)
-        except (json.JSONDecodeError, ValueError):
+        except json.JSONDecodeError:
             pass
 
         return None
