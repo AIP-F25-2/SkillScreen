@@ -304,8 +304,6 @@ async def get_or_generate_assessment_for_candidate(candidate_id: str):
     """
     try:
         with UnitOfWork() as uow:
-            repo = AssessmentRepository(uow)
-
             # Find the most recent completed interview for this candidate
             from sqlalchemy import select, and_
             from repositories.assessment_repository import interviews_table
