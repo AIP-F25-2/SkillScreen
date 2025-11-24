@@ -1,8 +1,8 @@
 from pydantic import BaseModel, HttpUrl, Field, field_validator
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
+from uuid import UUID
 import os
-
 
 
 class TTSRequest(BaseModel):
@@ -25,8 +25,8 @@ class TTSResponse(BaseModel):
     """Text-to-speech response"""
     status: str
     message: str
-    filename: str = Field(..., description="Audio filename")  # NEW
-    download_url: str = Field(..., description="Full download URL for other services")  # NEW
+    filename: str = Field(..., description="Audio filename")
+    download_url: str = Field(..., description="Full download URL for other services")
     text: str
     voice: Optional[str] = None
     duration_seconds: Optional[float] = None
@@ -46,6 +46,7 @@ class TTSResponse(BaseModel):
                 "session_id": "interview_123"
             }
         }
+
 
 class AudioProcessRequest(BaseModel):
     """Request schema for audio/video processing"""
@@ -109,8 +110,8 @@ class AudioProcessResponse(BaseModel):
     """Response schema for audio processing"""
     status: str = Field(..., description="Processing status: success, failed, processing")
     message: str = Field(..., description="Status message")
-    media_url: str = Field(..., description="Original media URL")  # Changed from video_url
-    media_type: Optional[str] = Field(None, description="Detected media type: audio or video")  # NEW
+    media_url: str = Field(..., description="Original media URL")
+    media_type: Optional[str] = Field(None, description="Detected media type: audio or video")
     
     # Optional fields (present on success)
     session_id: Optional[str] = Field(None, description="Interview session ID")
@@ -143,5 +144,165 @@ class AudioProcessResponse(BaseModel):
                 "word_count": 250,
                 "language": "en",
                 "processing_time_seconds": 45.2
+            }
+        }
+
+
+class ProcessInterviewAudioRequest(BaseModel):
+    """Request schema for interview audio processing"""
+    interview_id: UUID = Field(..., description="Interview UUID")
+    session_id: UUID = Field(..., description="Session UUID (question)")
+    media_file_id: UUID = Field(..., description="Media file UUID")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "interview_id": "d37f8d3d-5c68-5f56-8a9d-59d040850c90",
+                "session_id": "f211e428-3aab-4c52-abb3-c3f5f0a957c6",
+                "media_file_id": "609f1983-1f85-4f33-96a6-fe67d9ba7742"
+            }
+        }
+
+
+class ProcessInterviewAudioResponse(BaseModel):
+    """Response schema for interview audio processing"""
+    status: str = Field(..., description="'accepted' - processing started")
+    message: str = Field(..., description="Status message")
+    media_file_id: str
+    interview_id: str
+    session_id: str
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "status": "accepted",
+                "message": "Audio processing started in background",
+                "media_file_id": "609f1983-1f85-4f33-96a6-fe67d9ba7742",
+                "interview_id": "d37f8d3d-5c68-5f56-8a9d-59d040850c90",
+                "session_id": "f211e428-3aab-4c52-abb3-c3f5f0a957c6",
+                "timestamp": "2025-11-06T10:30:00Z"
+            }
+        }
+
+
+class TranscriptDetail(BaseModel):
+    """Individual transcript detail"""
+    interview_id: str
+    session_id: str
+    question_number: Optional[int] = None
+    speaker: str
+    text: str
+    transcription_confidence: float = Field(description="Whisper transcription accuracy (0-1)")
+    start_time: float
+    end_time: float
+    duration_seconds: float
+    word_count: int
+    word_timestamps: List[Dict[str, Any]] = Field(description="Word-level timestamps with probabilities")
+    created_at: datetime
+
+
+class CandidateTranscriptsResponse(BaseModel):
+    """Response for candidate transcripts"""
+    candidate_id: str
+    candidate_name: Optional[str] = None
+    total_sessions: int = Field(description="Total interview questions answered")
+    transcripts: List[TranscriptDetail]
+    summary: Dict[str, Any]
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "candidate_id": "candidate_123",
+                "candidate_name": "John Doe",
+                "total_sessions": 3,
+                "transcripts": [
+                    {
+                        "interview_id": "uuid1",
+                        "session_id": "uuid2",
+                        "question_number": 1,
+                        "speaker": "candidate",
+                        "text": "Hello, my name is John...",
+                        "transcription_confidence": 0.92,
+                        "start_time": 0.5,
+                        "end_time": 120.3,
+                        "duration_seconds": 119.8,
+                        "word_count": 250,
+                        "word_timestamps": [
+                            {"word": "Hello", "start": 0.5, "end": 0.8, "probability": 0.95}
+                        ],
+                        "created_at": "2025-11-14T10:30:00Z"
+                    }
+                ],
+                "summary": {
+                    "total_words": 712,
+                    "total_speaking_time_seconds": 450.5,
+                    "avg_transcription_confidence": 0.91,
+                    "avg_words_per_minute": 95.2
+                }
+            }
+        }
+
+
+class AudioAnalysisDetail(BaseModel):
+    """Individual audio analysis result"""
+    interview_id: str
+    session_id: str
+    question_number: Optional[int] = None
+    candidate_confidence_score: Optional[float] = Field(description="Candidate speaking confidence (0-10)")
+    communication_score: Optional[float] = Field(description="Communication quality score (0-10)")
+    filler_analysis: Dict[str, Any]
+    vocal_analytics: Dict[str, Any]
+    speaker_analysis: Dict[str, Any]
+    reading_detection: Optional[Dict[str, Any]] = None
+    processing_time_seconds: int
+    created_at: datetime
+
+
+class CandidateAudioAnalysisResponse(BaseModel):
+    """Response for candidate audio analysis"""
+    candidate_id: str
+    candidate_name: Optional[str] = None
+    total_sessions: int = Field(description="Total interview questions analyzed")
+    analyses: List[AudioAnalysisDetail]
+    summary: Dict[str, Any]
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "candidate_id": "candidate_123",
+                "candidate_name": "John Doe",
+                "total_sessions": 3,
+                "analyses": [
+                    {
+                        "interview_id": "uuid1",
+                        "session_id": "uuid2",
+                        "question_number": 1,
+                        "candidate_confidence_score": 7.5,
+                        "communication_score": 8.2,
+                        "filler_analysis": {
+                            "total_fillers": 5,
+                            "filler_rate_per_minute": 2.4
+                        },
+                        "vocal_analytics": {
+                            "speaking_rate_wpm": 95,
+                            "pitch_mean_hz": 180
+                        },
+                        "speaker_analysis": {
+                            "num_speakers": 1,
+                            "cheating_flag": False
+                        },
+                        "processing_time_seconds": 65,
+                        "created_at": "2025-11-14T10:30:00Z"
+                    }
+                ],
+                "summary": {
+                    "avg_candidate_confidence": 7.8,
+                    "avg_communication_score": 8.1,
+                    "total_fillers": 15,
+                    "avg_filler_rate_per_minute": 2.1,
+                    "cheating_incidents": 0,
+                    "avg_speaking_rate_wpm": 92.5
+                }
             }
         }

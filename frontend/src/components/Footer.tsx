@@ -59,7 +59,7 @@ export default function Footer() {
             {/* Brand Column */}
             <div className="col-span-2 md:col-span-4 lg:col-span-1">
               <Link href="/" className="inline-block mb-4">
-                <h2 className="text-2xl font-bold text-white">IntervuAI</h2>
+                <h2 className="text-2xl font-bold text-white">SkillScreen</h2>
               </Link>
               <p className="text-white/60 text-sm mb-6">
                 Transforming recruitment with AI-powered interviews and intelligent assessments.
@@ -107,7 +107,7 @@ export default function Footer() {
             <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
               {/* Copyright */}
               <p className="text-white/60 text-sm">
-                © {currentYear} IntervuAI. All rights reserved.
+                © {currentYear} SkillScreen. All rights reserved.
               </p>
 
               {/* Status Indicator */}
@@ -115,7 +115,10 @@ export default function Footer() {
                 <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
                 <span className="text-white/60 text-sm">All systems operational</span>
               </div>
-
+              {/* Status Indicator */}
+              <div className="flex items-center space-x-2">
+                <span className="text-white/60 text-sm">Built with ❤️ by the SkillScreen Team</span>
+              </div>
               {/* Additional Links */}
               <div className="flex space-x-6">
                 <Link href="/cookies" className="text-white/60 hover:text-white text-sm transition-colors">

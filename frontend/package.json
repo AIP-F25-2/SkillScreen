@@ -9,12 +9,15 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@paper-design/shaders-react": "^0.0.63",
     "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-slot": "^1.2.3",
+    "@tabler/icons-react": "^3.35.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.23.22",
     "lucide-react": "^0.544.0",
+    "motion": "^12.23.24",
     "next": "13.5.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

@@ -1,0 +1,6 @@
+# Development & Testing Dependencies
+radon==6.0.1              # Code complexity analysis
+pytest==7.4.3             # Unit testing (we'll add later)
+pytest-cov==4.1.0         # Test coverage (we'll add later)
+pytest-asyncio==0.21.1    # Async tests (we'll add later)
+locust==2.17.0            # Load testing (we'll add later)
