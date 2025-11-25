@@ -72,12 +72,18 @@ services:
       context: ./backend/assessment-service
       dockerfile: Dockerfile
     container_name: assessment-service
+    platform: linux/amd64
+    ports:
+      - "8005:8005"
+    env_file:
+      - ./backend/assessment-service/.env   
     environment:
-      PORT: 8080
-      HOST: 0.0.0.0
-      DATABASE_URL: postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+      - PORT=8080
+      - HOST=0.0.0.0
+      - USE_LLM_WEIGHTS=false   
     volumes:
       - ./backend/assessment-service:/app
+      - ./backend/common-service:/common-service
     networks:
       - skill-screen-network
 
