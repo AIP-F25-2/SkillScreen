@@ -39,7 +39,8 @@ RBAC_RULES = {
     "/media": ["admin", "user"],  # both admin and user can access media
     "/notification": ["admin", "user"],  # both admin and user can access notification
     "/logger": ["admin"],  # only admins can access logger service
-    "/sso": ["admin", "user"]  # both admin and user can access SSO
+    "/sso": ["admin", "user"],  # both admin and user can access SSO
+    "/orchestration": ["admin", "user"]  # both admin and user can access orchestration
 }
 
 # Internal Docker service URLs - HTTP is acceptable for internal container communication
@@ -57,7 +58,8 @@ SERVICE_MAP = {
     "interview": os.getenv("INTERVIEW_SERVICE_URL", "http://localhost:8003"),
     "media": os.getenv("MEDIA_SERVICE_URL", "http://media-service:8080"),
     "notification": os.getenv("NOTIFICATION_SERVICE_URL", "http://notification-service:8080"),
-    "sso": os.getenv("SSO_SERVICE_URL", "http://sso-service:8080")
+    "sso": os.getenv("SSO_SERVICE_URL", "http://sso-service:8080"),
+    "orchestration": os.getenv("ORCHESTRATION_SERVICE_URL", "http://orchestration-service:8080")
 }
 
 # Middleware for JWT validation and RBAC

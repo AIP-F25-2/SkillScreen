@@ -10,22 +10,23 @@ services:
     ports:
       - "5001:8080"
     environment:
-      - PORT=8080
-      - HOST=0.0.0.0
-      - SECRET_KEY=supersecret
-      - ALGORITHM=HS256
-      - USER_SERVICE_URL=http://user-service:8080
-      - SSO_SERVICE_URL=http://sso-service:8080
-      - ASSESSMENT_SERVICE_URL=http://assessment-service:8080
-      - CODING_SERVICE_URL=http://coding-service:8080
-      - MEDIA_SERVICE_URL=http://media-service:8080
-      - TEXT_SERVICE_URL=http://text-service:8080
-      - AUDIO_AI_SERVICE_URL=http://audio-ai-service:8080
-      - VIDEO_AI_SERVICE_URL=http://video-ai-service:8080
-      - TEXT_AI_SERVICE_URL=http://text-ai-service:8080
-      - INTERVIEW_SERVICE_URL=http://interview-service:8080
-      - NOTIFICATION_SERVICE_URL=http://notification-service:8080
-      - LOGGER_SERVICE_URL=http://logger-service:8080
+      PORT: 8080
+      HOST: 0.0.0.0
+      SECRET_KEY: supersecret
+      ALGORITHM: HS256
+      USER_SERVICE_URL: http://user-service:8080
+      SSO_SERVICE_URL: http://sso-service:8080
+      ASSESSMENT_SERVICE_URL: http://assessment-service:8080
+      CODING_SERVICE_URL: http://coding-service:8080
+      MEDIA_SERVICE_URL: http://media-service:8080
+      TEXT_SERVICE_URL: http://text-service:8080
+      AUDIO_AI_SERVICE_URL: http://audio-ai-service:8080
+      VIDEO_AI_SERVICE_URL: http://video-ai-service:8080
+      TEXT_AI_SERVICE_URL: http://text-ai-service:8080
+      INTERVIEW_SERVICE_URL: http://interview-service:8080
+      NOTIFICATION_SERVICE_URL: http://notification-service:8080
+      LOGGER_SERVICE_URL: http://logger-service:8080
+      ORCHESTRATION_SERVICE_URL: http://orchestration-service:8080
     volumes:
       - ./backend/api-gateway:/app
     depends_on:
@@ -35,6 +36,7 @@ services:
       - coding-service
       - interview-service
       - text-service
+      - orchestration-service
     networks:
       - skill-screen-network
 
@@ -44,18 +46,18 @@ services:
       dockerfile: Dockerfile
     container_name: user-service
     environment:
-      - PORT=8080
-      - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
-      - PYTHONPATH=/app:/common-service
+      PORT: 8080
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+      PYTHONPATH: /app:/common-service
       # logging
-      - ENV=dev
-      - LOG_LEVEL=DEBUG
-      - LOG_TO_FILE=true
-      - LOG_DIR=/var/log/app
-      - LOG_FILE=user-service.log
-      - ENABLE_SEQ=true
-      - SEQ_URL=http://seq:5341
+      ENV: dev
+      LOG_LEVEL: DEBUG
+      LOG_TO_FILE: 'true'
+      LOG_DIR: /var/log/app
+      LOG_FILE: user-service.log
+      ENABLE_SEQ: 'true'
+      SEQ_URL: http://seq:5341
     volumes:
       - ./backend/user-service:/app
       - ./backend/common-service:/common-service
@@ -71,9 +73,9 @@ services:
       dockerfile: Dockerfile
     container_name: assessment-service
     environment:
-      - PORT=8080
-      - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+      PORT: 8080
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
     volumes:
       - ./backend/assessment-service:/app
     networks:
@@ -85,9 +87,9 @@ services:
       dockerfile: Dockerfile
     container_name: coding-service
     environment:
-      - PORT=8080
-      - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+      PORT: 8080
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
     volumes:
       - ./backend/coding-service:/app
     networks:
@@ -102,13 +104,13 @@ services:
     ports:
       - "8001:8080"
     environment:
-      - PORT=8080
-      - HOST=0.0.0.0
-      - APP_NAME=text-service
-      - ENVIRONMENT=development
-      - DEBUG=True
-      - LOG_LEVEL=INFO
-      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+      PORT: 8080
+      HOST: 0.0.0.0
+      APP_NAME: text-service
+      ENVIRONMENT: development
+      DEBUG: 'True'
+      LOG_LEVEL: INFO
+      DATABASE_URL: postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
     volumes:
       - ./backend/text-service:/app
     networks:
@@ -123,17 +125,17 @@ services:
     ports:
       - "8000:8080"
     env_file:
-      - ./backend/audio-ai-service/.env  
+      - ./backend/audio-ai-service/.env 
     environment:
-      - PORT=8080
-      - HOST=0.0.0.0
-      - APP_NAME=audio-ai-service
-      - ENVIRONMENT=development
-      - DEBUG=True
-      - LOG_LEVEL=INFO
-      - WHISPER_MODEL_SIZE=base
-      - WHISPER_DEVICE=cpu
-      - PYTHONPATH=/app:/common-service
+      PORT: 8080
+      HOST: 0.0.0.0
+      APP_NAME: audio-ai-service
+      ENVIRONMENT: development
+      DEBUG: 'True'
+      LOG_LEVEL: INFO
+      WHISPER_MODEL_SIZE: base
+      WHISPER_DEVICE: cpu
+      PYTHONPATH: /app:/common-service
     volumes:
       - ./backend/audio-ai-service:/app
       - ./backend/common-service:/common-service
@@ -146,9 +148,9 @@ services:
       dockerfile: Dockerfile
     container_name: video-ai-service
     environment:
-      - PORT=8080
-      - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+      PORT: 8080
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
     volumes:
       - ./backend/video-ai-service:/app
     networks:
@@ -160,9 +162,9 @@ services:
       dockerfile: Dockerfile
     container_name: text-ai-service
     environment:
-      - PORT=8080
-      - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+      PORT: 8080
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
     volumes:
       - ./backend/text-ai-service:/app
     networks:
@@ -177,11 +179,11 @@ services:
     ports:
       - "8003:8080"
     environment:
-      - PORT=8080
-      - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
-      - PYTHONPATH=/app:/common-service
-      - CORS_ORIGINS=http://localhost:3000
+      PORT: 8080
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+      PYTHONPATH: /app:/common-service
+      CORS_ORIGINS: http://localhost:3000
     volumes:
       - ./backend/interview-service:/app
       - ./backend/common-service:/common-service
@@ -194,12 +196,14 @@ services:
       dockerfile: Dockerfile
     container_name: media-service
     environment:
-      - PORT=8080
-      - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
-      - CORS_ORIGINS=http://localhost:3000
+      PORT: 8080
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+      CORS_ORIGINS: http://localhost:3000
+      PYTHONPATH: /app:/common-service
     volumes:
       - ./backend/media-service:/app
+      - ./backend/common-service:/common-service
     networks:
       - skill-screen-network
 
@@ -209,9 +213,9 @@ services:
       dockerfile: Dockerfile
     container_name: notification-service
     environment:
-      - PORT=8080
-      - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+      PORT: 8080
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
     volumes:
       - ./backend/notification-service:/app
     networks:
@@ -223,11 +227,11 @@ services:
       dockerfile: Dockerfile
     container_name: sso-service
     environment:
-      - PORT=8080
-      - HOST=0.0.0.0
-      - SECRET_KEY=supersecret
-      - ALGORITHM=HS256
-      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+      PORT: 8080
+      HOST: 0.0.0.0
+      SECRET_KEY: supersecret
+      ALGORITHM: HS256
+      DATABASE_URL: postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
     volumes:
       - ./backend/sso-service:/app
     networks:
@@ -239,17 +243,17 @@ services:
       dockerfile: Dockerfile
     container_name: common-service
     environment:
-      - PORT=8080
-      - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
-      - SEQ_URL=http://seq:5341
+      PORT: 8080
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+      SEQ_URL: http://seq:5341
       # logging
-      - ENV=dev
-      - LOG_LEVEL=DEBUG
-      - LOG_TO_FILE=true
-      - LOG_DIR=/var/log/app
-      - LOG_FILE=user-service.log
-      - ENABLE_SEQ=true
+      ENV: dev
+      LOG_LEVEL: DEBUG
+      LOG_TO_FILE: 'true'
+      LOG_DIR: /var/log/app
+      LOG_FILE: user-service.log
+      ENABLE_SEQ: 'true'
     volumes:
       - ./backend/common-service:/app
       - ./_logs:/var/log/app
@@ -258,11 +262,40 @@ services:
     networks:
       - skill-screen-network
 
+  # 🌟 FIXED INDENTATION HERE 🌟
+  orchestration-service: 
+    build:
+      context: ./backend/orchestration-service
+      dockerfile: Dockerfile
+    container_name: orchestration-service
+    env_file:
+      - ./backend/orchestration-service/.env
+    environment:
+      PORT: 8080
+      HOST: 0.0.0.0
+      INTERVIEW_SERVICE_URL: http://interview-service:8080
+      TEXT_SERVICE_URL: http://text-service:8080
+      AUDIO_AI_SERVICE_URL: http://audio-ai-service:8080
+      VIDEO_AI_SERVICE_URL: http://video-ai-service:8080
+      MEDIA_SERVICE_URL: http://media-service:8080
+      ASSESSMENT_SERVICE_URL: http://assessment-service:8080
+    volumes:
+      - ./backend/orchestration-service:/app
+    depends_on:
+      - interview-service
+      - text-service
+      - audio-ai-service
+      - media-service
+      - assessment-service
+      - video-ai-service
+    networks:
+      - skill-screen-network 
+
   seq:
     image: datalust/seq:2024.3
     container_name: seq
     environment:
-      - ACCEPT_EULA=Y
+      ACCEPT_EULA: Y
     ports:
       - "5341:5341" # ingestion endpoint
       - "8081:80" # web UI -> http://localhost:8081
