@@ -415,15 +415,28 @@ async def submit_response(
         
         # Update interview progress
         responses = get_responses(session_id)
-        current_index = len(responses)
-        max_questions = interview_data.get("max_questions", 15)
+        current_index = len(responses)  # This is the count AFTER adding the current response
+        max_questions = interview_data.get("max_questions", 12)  # Default to 12
+        
+        # Ensure max_questions is at least 10
+        if max_questions < 10:
+            max_questions = 12
+            log_warning(f"[INTERVIEW] max_questions was {interview_data.get('max_questions')}, setting to 12")
         
         update_interview(session_id, {
             "current_question_index": current_index,
-            "total_responses_received": len(responses)
+            "total_responses_received": len(responses),
+            "max_questions": max_questions  # Ensure it's saved
         })
         
         # Check if interview should continue
+        # After answering Q1, current_index = 1, we should continue (1 < 12)
+        # After answering Q12, current_index = 12, we should stop (12 >= 12)
+        # So we check: current_index >= max_questions
+        
+        log_info(f"[INTERVIEW PROGRESS] Questions answered: {current_index}/{max_questions}")
+        log_info(f"[INTERVIEW PROGRESS] Will continue: {current_index < max_questions} (anti-cheat termination: {cheating_analysis.get('should_terminate', False)})")
+        
         if (cheating_analysis.get('should_terminate', False) or 
             current_index >= max_questions):
             # Generate interview summary before completing
@@ -496,10 +509,11 @@ async def submit_response(
             is_coding = False
             coding_data = {}
         
-        # Store next question
+        # Store next question with proper question type
+        question_type = next_question_data.get('question_type', 'general') if isinstance(next_question_data, dict) else 'general'
         add_question(session_id, {
             "question_text": next_question_text,
-            "question_type": "coding" if is_coding else "general",
+            "question_type": question_type,  # Use actual question type from generation
             "question_index": current_index,
             "is_coding_question": is_coding,
             "coding_data": coding_data
@@ -698,48 +712,287 @@ async def execute_code(
         log_error(f"Error executing code: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to execute code: {str(e)}")
 
+@app.post("/api/code-editor/sessions")
+async def create_code_editor_session(
+    coding_session_id: str = Body(...),
+    question_data: Dict = Body(...),
+    language: str = Body("python")
+):
+    """Create a new code editor session"""
+    try:
+        from services.code_editor_service import code_editor_service
+        
+        result = code_editor_service.create_editor_session(
+            coding_session_id=coding_session_id,
+            question_data=question_data,
+            language=language
+        )
+        
+        return result
+        
+    except Exception as e:
+        log_error(f"Error creating code editor session: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create code editor session: {str(e)}")
+
+@app.put("/api/code-editor/sessions/{editor_session_id}/code")
+async def update_code_in_editor(
+    editor_session_id: str,
+    code: str = Body(...),
+    language: Optional[str] = Body(None)
+):
+    """Update code in an editor session"""
+    try:
+        from services.code_editor_service import code_editor_service
+        
+        result = code_editor_service.update_code(
+            editor_session_id=editor_session_id,
+            code=code,
+            language=language
+        )
+        
+        return result
+        
+    except Exception as e:
+        log_error(f"Error updating code: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update code: {str(e)}")
+
+@app.post("/api/code-editor/sessions/{editor_session_id}/execute")
+async def execute_code_from_editor(
+    editor_session_id: str,
+    code: Optional[str] = Body(None)
+):
+    """Execute code from an editor session"""
+    try:
+        from services.code_editor_service import code_editor_service
+        
+        result = await code_editor_service.execute_code(
+            editor_session_id=editor_session_id,
+            code=code
+        )
+        
+        return result
+        
+    except Exception as e:
+        log_error(f"Error executing code: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to execute code: {str(e)}")
+
+@app.post("/api/code-editor/sessions/{editor_session_id}/run-tests")
+async def run_tests_for_editor(
+    editor_session_id: str,
+    code: Optional[str] = Body(None)
+):
+    """Run test cases for code in an editor session"""
+    try:
+        from services.code_editor_service import code_editor_service
+        
+        result = await code_editor_service.run_tests(
+            editor_session_id=editor_session_id,
+            code=code
+        )
+        
+        return result
+        
+    except Exception as e:
+        log_error(f"Error running tests: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to run tests: {str(e)}")
+
+@app.get("/api/code-editor/sessions/{editor_session_id}")
+async def get_editor_session(editor_session_id: str):
+    """Get editor session details"""
+    try:
+        from services.code_editor_service import code_editor_service
+        
+        session = code_editor_service.get_editor_session(editor_session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Editor session not found")
+        
+        return session
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        log_error(f"Error getting editor session: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get editor session: {str(e)}")
+
+@app.get("/api/code-editor/languages")
+async def get_supported_languages():
+    """Get list of supported programming languages"""
+    try:
+        from services.code_editor_service import code_editor_service
+        
+        languages = code_editor_service.get_supported_languages()
+        return {"languages": languages}
+        
+    except Exception as e:
+        log_error(f"Error getting supported languages: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get supported languages: {str(e)}")
+
 @app.get("/api/interviews/{session_id}/summary")
 async def get_interview_summary(
     session_id: str,
     db: Session = Depends(get_db)
 ):
-    """Get interview summary"""
-    interview = db.query(Interview).filter(Interview.session_id == session_id).first()
-    if not interview:
-        raise HTTPException(status_code=404, detail="Interview not found")
-    
-    summary = db.query(InterviewSummary).filter(InterviewSummary.interview_id == interview.id).first()
-    if not summary:
-        # Generate summary if not exists
-        summary_data = await interview_service.generate_interview_summary(interview.id, db)
-        return summary_data
-    
-    return {
-        "executive_summary": summary.executive_summary,
-        "overall_score": summary.overall_score,
-        "recommendation": summary.recommendation,
-        "recommendation_reason": summary.recommendation_reason,
-        "technical_assessment": {
-            "score": summary.technical_assessment_score,
-            "summary": summary.technical_assessment_summary
-        },
-        "communication_assessment": {
-            "score": summary.communication_assessment_score,
-            "summary": summary.communication_assessment_summary
-        },
-        "cultural_fit": {
-            "score": summary.cultural_fit_score,
-            "summary": summary.cultural_fit_summary
-        },
-        "strengths": summary.strengths,
-        "areas_for_improvement": summary.areas_for_improvement,
-        "key_highlights": summary.key_highlights,
-        "red_flags": summary.red_flags,
-        "improvement_tips": summary.improvement_tips,
-        "next_steps": summary.next_steps,
-        "interviewer_notes": summary.interviewer_notes,
-        "generated_at": summary.generated_at.isoformat()
-    }
+    """Get interview summary - supports both database and in-memory storage"""
+    try:
+        from in_memory_storage import get_interview_by_session, get_responses, get_questions, get_candidate, get_job
+        
+        # Try in-memory storage first
+        interview_data = get_interview_by_session(session_id)
+        if interview_data:
+            # Generate summary from in-memory data
+            all_responses = get_responses(session_id)
+            all_questions = get_questions(session_id)
+            candidate_data = get_candidate(interview_data["candidate_id"])
+            job_data = get_job(interview_data["job_id"])
+            
+            if not all_responses:
+                return {
+                    "executive_summary": "Interview in progress. No responses yet.",
+                    "overall_score": 0.0,
+                    "total_questions": len(all_questions),
+                    "total_responses": 0,
+                    "status": "in_progress"
+                }
+            
+            # Calculate overall score
+            overall_score = 0.0
+            if all_responses:
+                scores = [r.get("scores", {}).get("overall_score", 0.0) for r in all_responses if r.get("scores")]
+                overall_score = sum(scores) / len(scores) if scores else 0.0
+            
+            # Generate comprehensive summary using LLM
+            try:
+                from services.llm_service import llm_service
+                
+                # Build context for summary generation
+                candidate_context = {
+                    'name': candidate_data.get("name", "Candidate"),
+                    'skills': candidate_data.get("skills", []),
+                    'experience_years': candidate_data.get("experience_years", 0)
+                }
+                
+                job_context = {
+                    'title': job_data.get("title", ""),
+                    'company': job_data.get("company", ""),
+                    'required_skills': job_data.get("required_skills", [])
+                }
+                
+                # Generate summary using LLM
+                summary_prompt = f"""Generate a comprehensive interview summary for a candidate interview.
+
+Candidate: {candidate_context['name']} with {candidate_context['experience_years']} years of experience
+Skills: {', '.join(candidate_context['skills'][:10])}
+Job: {job_context['title']} at {job_context['company']}
+Required Skills: {', '.join(job_context['required_skills'][:10])}
+
+Interview Statistics:
+- Total Questions: {len(all_questions)}
+- Total Responses: {len(all_responses)}
+- Overall Score: {overall_score:.1f}/10
+
+Responses Summary:
+{chr(10).join([f"Q{i+1}: {q.get('question_text', '')[:100]}... | Response: {r.get('response_text', '')[:150]}..." for i, (q, r) in enumerate(zip(all_questions[:5], all_responses[:5]))])}
+
+Generate a professional interview summary with:
+1. Executive Summary (2-3 sentences)
+2. Overall Assessment
+3. Strengths (3-5 points)
+4. Areas for Improvement (3-5 points)
+5. Recommendation (Hire/Strong Consider/Consider/Do Not Hire)
+6. Recommendation Reason
+7. Improvement Tips (3-5 actionable tips)
+
+Format as JSON with keys: executive_summary, overall_assessment, strengths (array), areas_for_improvement (array), recommendation, recommendation_reason, improvement_tips (array)"""
+                
+                if llm_service.gemini_model:
+                    import asyncio
+                    loop = asyncio.get_event_loop()
+                    llm_summary = await loop.run_in_executor(
+                        None,
+                        lambda: llm_service.gemini_model.generate_content(summary_prompt)
+                    )
+                    if llm_summary and llm_summary.text:
+                        import json
+                        try:
+                            summary_json = json.loads(llm_summary.text)
+                            return {
+                                "executive_summary": summary_json.get("executive_summary", f"Interview completed with overall score {overall_score:.1f}/10"),
+                                "overall_score": round(overall_score, 1),
+                                "recommendation": summary_json.get("recommendation", "Consider"),
+                                "recommendation_reason": summary_json.get("recommendation_reason", f"Overall performance score of {overall_score:.1f}/10"),
+                                "strengths": summary_json.get("strengths", []),
+                                "areas_for_improvement": summary_json.get("areas_for_improvement", []),
+                                "improvement_tips": summary_json.get("improvement_tips", []),
+                                "total_questions": len(all_questions),
+                                "total_responses": len(all_responses),
+                                "generated_at": datetime.now(timezone.utc).isoformat()
+                            }
+                        except:
+                            pass
+            except Exception as e:
+                log_warning(f"LLM summary generation failed: {e}. Using fallback.")
+            
+            # Fallback summary
+            return {
+                "executive_summary": f"Interview completed for {candidate_data.get('name', 'Candidate')}. Overall score: {overall_score:.1f}/10 based on {len(all_responses)} responses.",
+                "overall_score": round(overall_score, 1),
+                "recommendation": "Hire" if overall_score >= 7.0 else "Strong Consider" if overall_score >= 5.0 else "Consider" if overall_score >= 3.0 else "Do Not Hire",
+                "recommendation_reason": f"Overall performance score of {overall_score:.1f}/10 based on {len(all_responses)} responses",
+                "strengths": ["Completed all interview questions"] if len(all_responses) >= interview_data.get("max_questions", 12) else [],
+                "areas_for_improvement": ["Continue developing interview skills"],
+                "improvement_tips": [
+                    "Provide more detailed responses",
+                    "Use specific examples from your experience",
+                    "Structure answers using the STAR method"
+                ],
+                "total_questions": len(all_questions),
+                "total_responses": len(all_responses),
+                "generated_at": datetime.now(timezone.utc).isoformat()
+            }
+        
+        # Database path (original logic)
+        interview = db.query(Interview).filter(Interview.session_id == session_id).first()
+        if not interview:
+            raise HTTPException(status_code=404, detail="Interview not found")
+        
+        summary = db.query(InterviewSummary).filter(InterviewSummary.interview_id == interview.id).first()
+        if not summary:
+            # Generate summary if not exists
+            summary_data = await interview_service.generate_interview_summary(interview.id, db)
+            return summary_data
+        
+        return {
+            "executive_summary": summary.executive_summary,
+            "overall_score": summary.overall_score,
+            "recommendation": summary.recommendation,
+            "recommendation_reason": summary.recommendation_reason,
+            "technical_assessment": {
+                "score": summary.technical_assessment_score,
+                "summary": summary.technical_assessment_summary
+            },
+            "communication_assessment": {
+                "score": summary.communication_assessment_score,
+                "summary": summary.communication_assessment_summary
+            },
+            "cultural_fit": {
+                "score": summary.cultural_fit_score,
+                "summary": summary.cultural_fit_summary
+            },
+            "strengths": summary.strengths,
+            "areas_for_improvement": summary.areas_for_improvement,
+            "key_highlights": summary.key_highlights,
+            "red_flags": summary.red_flags,
+            "improvement_tips": summary.improvement_tips,
+            "next_steps": summary.next_steps,
+            "interviewer_notes": summary.interviewer_notes,
+            "generated_at": summary.generated_at.isoformat()
+        }
+        
+    except Exception as e:
+        log_error(f"Error getting interview summary: {e}")
+        import traceback
+        log_error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to get interview summary: {str(e)}")
 
 # File upload endpoints
 @app.post("/api/upload/resume")

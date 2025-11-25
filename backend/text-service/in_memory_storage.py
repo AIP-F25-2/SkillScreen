@@ -63,12 +63,12 @@ def create_interview(data: Dict) -> str:
         "current_question_index": 0,
         "total_questions_asked": 0,
         "total_responses_received": 0,
-        "max_questions": data.get("max_questions", 15),
+        "max_questions": data.get("max_questions", 12),  # Default to 12 questions
         "settings": {
             "interview_type": data.get("interview_type", "mixed"),
             "difficulty": data.get("difficulty", "medium"),
-            "max_questions": data.get("max_questions", 15),
-            "target_duration_minutes": data.get("target_duration_minutes", 12),
+            "max_questions": data.get("max_questions", 12),  # Default to 12 questions
+            "target_duration_minutes": data.get("target_duration_minutes", 20),  # 15-25 minutes
             "session_id": session_id,
             "candidate_record_id": data.get("candidate_id")
         },
@@ -112,4 +112,5 @@ def get_questions(session_id: str) -> List[Dict]:
 def get_responses(session_id: str) -> List[Dict]:
     """Get all responses for interview"""
     return _responses.get(session_id, [])
+
 

@@ -73,7 +73,8 @@ class TestLLMService:
         service = EnhancedLLMService()
         assert service is not None
         assert hasattr(service, 'gemini_model')
-        assert hasattr(service, 'wolfram_app_id')
+        assert hasattr(service, 'groq_api_key')
+        assert hasattr(service, 'mistral_api_key')
         assert hasattr(service, 'serpapi_key')
     
     @pytest.mark.asyncio

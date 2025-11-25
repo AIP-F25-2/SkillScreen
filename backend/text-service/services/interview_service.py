@@ -66,23 +66,48 @@ class InterviewService:
         interview_type: str,
         db
     ) -> Dict:
-        """Generate the initial interview question"""
+        """Generate the initial interview question - always starts with introductory question using LLM"""
         try:
-            # Create context for question generation
-            context = {
-                'candidate_name': getattr(candidate, 'full_name', None) or getattr(candidate, 'name', 'Candidate'),
-                'candidate_skills': getattr(candidate, 'skills', []) or [],
-                'candidate_experience': getattr(candidate, 'experience', {}).get('years', 0) if isinstance(getattr(candidate, 'experience', None), dict) else 0,
-                'job_title': job.title,
-                'job_company': getattr(job, 'company', 'Company'),
-                'job_skills': getattr(job, 'required_skills', []) or [],
-                'job_level': getattr(job, 'experience_level', 'Mid-level') or 'Mid-level'
+            # First question should ALWAYS be a simple, introductory question
+            # Use LLM to generate a personalized but simple introduction
+            candidate_name = getattr(candidate, 'full_name', None) or getattr(candidate, 'name', 'Candidate')
+            # Filter out location names from candidate name
+            name_parts = candidate_name.split()
+            location_names = {'scarborough', 'toronto', 'vancouver', 'montreal', 'calgary', 'ottawa', 'edmonton'}
+            filtered_name_parts = [part for part in name_parts if part.lower() not in location_names]
+            candidate_name = ' '.join(filtered_name_parts[:3]) if filtered_name_parts else candidate_name
+            
+            # Use LLM to generate introductory question
+            candidate_context = {
+                'name': candidate_name,
+                'skills': getattr(candidate, 'skills', []) or [],
+                'experience_years': getattr(candidate, 'experience', {}).get('years', 0) if isinstance(getattr(candidate, 'experience', None), dict) else 0,
+                'resume_text': getattr(candidate, 'raw_text', '')[:500] if hasattr(candidate, 'raw_text') else ''
             }
             
-            # Generate personalized question
-            question_text = await self._generate_personalized_question(
-                'general', context, interview_type
+            job_context = {
+                'title': job.title,
+                'company': getattr(job, 'company', 'Company'),
+                'description': getattr(job, 'description', '') or '',
+                'required_skills': getattr(job, 'required_skills', []) or [],
+                'experience_level': getattr(job, 'experience_level', 'Mid-level') or 'Mid-level'
+            }
+            
+            # Generate using LLM with 'general' type for introductory question
+            log_info(f"[LLM] Generating initial introductory question for {candidate_name}")
+            question_text = await llm_service.generate_interview_question(
+                question_type='general',
+                candidate_context=candidate_context,
+                job_context=job_context,
+                previous_questions=[],
+                previous_responses=[],
+                question_number=1
             )
+            
+            # Fallback if LLM fails
+            if not question_text or len(question_text.strip()) < 10:
+                log_warning("[WARNING] LLM failed for initial question, using fallback")
+                question_text = f"Hi {candidate_name}! Welcome to the interview. Let's start with a simple introduction - can you tell me about yourself and your professional background?"
             
             # Question will be stored in InterviewSession when response is submitted
             # No separate InterviewQuestion model exists
@@ -94,12 +119,14 @@ class InterviewService:
                 'question_type': 'general',
                 'difficulty': 'medium',
                 'round_number': 1,
-                'context': context,
+                'context': {},
                 'asked_at': datetime.now(timezone.utc)
             }
             
         except Exception as e:
             log_error(f"Error generating initial question: {e}")
+            import traceback
+            log_error(f"Traceback: {traceback.format_exc()}")
             return {
                 'id': str(uuid.uuid4()),
                 'question_index': 0,
@@ -127,7 +154,7 @@ class InterviewService:
                 # In-memory storage path
                 previous_questions = get_questions(interview_id)
                 current_question_index = len(previous_questions)
-                max_questions = interview_data.get("max_questions", 15)
+                max_questions = interview_data.get("max_questions", 12)  # Default to 12 questions
                 
                 # Check if we're in the last 1-2 questions - generate coding question
                 questions_remaining = max_questions - current_question_index
@@ -168,26 +195,37 @@ class InterviewService:
                     return coding_result
                 
                 # Regular question generation for in-memory
-                question_type, round_number = self._determine_question_type(current_question_index)
+                question_type, round_number = self._determine_question_type(current_question_index, max_questions)
                 
                 # Get previous responses for context
                 from in_memory_storage import get_responses
                 previous_responses = get_responses(interview_id)
                 previous_responses_text = [r.get("response_text", "") for r in previous_responses]
                 
+                # Extract projects from candidate data
+                candidate_projects = []
+                if isinstance(candidate_data.get("projects"), list):
+                    candidate_projects = candidate_data.get("projects", [])
+                elif isinstance(candidate_data.get("work_experience"), dict):
+                    work_exp = candidate_data.get("work_experience", {})
+                    if isinstance(work_exp, dict) and "projects" in work_exp:
+                        candidate_projects = work_exp.get("projects", [])
+                
                 context = {
                     'candidate_name': candidate_data.get("name", "Candidate"),
                     'candidate_skills': candidate_data.get("skills", []),
                     'candidate_experience': candidate_data.get("experience_years", 0),
-                    'candidate_resume': candidate_data.get("raw_text", ""),  # Include resume text
+                    'candidate_projects': candidate_projects,  # Include projects
+                    'candidate_resume': candidate_data.get("raw_text", "")[:1000] if candidate_data.get("raw_text") else '',  # Include resume text
                     'job_title': job_data.get("title", ""),
                     'job_company': job_data.get("company", ""),
-                    'job_description': job_data.get("description", ""),  # Include job description
+                    'job_description': job_data.get("description", "") or '',  # Include full job description
                     'job_skills': job_data.get("required_skills", []),
                     'job_level': job_data.get("experience_level", "Mid-level"),
                     'previous_questions': [q.get("question_text", "") for q in previous_questions],
                     'previous_responses': previous_responses_text,  # Include previous responses for dynamic generation
-                    'current_round': round_number
+                    'current_round': round_number,
+                    'question_index': current_question_index
                 }
                 
                 interview_type = interview_data.get("settings", {}).get("interview_type", "mixed")
@@ -195,11 +233,37 @@ class InterviewService:
                     question_type, context, interview_type
                 )
                 
+                # Verify question is not a duplicate by checking against ALL previous questions
+                all_previous_questions = [q.get("question_text", "") for q in previous_questions]
+                
+                # Check for exact duplicates
+                if question_text in all_previous_questions:
+                    log_warning(f"[WARNING] Generated exact duplicate question detected. Regenerating with LLM...")
+                    # Try once more with explicit instruction and force LLM call
+                    context['previous_questions'] = all_previous_questions + [question_text]  # Include the duplicate
+                    context['force_llm'] = True  # Force LLM usage
+                    question_text = await self._generate_personalized_question(
+                        question_type, context, interview_type
+                    )
+                
+                # Check for similar questions (70% similarity threshold)
+                import difflib
+                for prev_q in all_previous_questions:
+                    similarity = difflib.SequenceMatcher(None, question_text.lower(), prev_q.lower()).ratio()
+                    if similarity > 0.7:
+                        log_warning(f"[WARNING] Generated similar question (similarity: {similarity:.2f}). Regenerating with LLM...")
+                        context['previous_questions'] = all_previous_questions + [question_text]
+                        context['force_llm'] = True
+                        question_text = await self._generate_personalized_question(
+                            question_type, context, interview_type
+                        )
+                        break
+                
                 return {
                     'id': str(uuid.uuid4()),
                     'question_index': current_question_index,
                     'question_text': question_text,
-                    'question_type': question_type,
+                    'question_type': question_type,  # behavioral, technical, theoretical, or coding
                     'difficulty': 'medium',
                     'round_number': round_number,
                     'is_coding_question': False,
@@ -229,7 +293,7 @@ class InterviewService:
                 # Generate coding question for last 1-2 questions
                 return await self._generate_coding_question(interview, current_question_index, db)
             
-            question_type, round_number = self._determine_question_type(current_question_index)
+            question_type, round_number = self._determine_question_type(current_question_index, max_questions)
             
             # Get candidate and job context
             # interview.candidate_id is a User ID, get Candidate from settings or User
@@ -250,17 +314,47 @@ class InterviewService:
             if not candidate or not job:
                 raise ValueError("Candidate or job not found")
             
+            # Get previous responses for dynamic question generation
+            previous_responses = []
+            previous_responses_data = db.query(Response).filter(
+                Response.interview_id == interview_id
+            ).order_by(Response.created_at).all()
+            previous_responses = [r.response_text for r in previous_responses_data if r.response_text]
+            
+            # Extract projects from candidate's experience/resume
+            candidate_projects = []
+            candidate_experience_data = getattr(candidate, 'experience', {})
+            if isinstance(candidate_experience_data, dict):
+                # Try to extract projects from experience
+                if 'projects' in candidate_experience_data:
+                    candidate_projects = candidate_experience_data.get('projects', [])
+            # Also check projects field directly
+            if hasattr(candidate, 'projects') and candidate.projects:
+                if isinstance(candidate.projects, list):
+                    candidate_projects = candidate.projects
+                elif isinstance(candidate.projects, str):
+                    try:
+                        import json
+                        candidate_projects = json.loads(candidate.projects)
+                    except:
+                        candidate_projects = []
+            
             # Create context for question generation
             context = {
                 'candidate_name': getattr(candidate, 'full_name', None) or getattr(candidate, 'name', 'Candidate'),
                 'candidate_skills': getattr(candidate, 'skills', []) or [],
                 'candidate_experience': getattr(candidate, 'experience', {}).get('years', 0) if isinstance(getattr(candidate, 'experience', None), dict) else 0,
+                'candidate_projects': candidate_projects,  # Include projects for technical questions
+                'candidate_resume': getattr(candidate, 'resume_text', '')[:1000] if hasattr(candidate, 'resume_text') else '',  # Include resume text
                 'job_title': job.title,
                 'job_company': getattr(job, 'company', 'Company'),
+                'job_description': getattr(job, 'description', '') or '',  # Include full job description
                 'job_skills': getattr(job, 'required_skills', []) or [],
                 'job_level': getattr(job, 'experience_level', 'Mid-level') or 'Mid-level',
                 'previous_questions': previous_questions,
-                'current_round': round_number
+                'previous_responses': previous_responses,  # Include previous responses for dynamic generation
+                'current_round': round_number,
+                'question_index': current_question_index
             }
             
             # Generate personalized question
@@ -509,14 +603,26 @@ class InterviewService:
             log_error(f"Error generating PDF report: {e}")
             raise
     
-    def _determine_question_type(self, question_index: int) -> tuple:
-        """Determine question type and round based on index"""
-        if question_index < 5:
-            return 'general', 1
-        elif question_index < 10:
-            return 'technical', 2
-        else:
-            return 'theoretical', 3
+    def _determine_question_type(self, question_index: int, max_questions: int = 12) -> tuple:
+        """Determine question type and round based on index - NEW FLOW:
+        Q1: Introductory (always)
+        Q2-4: Based on job/resume (behavioral/theoretical/personal/practical)
+        Q5-9: Advanced questions about new tech/news
+        Q10-11: Coding questions (last 2)
+        """
+        total = max_questions
+        
+        if question_index == 0:
+            return 'general', 1  # Q1: Always introductory
+        elif question_index < 4:  # Q2-4 (indices 1-3)
+            # Mix of behavioral, theoretical, personal, practical based on job/resume
+            types = ['behavioral', 'theoretical', 'personal', 'practical']
+            return types[(question_index - 1) % len(types)], 1
+        elif question_index < total - 2:  # Q5-9 (indices 4-8 for 12 questions)
+            # Advanced questions about new technology and industry news
+            return 'advanced', 2
+        else:  # Last 2 questions (indices 10-11 for 12 questions)
+            return 'coding', 3  # Q10-11: Coding questions
     
     async def _generate_coding_question_in_memory(
         self,
@@ -525,11 +631,13 @@ class InterviewService:
         job,
         current_question_index: int
     ) -> Dict:
-        """Generate coding question for in-memory storage"""
+        """Generate coding question for in-memory storage using LLM and LeetCode"""
         try:
             from services.coding_question_service import coding_question_service
+            from services.leetcode_service import leetcode_service
+            from services.llm_service import llm_service
             
-            # Determine difficulty
+            # Determine difficulty based on job level and candidate experience
             difficulty = 'medium'
             job_level = getattr(job, 'experience_level', 'Mid-level') or 'Mid-level'
             candidate_exp = getattr(candidate, 'experience', {}).get('years', 0) if isinstance(getattr(candidate, 'experience', None), dict) else 0
@@ -539,35 +647,114 @@ class InterviewService:
             elif 'entry' in job_level.lower() or candidate_exp < 2:
                 difficulty = 'easy'
             
-            # Generate coding question
-            coding_question_data = await coding_question_service.generate_coding_question(
-                interview_id=str(interview.id),
-                job=job,
-                candidate=candidate,
+            log_info(f"[CODING] Generating {difficulty} coding question for question {current_question_index + 1}")
+            
+            # Get job and candidate skills
+            job_skills = getattr(job, 'required_skills', getattr(job, 'skills_required', [])) or []
+            candidate_skills = getattr(candidate, 'skills', []) or []
+            job_description = getattr(job, 'description', '') or ''
+            
+            # Fetch question from LeetCode based on requirements
+            leetcode_question = await leetcode_service.get_question_by_requirements(
+                job_skills=job_skills,
+                candidate_skills=candidate_skills,
                 difficulty=difficulty,
-                db=None  # No database for in-memory
+                question_type='algorithm'
             )
             
-            # Format question text
+            # Use LLM to generate personalized context for the coding question
+            personalized_context = ""
+            if llm_service.gemini_model:
+                try:
+                    context_prompt = f"""Generate a personalized introduction for a coding interview question.
+
+Job: {getattr(job, 'title', 'Position')} at {getattr(job, 'company', 'Company')}
+Required Skills: {', '.join(job_skills[:5])}
+Candidate Experience: {candidate_exp} years
+Candidate Skills: {', '.join(candidate_skills[:5])}
+Job Description: {job_description[:300]}
+
+Coding Question: {leetcode_question.get('title', 'Coding Challenge')}
+Difficulty: {difficulty}
+
+Generate a brief (2-3 sentences) personalized introduction that:
+1. Connects the coding question to the job requirements
+2. References the candidate's experience level
+3. Makes it relevant to their background
+4. Sets the context for why this question is being asked
+
+Return only the introduction text, no formatting."""
+                    
+                    import asyncio
+                    loop = asyncio.get_event_loop()
+                    llm_response = await loop.run_in_executor(
+                        None,
+                        lambda: llm_service.gemini_model.generate_content(context_prompt)
+                    )
+                    if llm_response and llm_response.text:
+                        personalized_context = llm_response.text.strip()
+                        log_info(f"[LLM] Generated personalized coding question context")
+                except Exception as e:
+                    log_warning(f"[WARNING] LLM context generation failed: {e}")
+            
+            # Create coding session ID
+            import uuid
+            coding_session_id = str(uuid.uuid4())
+            
+            # Format question text with personalized context
+            problem_title = leetcode_question.get('title', 'Coding Challenge')
+            problem_description = leetcode_question.get('description', 'Solve the given coding problem.')
+            
+            # Combine personalized context with problem description
+            if personalized_context:
+                full_description = f"{personalized_context}\n\n{problem_description}"
+            else:
+                full_description = problem_description
+            
+            # Format examples
+            examples_text = ""
+            if leetcode_question.get('examples'):
+                examples_text = "\n".join([
+                    f"**Example {i+1}:**\nInput: {ex.get('input', '')}\nOutput: {ex.get('output', '')}"
+                    for i, ex in enumerate(leetcode_question.get('examples', [])[:2])
+                ])
+            else:
+                examples_text = "See the problem description for examples."
+            
             question_text = f"""💻 **Coding Challenge**
 
-**Problem:** {coding_question_data.get('title', 'Coding Challenge')}
+**Problem:** {problem_title}
 
 **Description:**
-{coding_question_data.get('description', 'Solve the given coding problem.')}
+{full_description}
 
-**Difficulty:** {coding_question_data.get('difficulty', 'medium').title()}
-**Time Limit:** {coding_question_data.get('time_limit_minutes', 30)} minutes
+**Difficulty:** {difficulty.title()}
+**Time Limit:** 30 minutes
 
-**Topics:** {', '.join(coding_question_data.get('topics', []))}
+**Topics:** {', '.join(leetcode_question.get('topics', ['Algorithm']))}
 
 **Examples:**
-{chr(10).join([f"Input: {ex.get('input', '')}{chr(10)}Output: {ex.get('output', '')}" for ex in coding_question_data.get('examples', [])[:2]])}
+{examples_text}
 
-Please write your solution in the code editor. You can choose from Python, JavaScript, Java, C++, or SQL.
+Please write your solution in the code editor below. You can choose from Python, JavaScript, Java, C++, or SQL.
 
-**Coding Session ID:** {coding_question_data.get('session_id', '')}
+**Coding Session ID:** {coding_session_id}
 """
+            
+            # Store coding question data in memory
+            coding_data = {
+                'session_id': coding_session_id,
+                'question_id': leetcode_question.get('leetcode_id', ''),
+                'title': problem_title,
+                'description': full_description,
+                'difficulty': difficulty,
+                'topics': leetcode_question.get('topics', []),
+                'examples': leetcode_question.get('examples', []),
+                'code_templates': leetcode_question.get('code_templates', {}),
+                'constraints': leetcode_question.get('constraints', []),
+                'source': leetcode_question.get('source', 'leetcode'),
+                'url': leetcode_question.get('url', '')
+            }
             
             log_info(f"[OK] Generated coding question (in-memory) for question {current_question_index + 1}")
             
@@ -579,9 +766,9 @@ Please write your solution in the code editor. You can choose from Python, JavaS
                 'difficulty': difficulty,
                 'round_number': 3,
                 'is_coding_question': True,
-                'coding_session_id': coding_question_data.get('session_id'),
-                'coding_question_id': coding_question_data.get('question_id'),
-                'coding_data': coding_question_data,
+                'coding_session_id': coding_session_id,
+                'coding_question_id': leetcode_question.get('leetcode_id', ''),
+                'coding_data': coding_data,
                 'asked_at': datetime.now(timezone.utc)
             }
             
@@ -708,6 +895,7 @@ Please write your solution in the code editor. You can choose from Python, JavaS
                 'name': context.get('candidate_name', 'Candidate'),
                 'skills': context.get('candidate_skills', []),
                 'experience_years': context.get('candidate_experience', 0),
+                'projects': context.get('candidate_projects', []),  # Include projects
                 'resume_text': context.get('candidate_resume', '')  # Include full resume text
             }
             
@@ -723,7 +911,7 @@ Please write your solution in the code editor. You can choose from Python, JavaS
             # Get previous questions AND responses for dynamic generation
             previous_questions = context.get('previous_questions', [])
             previous_responses = context.get('previous_responses', [])  # Include previous responses
-            question_number = context.get('current_round', 1)
+            question_number = context.get('question_index', context.get('current_round', 1)) + 1  # Use question_index for accurate numbering
             
             # Generate question using LLM service with previous responses
             # The LLM service should use Gemini to generate questions based on:

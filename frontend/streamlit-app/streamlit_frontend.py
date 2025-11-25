@@ -256,11 +256,15 @@ def create_job(job_data: Dict) -> Optional[str]:
         return result["id"]
     return None
 
-def start_interview(candidate_id: str, job_id: str) -> Optional[Dict]:
-    """Start interview session"""
+def start_interview(candidate_id: str, job_id: str, max_questions: int = 12) -> Optional[Dict]:
+    """Start interview session with 10-12 questions by default"""
     return make_api_request("POST", "/api/interviews/start", {
         "candidate_id": candidate_id,
-        "job_id": job_id
+        "job_id": job_id,
+        "max_questions": max_questions,  # Default to 12 questions
+        "target_duration_minutes": 20,
+        "interview_type": "mixed",
+        "difficulty": "medium"
     })
 
 def submit_response(session_id: str, response_text: str) -> Optional[Dict]:
@@ -346,31 +350,58 @@ def _simple_resume_parse(resume_text: str) -> Dict:
     """Simple resume parsing without external dependencies"""
     import re
     
-    # Extract email - improved pattern (case-insensitive, more robust)
+    # Extract email - check ALL lines (PDFs can have email anywhere)
+    # Enhanced pattern to handle "text@gmail.com" even with text before it
     email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
     emails = re.findall(email_pattern, resume_text, re.IGNORECASE)
     email = emails[0].lower() if emails else ""
     
-    # Also check for "Email:" pattern
+    # Also check for "Email:" or "Contact:" pattern in ALL lines (not just first 20)
+    lines = resume_text.split('\n')
     if not email:
-        for line in lines[:10]:
+        for line in lines:  # Check ALL lines
+            line = line.strip()
+            if not line:
+                continue
+            # Check for email label patterns (Email:, Contact:, etc.)
             if ':' in line:
                 parts = line.split(':', 1)
                 if len(parts) == 2:
                     label = parts[0].lower().strip()
                     value = parts[1].strip()
-                    if 'email' in label:
+                    if any(word in label for word in ['email', 'e-mail', 'contact', 'mail']):
                         email_match = re.search(email_pattern, value, re.IGNORECASE)
                         if email_match:
-                            email = email_match.group(0).lower()
+                            email = email_match.group(0).lower().strip('.,;:()[]{}"\'')
                             break
+            # Check for pattern like "Contact text@gmail.com" or "Email text@gmail.com"
+            label_match = re.search(r'(?:email|e-mail|contact|mail)[:\s]+([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,})', line, re.IGNORECASE)
+            if label_match:
+                email = label_match.group(1).lower().strip('.,;:()[]{}"\'')
+                break
+            # Also check if line itself contains email (handles "text@gmail.com" with any text before)
+            email_match = re.search(email_pattern, line, re.IGNORECASE)
+            if email_match:
+                email = email_match.group(0).lower().strip('.,;:()[]{}"\'')
+                break
     
-    # Extract name - improved extraction logic
+    # Extract name - improved extraction logic with location filtering
     lines = resume_text.split('\n')
     name = None
     
-    # Strategy 1: Look for name in first 3 lines (most resumes have name at top)
-    for i, line in enumerate(lines[:3]):
+    # Common location/city names to filter out
+    location_names = {
+        'scarborough', 'toronto', 'vancouver', 'montreal', 'calgary', 'ottawa', 'edmonton',
+        'winnipeg', 'mississauga', 'brampton', 'hamilton', 'london', 'markham', 'vaughan',
+        'kitchener', 'windsor', 'saskatoon', 'regina', 'halifax', 'st john', 'victoria',
+        'new york', 'los angeles', 'chicago', 'houston', 'phoenix', 'philadelphia',
+        'san antonio', 'san diego', 'dallas', 'san jose', 'austin', 'jacksonville',
+        'san francisco', 'indianapolis', 'columbus', 'fort worth', 'charlotte', 'seattle',
+        'denver', 'washington', 'boston', 'el paso', 'detroit', 'nashville', 'portland'
+    }
+    
+    # Strategy 1: Look for name in first 5 lines (most resumes have name at top)
+    for i, line in enumerate(lines[:5]):
         line = line.strip()
         if not line or len(line) < 5:
             continue
@@ -386,18 +417,21 @@ def _simple_resume_parse(resume_text: str) -> Dict:
         # Look for name pattern: 2-4 words, each starting with capital
         words = line.split()
         if 2 <= len(words) <= 4:
-            # Check if all words are proper nouns (start with capital, rest lowercase)
-            if all(w and w[0].isupper() and (len(w) == 1 or w[1:].islower()) for w in words):
-                # Exclude common false positives
-                if not any(w.lower() in skip_words for w in words):
-                    # Exclude if contains numbers, special chars, or URLs
-                    if not any(char.isdigit() or char in '()[]{}@:/' for char in line):
-                        name = ' '.join(words)
-                        break
+            # Filter out location names
+            filtered_words = [w for w in words if w.lower() not in location_names]
+            if len(filtered_words) >= 2:
+                # Check if all words are proper nouns (start with capital, rest lowercase)
+                if all(w and w[0].isupper() and (len(w) == 1 or w[1:].islower()) for w in filtered_words):
+                    # Exclude common false positives
+                    if not any(w.lower() in skip_words for w in filtered_words):
+                        # Exclude if contains numbers, special chars, or URLs
+                        if not any(char.isdigit() or char in '()[]{}@:/' for char in line):
+                            name = ' '.join(filtered_words[:3])  # Take first 2-3 words only
+                            break
     
     # Strategy 2: Look for name pattern with regex (First Last or First Middle Last)
     if not name:
-        for i, line in enumerate(lines[:5]):
+        for i, line in enumerate(lines[:8]):
             line = line.strip()
             if not line or len(line) < 5:
                 continue
@@ -409,10 +443,13 @@ def _simple_resume_parse(resume_text: str) -> Dict:
                 potential_name = match.group(1).strip()
                 if 5 <= len(potential_name) <= 40:
                     words = potential_name.split()
-                    # Exclude if contains common non-name words
-                    if not any(w.lower() in skip_words for w in words):
-                        name = potential_name
-                        break
+                    # Filter out location names
+                    filtered_words = [w for w in words if w.lower() not in location_names]
+                    if len(filtered_words) >= 2:
+                        # Exclude if contains common non-name words
+                        if not any(w.lower() in skip_words for w in filtered_words):
+                            name = ' '.join(filtered_words[:3])  # Take first 2-3 words only
+                            break
     
     # Strategy 3: Look for "Name:" pattern
     if not name:
@@ -432,7 +469,7 @@ def _simple_resume_parse(resume_text: str) -> Dict:
     
     # Final fallback: Use first substantial non-empty line
     if not name:
-        for line in lines[:5]:
+        for line in lines[:8]:
             line = line.strip()
             if line and 5 <= len(line) <= 40:
                 # Check if it looks like a name
@@ -443,10 +480,12 @@ def _simple_resume_parse(resume_text: str) -> Dict:
                     '@' not in line and
                     not any(word.lower() in skip_words for word in line.split())):
                     words = line.split()
-                    if 2 <= len(words) <= 3:
+                    # Filter out location names
+                    filtered_words = [w for w in words if w.lower() not in location_names]
+                    if 2 <= len(filtered_words) <= 3:
                         # Check if words look like names (capitalized)
-                        if all(w[0].isupper() for w in words):
-                            name = ' '.join(words)
+                        if all(w[0].isupper() for w in filtered_words):
+                            name = ' '.join(filtered_words[:3])  # Take first 2-3 words only
                             break
     
     # Final fallback
@@ -640,10 +679,18 @@ def handle_response_submission(session_id: str, response_text: str):
                     # Add next question only if it's different from current question
                     current_question = st.session_state.interview_messages[-1]["content"] if st.session_state.interview_messages else ""
                     if result["next_question"] != current_question:
-                        st.session_state.interview_messages.append({
+                        # Check if it's a coding question
+                        is_coding = result.get("is_coding_question", False)
+                        coding_data = result.get("coding_data", {})
+                        
+                        question_message = {
                             "role": "assistant",
-                            "content": result["next_question"]
-                        })
+                            "content": result["next_question"],
+                            "is_coding_question": is_coding,
+                            "coding_data": coding_data if is_coding else None,
+                            "coding_session_id": result.get("coding_session_id") if is_coding else None
+                        }
+                        st.session_state.interview_messages.append(question_message)
                         st.rerun()
                 elif result["status"] == "completed":
                     # Interview completed
@@ -786,45 +833,187 @@ Strengths:
     
     return report
 
-def code_editor_section():
-    """Code editor section for technical assessments"""
-    st.header("💻 Technical Assessment")
+def show_coding_question_interface(session_id: str, coding_data: Dict, coding_session_id: str = None):
+    """Show LeetCode-style coding question interface with code editor, run button, and terminal"""
+    st.markdown("---")
+    st.markdown("### 💻 Coding Challenge")
     
-    # Code editor
-    st.subheader("Code Editor")
-    language = st.selectbox("Select Language", ["python", "javascript", "java", "cpp", "sql"])
+    # Initialize session state for code editor
+    if 'coding_editor_code' not in st.session_state:
+        # Get starter code from coding_data
+        code_templates = coding_data.get('code_templates', {})
+        default_language = 'python'
+        if 'python' in code_templates:
+            st.session_state.coding_editor_code = code_templates['python']
+            st.session_state.coding_editor_language = 'python'
+        elif 'javascript' in code_templates:
+            st.session_state.coding_editor_code = code_templates['javascript']
+            st.session_state.coding_editor_language = 'javascript'
+        else:
+            st.session_state.coding_editor_code = list(code_templates.values())[0] if code_templates else ""
+            st.session_state.coding_editor_language = list(code_templates.keys())[0] if code_templates else 'python'
     
-    code = st.text_area("Write your code here:", height=300, placeholder=f"# Write your {language} code here...")
+    # Problem description section
+    with st.expander("📋 Problem Description", expanded=True):
+        st.markdown(f"**Title:** {coding_data.get('title', 'Coding Challenge')}")
+        st.markdown(f"**Difficulty:** {coding_data.get('difficulty', 'medium').title()}")
+        st.markdown(f"**Time Limit:** {coding_data.get('time_limit_minutes', 30)} minutes")
+        
+        if coding_data.get('description'):
+            st.markdown("**Description:**")
+            st.markdown(coding_data.get('description'))
+        
+        if coding_data.get('examples'):
+            st.markdown("**Examples:**")
+            for i, example in enumerate(coding_data.get('examples', [])[:3], 1):
+                st.code(f"Example {i}:\nInput: {example.get('input', '')}\nOutput: {example.get('output', '')}")
+        
+        if coding_data.get('constraints'):
+            st.markdown("**Constraints:**")
+            for constraint in coding_data.get('constraints', [])[:5]:
+                st.write(f"• {constraint}")
     
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        if st.button("▶️ Run Code", type="primary"):
-            if code.strip():
-                with st.spinner("Executing code..."):
-                    result = make_api_request("POST", "/api/code/execute", {
-                        "code": code,
-                        "language": language
-                    })
-                    
-                    if result:
-                        if result.get("success"):
-                            show_success("Code executed successfully!")
-                            st.code(result.get("output", ""))
-                        else:
-                            show_api_error("Code execution failed")
-                            st.code(result.get("error", ""))
-                    else:
-                        show_api_error("Failed to execute code")
-            else:
-                show_warning("Please enter some code to execute")
+    # Code editor section (LeetCode-style)
+    col1, col2 = st.columns([3, 1])
     
     with col2:
-        if st.button("📝 Get Question"):
-            question_result = make_api_request("GET", "/api/code/question")
-            if question_result:
-                show_info("**Technical Question:**")
-                st.write(question_result.get("question", "No question available"))
+        # Language selector
+        available_languages = list(coding_data.get('code_templates', {}).keys()) or ['python', 'javascript', 'java']
+        selected_language = st.selectbox(
+            "Language",
+            available_languages,
+            index=available_languages.index(st.session_state.coding_editor_language) if st.session_state.coding_editor_language in available_languages else 0
+        )
+        
+        # Update code when language changes
+        if selected_language != st.session_state.coding_editor_language:
+            code_templates = coding_data.get('code_templates', {})
+            if selected_language in code_templates:
+                st.session_state.coding_editor_code = code_templates[selected_language]
+            st.session_state.coding_editor_language = selected_language
+    
+    with col1:
+        st.markdown("**Code Editor**")
+        code = st.text_area(
+            "Write your solution:",
+            value=st.session_state.coding_editor_code,
+            height=400,
+            key="coding_editor",
+            label_visibility="collapsed"
+        )
+        st.session_state.coding_editor_code = code
+    
+    # Action buttons
+    col1, col2, col3 = st.columns([1, 1, 2])
+    
+    with col1:
+        run_button = st.button("▶️ Run", type="primary", use_container_width=True)
+    
+    with col2:
+        submit_button = st.button("📤 Submit Solution", use_container_width=True)
+    
+    # Terminal/Output section
+    if run_button or submit_button:
+        if not code.strip():
+            show_warning("Please write some code before running or submitting")
+        else:
+            with st.spinner("Executing code..."):
+                if run_button:
+                    # Just run the code (test execution)
+                    result = make_api_request("POST", "/api/code/execute", {
+                        "code": code,
+                        "language": selected_language
+                    })
+                    
+                    st.markdown("### 📺 Terminal Output")
+                    if result:
+                        if result.get("success"):
+                            st.success("✅ Code executed successfully!")
+                            if result.get("output"):
+                                st.code(result.get("output"), language="text")
+                            if result.get("test_results"):
+                                st.markdown("**Test Results:**")
+                                for i, test in enumerate(result.get("test_results", []), 1):
+                                    if test.get("passed"):
+                                        st.success(f"Test {i}: ✅ Passed")
+                                    else:
+                                        st.error(f"Test {i}: ❌ Failed")
+                                        if test.get("error"):
+                                            st.code(test.get("error"), language="text")
+                        else:
+                            st.error("❌ Code execution failed")
+                            if result.get("error"):
+                                st.code(result.get("error"), language="text")
+                    else:
+                        show_api_error("Failed to execute code")
+                
+                elif submit_button:
+                    # Submit solution for assessment
+                    if coding_session_id:
+                        result = make_api_request("POST", f"/api/coding-sessions/{coding_session_id}/submit", {
+                            "code": code,
+                            "language": selected_language
+                        })
+                    else:
+                        # Fallback: use code execution endpoint
+                        result = make_api_request("POST", "/api/code/execute", {
+                            "code": code,
+                            "language": selected_language,
+                            "test_cases": coding_data.get('test_cases', [])
+                        })
+                    
+                    st.markdown("### 📊 Assessment Results")
+                    if result:
+                        if result.get("success") or result.get("is_correct"):
+                            passed_tests = result.get("passed_tests", 0)
+                            total_tests = result.get("total_tests", 0)
+                            score = result.get("score", 0)
+                            is_correct = result.get("is_correct", False)
+                            
+                            if is_correct:
+                                st.success(f"🎉 **Correct Solution!**")
+                            else:
+                                st.warning(f"⚠️ **Partial Solution**")
+                            
+                            st.metric("Score", f"{score:.1f}/10.0")
+                            st.metric("Tests Passed", f"{passed_tests}/{total_tests}")
+                            
+                            if result.get("execution_time_ms"):
+                                st.info(f"⏱️ Execution Time: {result.get('execution_time_ms')}ms")
+                            
+                            # Show detailed test results
+                            if result.get("test_results"):
+                                st.markdown("**Detailed Test Results:**")
+                                for i, test in enumerate(result.get("test_results", []), 1):
+                                    with st.expander(f"Test Case {i}", expanded=not test.get("passed")):
+                                        if test.get("passed"):
+                                            st.success("✅ Passed")
+                                        else:
+                                            st.error("❌ Failed")
+                                        
+                                        if test.get("input"):
+                                            st.write(f"**Input:** `{test.get('input')}`")
+                                        if test.get("expected_output"):
+                                            st.write(f"**Expected:** `{test.get('expected_output')}`")
+                                        if test.get("actual_output"):
+                                            st.write(f"**Your Output:** `{test.get('actual_output')}`")
+                                        if test.get("error"):
+                                            st.code(test.get("error"), language="text")
+                            
+                            # Submit as interview response
+                            if is_correct or passed_tests > 0:
+                                response_text = f"I solved the coding challenge. Passed {passed_tests}/{total_tests} test cases with a score of {score:.1f}/10."
+                                st.session_state.interview_messages.append({
+                                    "role": "user",
+                                    "content": response_text
+                                })
+                                handle_response_submission(session_id, response_text)
+                        else:
+                            st.error("❌ Submission failed")
+                            if result.get("error"):
+                                st.code(result.get("error"), language="text")
+                    else:
+                        show_api_error("Failed to submit solution")
 
 # ============================================================================
 # MAIN APPLICATION FUNCTIONS
@@ -977,36 +1166,58 @@ def show_interview_interface():
         round_info = "🎯 Round 3: Final Assessment"
         round_desc = "Final evaluation and fit assessment"
     
+    # Get max questions from interview data
+    max_questions = interview_data.get("max_questions", 12)  # Default to 12 questions
+    
     # Progress bar
-    progress = min(question_num / 5, 1.0)  # Assuming 5 questions total
+    progress = min(question_num / max_questions, 1.0)
     st.progress(progress)
     
     # Round information
     st.markdown(f"### {round_info}")
     st.markdown(f"*{round_desc}*")
-    st.markdown(f"**Question {question_num} of 5**")
+    st.markdown(f"**Question {question_num} of {max_questions}**")
     
     # Chat interface
     st.markdown("### 💬 Interview Chat")
     
     # Display chat messages
+    current_is_coding = False
+    current_coding_data = None
+    current_coding_session_id = None
+    
     for message in st.session_state.interview_messages:
         with st.chat_message(message["role"]):
             st.write(message["content"])
-    
-    # Response input
-    if st.session_state.interview_messages:
-        response_text = st.chat_input("Type your response here...")
-        
-        if response_text:
-            # Add user message to chat
-            st.session_state.interview_messages.append({
-                "role": "user",
-                "content": response_text
-            })
             
-            # Submit response
-            handle_response_submission(session_id, response_text)
+            # Check if current message is a coding question
+            if message.get("is_coding_question", False):
+                current_is_coding = True
+                current_coding_data = message.get("coding_data")
+                current_coding_session_id = message.get("coding_session_id")
+    
+    # Response input - show code editor for coding questions
+    if st.session_state.interview_messages:
+        if current_is_coding and current_coding_data:
+            # Show coding question interface
+            show_coding_question_interface(
+                session_id=session_id,
+                coding_data=current_coding_data,
+                coding_session_id=current_coding_session_id
+            )
+        else:
+            # Regular text response input
+            response_text = st.chat_input("Type your response here...")
+            
+            if response_text:
+                # Add user message to chat
+                st.session_state.interview_messages.append({
+                    "role": "user",
+                    "content": response_text
+                })
+                
+                # Submit response
+                handle_response_submission(session_id, response_text)
 
 def show_termination_summary():
     """Show termination summary for anti-cheating violations"""
