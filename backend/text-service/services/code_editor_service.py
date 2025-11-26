@@ -40,7 +40,13 @@ class CodeEditorService:
                 'name': 'C++',
                 'extension': '.cpp',
                 'syntax': 'cpp',
-                'default_template': '#include <iostream>\nusing namespace std;\n\nint solution() {\n    // Write your solution here\n    return 0;\n}'
+                'default_template': '#include <iostream>\n#include <vector>\nusing namespace std;\n\nclass Solution {\npublic:\n    void solution() {\n        // Write your solution here\n    }\n};\n\nint main() {\n    Solution sol;\n    sol.solution();\n    return 0;\n}'
+            },
+            'csharp': {
+                'name': 'C#',
+                'extension': '.cs',
+                'syntax': 'csharp',
+                'default_template': 'using System;\n\npublic class Solution {\n    public void solution() {\n        // Write your solution here\n    }\n}\n\nclass Program {\n    static void Main() {\n        Solution sol = new Solution();\n        sol.solution();\n    }\n}'
             },
             'sql': {
                 'name': 'SQL',
@@ -271,14 +277,57 @@ class CodeEditorService:
     
     def _prepare_test_code(self, code: str, test_input: Any, language: str) -> str:
         """Prepare code with test input for execution"""
+        import ast
+        import json
+        
+        # Try to parse test_input intelligently
+        parsed_input = test_input
+        if isinstance(test_input, str):
+            # Try to parse as Python literal (list, tuple, etc.)
+            try:
+                # Handle comma-separated values like "1,2" or "[2, 7, 11, 15], 9"
+                if ',' in test_input and not test_input.strip().startswith('['):
+                    # Split and try to convert to appropriate types
+                    parts = [p.strip() for p in test_input.split(',')]
+                    try:
+                        # Try to convert to integers
+                        parsed_input = [int(p) for p in parts]
+                    except ValueError:
+                        try:
+                            # Try to convert to floats
+                            parsed_input = [float(p) for p in parts]
+                        except ValueError:
+                            # Keep as strings
+                            parsed_input = parts
+                else:
+                    # Try to parse as Python literal
+                    parsed_input = ast.literal_eval(test_input)
+            except (ValueError, SyntaxError):
+                # If parsing fails, use as string
+                parsed_input = test_input
+        
         if language == 'python':
-            # For Python, assume function takes input as parameter
-            return f"{code}\n\n# Test execution\nresult = solution({test_input})\nprint(result)"
+            # For Python, handle different input types
+            if isinstance(parsed_input, list):
+                # If it's a list, unpack it as arguments
+                args_str = ', '.join(str(x) for x in parsed_input)
+                return f"{code}\n\n# Test execution\nresult = solution({args_str})\nprint(result)"
+            else:
+                # Single argument
+                return f"{code}\n\n# Test execution\nresult = solution({parsed_input})\nprint(result)"
         elif language == 'javascript':
-            return f"{code}\n\n// Test execution\nconsole.log(solution({test_input}));"
+            if isinstance(parsed_input, list):
+                args_str = ', '.join(str(x) for x in parsed_input)
+                return f"{code}\n\n// Test execution\nconsole.log(solution({args_str}));"
+            else:
+                return f"{code}\n\n// Test execution\nconsole.log(solution({parsed_input}));"
         elif language == 'java':
             # Java requires more complex setup
-            return f"{code}\n\n// Test execution\npublic static void main(String[] args) {{\n    System.out.println(solution({test_input}));\n}}"
+            if isinstance(parsed_input, list):
+                args_str = ', '.join(str(x) for x in parsed_input)
+                return f"{code}\n\n// Test execution\npublic static void main(String[] args) {{\n    System.out.println(solution({args_str}));\n}}"
+            else:
+                return f"{code}\n\n// Test execution\npublic static void main(String[] args) {{\n    System.out.println(solution({parsed_input}));\n}}"
         else:
             # Default: append test input
             return f"{code}\n\n// Test: {test_input}"
@@ -309,4 +358,6 @@ class CodeEditorService:
 
 # Global instance
 code_editor_service = CodeEditorService()
+
+
 

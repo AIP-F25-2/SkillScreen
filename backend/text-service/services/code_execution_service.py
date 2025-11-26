@@ -46,6 +46,12 @@ class CodeExecutionService:
                 'timeout': 15,
                 'memory_limit': '256m'
             },
+            'csharp': {
+                'extension': '.cs',
+                'command': 'csc',  # C# compiler (Windows) or 'mcs' (Mono/Linux)
+                'timeout': 15,
+                'memory_limit': '256m'
+            },
             'sql': {
                 'extension': '.sql',
                 'command': 'sqlite3',
@@ -203,6 +209,65 @@ class CodeExecutionService:
                     'error': run_result['stderr'] if run_result['returncode'] != 0 else ''
                 }
             
+            elif language == 'csharp':
+                # Compile C# first
+                # Try csc (Windows) first, fallback to mcs (Mono/Linux)
+                compiler = 'csc'
+                try:
+                    # Check if csc is available
+                    check_result = await self._run_subprocess_async(
+                        [compiler, '/?'],
+                        timeout=2
+                    )
+                except:
+                    compiler = 'mcs'  # Fallback to Mono compiler
+                
+                # Determine executable name
+                if compiler == 'csc':
+                    # Windows: csc compiles to .exe
+                    executable_path = file_path.replace('.cs', '.exe')
+                    compile_cmd = [compiler, '/out:' + executable_path, file_path]
+                else:
+                    # Mono: mcs compiles to .exe
+                    executable_path = file_path.replace('.cs', '.exe')
+                    compile_cmd = [compiler, '-out:' + executable_path, file_path]
+                
+                compile_result = await self._run_subprocess_async(
+                    compile_cmd,
+                    timeout=timeout
+                )
+                
+                if compile_result['returncode'] != 0:
+                    return {
+                        'success': False,
+                        'output': '',
+                        'error': f'Compilation error: {compile_result["stderr"]}'
+                    }
+                
+                # Run executable
+                if compiler == 'csc':
+                    # Windows: run .exe directly
+                    run_result = await self._run_subprocess_async(
+                        [executable_path],
+                        timeout=timeout
+                    )
+                else:
+                    # Mono: run with mono
+                    run_result = await self._run_subprocess_async(
+                        ['mono', executable_path],
+                        timeout=timeout
+                    )
+                
+                # Clean up executable
+                if os.path.exists(executable_path):
+                    os.unlink(executable_path)
+                
+                return {
+                    'success': run_result['returncode'] == 0,
+                    'output': run_result['stdout'],
+                    'error': run_result['stderr'] if run_result['returncode'] != 0 else ''
+                }
+            
             else:
                 # Direct execution for Python, JavaScript, etc.
                 result = await self._run_subprocess_async(
@@ -290,15 +355,32 @@ class CodeExecutionService:
                 # Execute test
                 result = await self.execute_code(test_code, language, timeout=timeout)
                 
+                actual_output = result['output'].strip()
+                expected_output = test_case.get('expected_output', '')
+                
+                # Try to parse JSON strings for comparison
+                import json
+                try:
+                    if isinstance(expected_output, str) and (expected_output.startswith('{') or expected_output.startswith('[')):
+                        expected_parsed = json.loads(expected_output)
+                        try:
+                            actual_parsed = json.loads(actual_output)
+                            # Compare parsed JSON
+                            passed = expected_parsed == actual_parsed
+                        except:
+                            # If actual can't be parsed, compare as strings
+                            passed = self._compare_outputs(actual_output, expected_output)
+                    else:
+                        passed = self._compare_outputs(actual_output, str(expected_output))
+                except:
+                    passed = self._compare_outputs(actual_output, str(expected_output))
+                
                 test_result = {
                     'test_case_id': i + 1,
                     'input': test_case.get('input', ''),
-                    'expected_output': test_case.get('expected_output', ''),
-                    'actual_output': result['output'].strip(),
-                    'passed': self._compare_outputs(
-                        result['output'].strip(),
-                        test_case.get('expected_output', '')
-                    ),
+                    'expected_output': expected_output,
+                    'actual_output': actual_output,
+                    'passed': passed,
                     'execution_time': result['execution_time'],
                     'error': result.get('error', '')
                 }
@@ -324,14 +406,135 @@ class CodeExecutionService:
         input_data = test_case.get('input', '')
         expected_output = test_case.get('expected_output', '')
         
+        # Try to parse JSON strings
+        import json
+        try:
+            if isinstance(input_data, str) and (input_data.startswith('{') or input_data.startswith('[')):
+                input_data = json.loads(input_data)
+        except:
+            pass
+        
         if language == 'python':
-            return f"""
+            # Try to detect function name (solution, main, etc.)
+            func_name = 'solution'
+            if 'def solution(' in code:
+                func_name = 'solution'
+            elif 'def main(' in code:
+                func_name = 'main'
+            elif 'def solve(' in code:
+                func_name = 'solve'
+            else:
+                # Extract first function name
+                import re
+                match = re.search(r'def\s+(\w+)\s*\(', code)
+                if match:
+                    func_name = match.group(1)
+            
+            # Format input properly for test execution
+            if isinstance(input_data, (dict, list)):
+                input_str = json.dumps(input_data)
+            else:
+                input_str = repr(input_data)
+            
+            # ALWAYS generate test execution code when test_case is provided
+            # This ensures the function is called and output is captured
+            # Handle different input types properly
+            if isinstance(input_data, list):
+                # If input is a list, it might be a single list argument or multiple arguments
+                # Check function signature to determine
+                return f"""
 {code}
 
-# Test case
-test_input = {repr(input_data)}
-result = main(test_input) if 'main' in globals() else None
-print(result)
+# Test case execution
+import json
+test_input = {input_str}
+try:
+    # For list inputs, try passing as single argument first (most common)
+    result = {func_name}(test_input)
+    
+    # Convert result to string for comparison
+    if isinstance(result, (dict, list)):
+        print(json.dumps(result, sort_keys=True))
+    else:
+        print(result)
+except TypeError as te:
+    # If single argument fails, try unpacking
+    try:
+        if len(test_input) > 0:
+            result = {func_name}(*test_input)
+            if isinstance(result, (dict, list)):
+                print(json.dumps(result, sort_keys=True))
+            else:
+                print(result)
+        else:
+            result = {func_name}()
+            if isinstance(result, (dict, list)):
+                print(json.dumps(result, sort_keys=True))
+            else:
+                print(result)
+    except Exception as e:
+        print(f"Error: {{e}}")
+        import traceback
+        traceback.print_exc()
+except Exception as e:
+    import traceback
+    print(f"Error: {{e}}")
+    traceback.print_exc()
+"""
+            elif isinstance(input_data, dict):
+                # Dict input - try keyword unpacking, then direct
+                return f"""
+{code}
+
+# Test case execution
+import json
+test_input = {input_str}
+try:
+    # Try keyword unpacking first
+    result = {func_name}(**test_input)
+    
+    # Convert result to string for comparison
+    if isinstance(result, (dict, list)):
+        print(json.dumps(result, sort_keys=True))
+    else:
+        print(result)
+except TypeError:
+    # If unpacking fails, try passing as single argument
+    try:
+        result = {func_name}(test_input)
+        if isinstance(result, (dict, list)):
+            print(json.dumps(result, sort_keys=True))
+        else:
+            print(result)
+    except Exception as e:
+        print(f"Error: {{e}}")
+        import traceback
+        traceback.print_exc()
+except Exception as e:
+    import traceback
+    print(f"Error: {{e}}")
+    traceback.print_exc()
+"""
+            else:
+                # Simple type (string, int, etc.)
+                return f"""
+{code}
+
+# Test case execution
+import json
+test_input = {input_str}
+try:
+    result = {func_name}(test_input)
+    
+    # Convert result to string for comparison
+    if isinstance(result, (dict, list)):
+        print(json.dumps(result, sort_keys=True))
+    else:
+        print(result)
+except Exception as e:
+    import traceback
+    print(f"Error: {{e}}")
+    traceback.print_exc()
 """
         
         elif language == 'javascript':
@@ -354,6 +557,96 @@ public class TestRunner {{
         String testInput = "{input_data}";
         // Assuming main method exists
         System.out.println(testInput);
+    }}
+}}
+"""
+        
+        elif language == 'cpp':
+            # Format input for C++
+            import json
+            if isinstance(input_data, (dict, list)):
+                input_str = json.dumps(input_data)
+            else:
+                input_str = str(input_data)
+            
+            # Check if code already has main function
+            has_main = 'int main(' in code or 'void main(' in code
+            
+            if has_main:
+                # Code already has main, just add test input comment
+                return f"""
+{code}
+
+// Test input: {input_str}
+"""
+            else:
+                # Add main function to execute solution
+                return f"""
+{code}
+
+// Test case execution
+#include <iostream>
+#include <vector>
+#include <string>
+using namespace std;
+
+int main() {{
+    // Test input: {input_str}
+    // Call solution method here
+    // Solution sol;
+    // sol.solution(...);
+    return 0;
+}}
+"""
+        
+        elif language == 'csharp':
+            # Format input for C#
+            import json
+            if isinstance(input_data, (dict, list)):
+                input_str = json.dumps(input_data).replace('"', '\\"')
+            else:
+                input_str = str(input_data).replace('"', '\\"')
+            
+            # Try to detect class and method name
+            import re
+            # Look for Solution class or first class
+            class_match = re.search(r'class\s+(\w+)', code)
+            # Look for solution method (case insensitive)
+            method_match = re.search(r'(?:public\s+)?(?:static\s+)?\w+\s+(solution|main|solve)\s*\(', code, re.IGNORECASE)
+            
+            class_name = class_match.group(1) if class_match else 'Solution'
+            method_name = method_match.group(1).lower() if method_match else 'solution'
+            
+            # If code already has a Main method, wrap differently
+            has_main = 'static void Main' in code or 'static int Main' in code
+            
+            if has_main:
+                # Code already has Main, just add test input
+                return f"""
+{code}
+
+// Test input: {input_str}
+"""
+            else:
+                # Add Main method to execute solution
+                return f"""
+{code}
+
+// Test case execution
+using System;
+using System.Text.Json;
+
+class TestRunner {{
+    static void Main() {{
+        try {{
+            {class_name} sol = new {class_name}();
+            // Test input: {input_str}
+            // Call solution method - adjust parameters as needed
+            // var result = sol.{method_name}(...);
+            // Console.WriteLine(result);
+        }} catch (Exception e) {{
+            Console.WriteLine($"Error: {{e.Message}}");
+        }}
     }}
 }}
 """
