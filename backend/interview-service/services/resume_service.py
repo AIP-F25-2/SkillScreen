@@ -233,12 +233,21 @@ class ResumeService:
     
     def _prepare_response_data(self, upload_id: str, files: List[Any], processed_files: List[Dict[str, Any]], saved_candidates: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Prepare response data"""
+        # Strip out non-serializable / internal-only fields before returning to API
+        safe_files: List[Dict[str, Any]] = []
+        for f in processed_files:
+            cleaned = dict(f)
+            # Remove raw file bytes and local paths from API response
+            cleaned.pop("file_content", None)
+            cleaned.pop("file_path", None)
+            safe_files.append(cleaned)
+
         return {
             "upload_id": upload_id,
             "status": "completed",
             "files_received": len(files),
             "files_processed": len(processed_files),
-            "files": processed_files,
+            "files": safe_files,
             "candidates_saved": len(saved_candidates),
             "timestamp": datetime.now().isoformat()
         }

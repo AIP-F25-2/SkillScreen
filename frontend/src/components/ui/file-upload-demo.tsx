@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Upload, FileText, Trash2, CheckCircle, Loader2, X, AlertCircle, Mail, Edit2, Save } from "lucide-react";
+import { Upload, FileText, Trash2, CheckCircle, Loader2, X, AlertCircle, Mail, Edit2, Save, Video, Mic, MessageCircle } from "lucide-react";
 import { useState, useCallback, useEffect } from "react";
 import { apiClient } from "@/lib/api";
 import { getDemoJobDescription } from "@/lib/demoHelpers";
@@ -38,6 +38,7 @@ interface ProcessedFile {
   editedName?: string;
   editedEmail?: string;
   selectedJobPositionId?: string;
+  selectedMode?: 'audio' | 'video' | 'chat';
   isEditing?: boolean;
 }
 
@@ -230,7 +231,7 @@ export function FileUploadDemo() {
     );
   };
 
-  const updateCandidateField = (index: number, field: 'editedName' | 'editedEmail' | 'selectedJobPositionId', value: string) => {
+  const updateCandidateField = (index: number, field: 'editedName' | 'editedEmail' | 'selectedJobPositionId' | 'selectedMode', value: string) => {
     setProcessedFiles((prev) => 
       prev.map((file, i) => 
         i === index ? { ...file, [field]: value } : file
@@ -304,6 +305,8 @@ export function FileUploadDemo() {
             candidate_name: candidateName,
             candidate_id: candidateId,
             session_id: sessionId,
+            // Explicitly send interviewer mode chosen by recruiter (default to chat)
+            mode: candidate.selectedMode || 'chat',
             recruiter_name: "Hiring Team",
             company_name: "SkillScreen",
             expires_in_hours: 48
@@ -536,7 +539,7 @@ export function FileUploadDemo() {
               </div>
               
               <p className="text-xs text-white/60 mb-4">
-                Review and edit candidate details below. Select a job position for each candidate, then click "Send Invitations" to email them.
+                Review and edit candidate details below. Select a job position and interview mode for each candidate, then click "Send Invitations" to email them.
               </p>
               
               {/* Email Summary */}
@@ -658,6 +661,36 @@ export function FileUploadDemo() {
                           {!file.selectedJobPositionId && (
                             <p className="text-xs text-yellow-400/70 mt-1">Please select a job position for this candidate</p>
                           )}
+                        </div>
+
+                        {/* Interview Mode Selector */}
+                        <div>
+                          <label className="text-xs text-white/70 block mb-1">Interview Mode</label>
+                          <div className="flex flex-wrap gap-2 mt-1">
+                            {[
+                              { value: 'chat' as const, label: 'Chat', icon: MessageCircle },
+                              { value: 'audio' as const, label: 'Audio', icon: Mic },
+                              { value: 'video' as const, label: 'Video', icon: Video },
+                            ].map(({ value, label, icon: Icon }) => (
+                              <button
+                                key={value}
+                                type="button"
+                                onClick={() => updateCandidateField(index, 'selectedMode', value)}
+                                disabled={file.emailSent === true}
+                                className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs transition ${
+                                  (file.selectedMode || 'chat') === value
+                                    ? 'border-blue-400 bg-blue-500/20 text-blue-100'
+                                    : 'border-white/20 bg-white/5 text-white/70 hover:bg-white/10'
+                                }`}
+                              >
+                                <Icon className="h-3 w-3" />
+                                <span>{label}</span>
+                              </button>
+                            ))}
+                          </div>
+                          <p className="text-[10px] text-white/40 mt-1">
+                            Default is <span className="font-medium">Chat</span> if no mode is selected.
+                          </p>
                         </div>
                         
                         {file.id && (

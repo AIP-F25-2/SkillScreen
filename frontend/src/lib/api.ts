@@ -378,7 +378,56 @@ class ApiClient {
       body: formData,
     });
 
-    return response.json();
+    // Handle non-JSON / error responses gracefully so the UI doesn't crash on 500s
+    let payload: any = null;
+    try {
+      const text = await response.text();
+      try {
+        payload = text ? JSON.parse(text) : null;
+      } catch {
+        // Backend may return plain text ("Internal Server Error"), wrap it
+        payload = {
+          success: false,
+          data: null,
+          error: text || `Request failed with status ${response.status}`,
+          meta: {
+            timestamp: new Date().toISOString(),
+            request_id: '',
+            version: 'v1',
+          },
+        };
+      }
+    } catch (e) {
+      // If even reading text fails, surface a generic error
+      payload = {
+        success: false,
+        data: null,
+        error: (e as Error).message || 'Upload failed',
+        meta: {
+          timestamp: new Date().toISOString(),
+          request_id: '',
+          version: 'v1',
+        },
+      };
+    }
+
+    if (!response.ok) {
+      // Normalize error shape for callers
+      return (payload && typeof payload === 'object' && 'success' in payload)
+        ? payload
+        : {
+            success: false,
+            data: null,
+            error: `Upload failed with status ${response.status}`,
+            meta: {
+              timestamp: new Date().toISOString(),
+              request_id: '',
+              version: 'v1',
+            },
+          };
+    }
+
+    return payload as ApiResponse<any>;
   }
 
   async createAICandidate(candidateData: {
