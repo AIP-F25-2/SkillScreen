@@ -153,6 +153,44 @@ class JobPositionService:
                 "data": None
             }
     
+    def get_all_job_positions(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+        is_active: Optional[bool] = True
+    ) -> Dict[str, Any]:
+        """Get all job positions across all organizations"""
+        try:
+            with self.uow:
+                repo = JobPositionRepository(self.uow.session)
+                
+                job_positions = repo.get_all_job_positions(
+                    limit=limit,
+                    offset=offset,
+                    is_active=is_active
+                )
+                
+                total = repo.count_all_job_positions(is_active=is_active)
+                
+                return {
+                    "success": True,
+                    "data": {
+                        "job_positions": [jp.to_dict() for jp in job_positions],
+                        "total": total,
+                        "limit": limit,
+                        "offset": offset
+                    },
+                    "error": None
+                }
+                
+        except Exception as e:
+            logger.error(f"Error getting all job positions: {str(e)}")
+            return {
+                "success": False,
+                "error": f"Database error: {str(e)}",
+                "data": None
+            }
+    
     def update_job_position(self, job_position_id: str, update_data: Dict[str, Any]) -> Dict[str, Any]:
         """Update job position"""
         try:

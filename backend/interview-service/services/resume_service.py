@@ -1,15 +1,21 @@
 import logging
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import sys
 import os
+import uuid
 
 from services.file_processor import FileProcessor
 from services.text_extractor import TextExtractor
 from services.email_extractor import EmailExtractor
+from services.azure_resume_storage import AzureResumeStorage
 # Import local candidate service
 from services.candidate_service import CandidateService
+
+# Import database components
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'common-service'))
+from db import DBFactory
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +28,7 @@ class ResumeService:
         self.text_extractor = TextExtractor()
         self.email_extractor = EmailExtractor()
         self.candidate_service = CandidateService()
+        self.azure_storage = AzureResumeStorage()
     
     
     async def process_resume_upload(self, files: List[Any], organization_id: str) -> Dict[str, Any]:
@@ -88,32 +95,131 @@ class ResumeService:
     
     def _prepare_candidate_data(self, file_result: Dict[str, Any], organization_id: str) -> Dict[str, Any]:
         """Prepare candidate data for database"""
+        # Get extracted structured data
+        skills = file_result.get('extracted_skills', [])
+        experience = file_result.get('extracted_experience', [])
+        education = file_result.get('extracted_education', [])
+        projects = file_result.get('extracted_projects', [])
+        
         return {
             'organization_id': organization_id,  # Use organization_id from request
             'full_name': file_result['extracted_name'],
             'email': file_result['extracted_emails'][0],  # Use first email
             'resume_url': file_result.get('url'),
-            'phone': None,
-            'location': None,
-            'skills': None,
-            'experience': None,
-            'education': None,
-            'projects': None
+            'phone': None,  # Could extract from resume text if needed
+            'location': None,  # Could extract from resume text if needed
+            'skills': skills if skills else None,  # Store as JSONB array
+            'experience': experience if experience else None,  # Store as JSONB array
+            'education': education if education else None,  # Store as JSONB array
+            'projects': projects if projects else None  # Store as JSONB array
         }
     
     def _save_single_candidate(self, candidate_data: Dict[str, Any], file_result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Save a single candidate to database"""
+        """Save a single candidate to database, upload resume to Azure, and create interview record"""
         logger.info(f"File: {file_result.get('filename')}, Status: {file_result.get('status')}, Name: {file_result.get('extracted_name')}, Emails: {file_result.get('extracted_emails')}")
         
         result = self.candidate_service.create_candidate(candidate_data)
         
         if result['success']:
-            file_result['id'] = result['data']['id']
-            logger.info(f"Saved candidate: {file_result['extracted_name']} - {file_result['extracted_emails'][0]} with ID: {result['data']['id']}")
+            candidate_id = result['data']['id']
+            file_result['id'] = candidate_id
+            logger.info(f"Saved candidate: {file_result['extracted_name']} - {file_result['extracted_emails'][0]} with ID: {candidate_id}")
+            
+            # Upload resume to Azure Blob Storage
+            try:
+                file_content = file_result.get('file_content')
+                filename = file_result.get('filename')
+                
+                if file_content and filename:
+                    azure_url = self.azure_storage.upload_resume(
+                        file_content=file_content,
+                        candidate_id=candidate_id,
+                        filename=filename
+                    )
+                    logger.info(f"Uploaded resume to Azure: {azure_url}")
+                    
+                    # Update candidate record with Azure URL
+                    self._update_candidate_resume_url(candidate_id, azure_url)
+                else:
+                    logger.warning(f"No file content available for Azure upload for candidate {candidate_id}")
+            except Exception as e:
+                logger.error(f"Failed to upload resume to Azure for candidate {candidate_id}: {str(e)}")
+                # Don't fail the whole process if Azure upload fails
+            
+            # Create interview record automatically
+            try:
+                self._create_interview_for_candidate(result['data'], candidate_data.get('organization_id'))
+            except Exception as e:
+                logger.error(f"Failed to create interview record for candidate {candidate_id}: {str(e)}")
+                # Don't fail the whole process if interview creation fails
+            
             return result['data']
         else:
             self._handle_candidate_save_error(result, file_result)
             return None
+    
+    def _update_candidate_resume_url(self, candidate_id: str, azure_url: str) -> None:
+        """Update candidate record with Azure resume URL"""
+        try:
+            from repository.candidate_repository import CandidateRepository
+            session = DBFactory.get_session()
+            try:
+                candidate_repo = CandidateRepository(session)
+                candidate_repo.update_candidate(candidate_id, {'resume_url': azure_url})
+                session.commit()
+                logger.info(f"Updated candidate {candidate_id} with Azure resume URL")
+            finally:
+                session.close()
+        except Exception as e:
+            logger.error(f"Failed to update candidate resume URL: {str(e)}")
+    
+    def _create_interview_for_candidate(self, candidate_data: Dict[str, Any], organization_id: Optional[str]) -> None:
+        """Create an interview record automatically when a candidate is created"""
+        try:
+            from repository.interview_repository import InterviewRepository
+            session = DBFactory.get_session()
+            try:
+                interview_repo = InterviewRepository(session)
+                
+                # Extract candidate_id - handle both dict with 'id' key and direct string
+                candidate_id = candidate_data.get('id') if isinstance(candidate_data, dict) else str(candidate_data)
+                if not candidate_id:
+                    logger.warning("Cannot create interview: candidate ID is missing")
+                    return
+                
+                # Ensure candidate_id is a string
+                candidate_id = str(candidate_id)
+                
+                # Generate session_id
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                session_id = f"session_{timestamp}_{uuid.uuid4().hex[:8]}"
+                
+                # Create interview record matching the sample format
+                interview_data = {
+                    'organization_id': organization_id or "e5d2d50b-6c07-43cd-8a78-ffd7b5b377bb",  # Use hardcoded org if not provided
+                    'candidate_id': candidate_id,
+                    'status': 'scheduled',  # Start as scheduled
+                    'mode': 'chat',  # Default mode
+                    'scheduled_at': datetime.now(timezone.utc).isoformat(),
+                    'settings': {
+                        'difficulty': 'medium',
+                        'session_id': session_id,
+                        'max_questions': 15,
+                        'interview_type': 'mixed',
+                        'candidate_record_id': candidate_id,
+                        'target_duration_minutes': 12
+                    }
+                }
+                
+                interview = interview_repo.create_interview(interview_data)
+                session.commit()
+                
+                logger.info(f"Created interview record {interview.id} for candidate {candidate_id}")
+            finally:
+                session.close()
+        except Exception as e:
+            logger.error(f"Error creating interview record: {str(e)}")
+            raise
     
     def _handle_candidate_save_error(self, result: Dict[str, Any], file_result: Dict[str, Any]) -> None:
         """Handle candidate save errors"""
@@ -171,7 +277,9 @@ class ResumeService:
                 "filename": filename,
                 "url": save_result["url"],
                 "size": save_result["size"],
-                "status": "processed"
+                "status": "processed",
+                "file_content": file_content,  # Store for Azure upload
+                "file_path": save_result["file_path"]  # Store local path
             }
             
             # Handle ZIP files
@@ -220,6 +328,11 @@ class ResumeService:
     def _process_resume_file_sync(self, file_result: Dict[str, Any], file_path: str) -> Dict[str, Any]:
         """Process individual resume file and extract information"""
         try:
+            # Read file content if not already present (for Azure upload)
+            if 'file_content' not in file_result and os.path.exists(file_path):
+                with open(file_path, 'rb') as f:
+                    file_result['file_content'] = f.read()
+            
             # Extract text from file
             text_result = self.text_extractor.extract_text(file_path)
             
@@ -228,19 +341,30 @@ class ResumeService:
                 file_result["error"] = text_result["error"]
                 return file_result
             
-            # Extract candidate information
-            candidate_info = self.email_extractor.extract_candidate_info(text_result["text"])
+            resume_text = text_result["text"]
+            
+            # Extract candidate information (name, email)
+            candidate_info = self.email_extractor.extract_candidate_info(resume_text)
+            
+            # Extract structured data (skills, experience, education, projects)
+            parsed_data = self._parse_resume_data(resume_text)
             
             # Update file result
             file_result.update({
                 "extracted_emails": candidate_info["emails"],
                 "extracted_name": candidate_info["name"],
-                "email_count": candidate_info["email_count"]
+                "email_count": candidate_info["email_count"],
+                "extracted_skills": parsed_data.get("skills", []),
+                "extracted_experience": parsed_data.get("experience", []),
+                "extracted_education": parsed_data.get("education", []),
+                "extracted_projects": parsed_data.get("projects", [])
             })
             
             logger.info(f"Processed {file_result['filename']}: "
                        f"emails={len(candidate_info['emails'])}, "
-                       f"name={candidate_info['name']}")
+                       f"name={candidate_info['name']}, "
+                       f"skills={len(parsed_data.get('skills', []))}, "
+                       f"experience={len(parsed_data.get('experience', []))}")
             
             return file_result
             
@@ -249,3 +373,72 @@ class ResumeService:
             file_result["status"] = "failed"
             file_result["error"] = str(e)
             return file_result
+    
+    def _parse_resume_data(self, text: str) -> Dict[str, Any]:
+        """Parse resume text to extract skills, experience, education, and projects"""
+        import re
+        
+        result = {
+            "skills": [],
+            "experience": [],
+            "education": [],
+            "projects": []
+        }
+        
+        text_lower = text.lower()
+        
+        # Extract skills (common technical skills)
+        skills_keywords = [
+            'python', 'java', 'javascript', 'typescript', 'react', 'angular', 'vue',
+            'node.js', 'express', 'django', 'flask', 'fastapi', 'spring', 'laravel',
+            'sql', 'postgresql', 'mysql', 'mongodb', 'redis', 'elasticsearch',
+            'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'terraform',
+            'git', 'github', 'gitlab', 'jenkins', 'ci/cd', 'devops',
+            'machine learning', 'ai', 'tensorflow', 'pytorch', 'scikit-learn',
+            'html', 'css', 'bootstrap', 'tailwind', 'sass', 'less',
+            'rest api', 'graphql', 'microservices', 'agile', 'scrum',
+            'linux', 'unix', 'bash', 'powershell', 'shell scripting',
+            'c++', 'c#', '.net', 'php', 'ruby', 'go', 'rust', 'swift',
+            'android', 'ios', 'react native', 'flutter', 'xamarin'
+        ]
+        
+        found_skills = []
+        for skill in skills_keywords:
+            if skill in text_lower:
+                found_skills.append(skill.title())
+        
+        result["skills"] = list(set(found_skills))  # Remove duplicates
+        
+        # Extract experience (look for date patterns and job titles)
+        experience_pattern = re.compile(
+            r'(\d{4}|\w+\s+\d{4})\s*[-–]\s*(\d{4}|\w+\s+\d{4}|\bpresent\b|\bcurrent\b)',
+            re.IGNORECASE
+        )
+        experience_matches = experience_pattern.findall(text)
+        if experience_matches:
+            result["experience"] = [{"period": f"{start} - {end}"} for start, end in experience_matches[:5]]
+        
+        # Extract education (look for degree keywords and institutions)
+        education_keywords = ['bachelor', 'master', 'phd', 'doctorate', 'degree', 'diploma', 'certificate']
+        education_section = []
+        lines = text.split('\n')
+        for i, line in enumerate(lines):
+            line_lower = line.lower()
+            if any(keyword in line_lower for keyword in education_keywords):
+                # Try to get institution from nearby lines
+                institution = ""
+                if i + 1 < len(lines):
+                    institution = lines[i + 1].strip()
+                education_section.append({
+                    "degree": line.strip(),
+                    "institution": institution
+                })
+        result["education"] = education_section[:5]  # Limit to 5
+        
+        # Extract projects (look for "project" keyword)
+        project_pattern = re.compile(r'(?:project|portfolio|work)[\s:]+(.+?)(?:\n|$)', re.IGNORECASE)
+        project_matches = project_pattern.findall(text)
+        if project_matches:
+            result["projects"] = [{"name": match.strip()} for match in project_matches[:5]]
+        
+        return result

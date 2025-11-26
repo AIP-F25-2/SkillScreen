@@ -352,7 +352,7 @@ class ApiClient {
   }
 
   // Use interview-service resume upload/parsing instead of text-service
-  async uploadResumeForParsing(files: File | File[], organizationId: string = "00000000-0000-0000-0000-000000000001"): Promise<ApiResponse<any>> {
+  async uploadResumeForParsing(files: File | File[], organizationId: string = "e5d2d50b-6c07-43cd-8a78-ffd7b5b377bb"): Promise<ApiResponse<any>> {
     const formData = new FormData();
     const fileArray = Array.isArray(files) ? files : [files];
     
@@ -476,6 +476,7 @@ class ApiClient {
     candidate_name: string;
     candidate_id: string;
     session_id: string;
+    job_position_id?: string;
     recruiter_name?: string;
     company_name?: string;
     expires_in_hours?: number;
@@ -493,6 +494,14 @@ class ApiClient {
     });
 
     return response.json();
+  }
+
+  // =========================================
+  // Job Position Methods
+  // =========================================
+
+  async getJobPositions(organizationId: string): Promise<ApiResponse<{ job_positions: any[]; total: number }>> {
+    return this.request<{ job_positions: any[]; total: number }>(`/interview/job-positions?organization_id=${organizationId}`);
   }
 }
 
