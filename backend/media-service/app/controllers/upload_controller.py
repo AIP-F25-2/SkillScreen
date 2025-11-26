@@ -3,7 +3,7 @@ from flask import Blueprint, request, jsonify, send_file, current_app
 from sqlalchemy import text, select
 from app.services.storage_service import StorageService
 from app.repositories.media_repository import MediaRepository
-from common.db import UnitOfWork
+from db import UnitOfWork
 from app.db.schema import media
 from app.utils.filename import secure_part
 from typing import Optional

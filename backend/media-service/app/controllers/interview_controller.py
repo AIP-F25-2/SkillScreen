@@ -188,7 +188,23 @@ def get_interview(interview_id):
     if not row:
         return jsonify({"error": CONSTANTS.ERROR_INTERVIEW_NOT_FOUND}), 404
 
-    return jsonify({"success": True, "data": dict(row)}), 200
+    row_dict = dict(row)
+    
+    # Extract transcript and analysis from metadata if present
+    metadata = row_dict.get("metadata", {}) or {}
+    if isinstance(metadata, dict):
+        # Move transcript and analysis to top level for frontend compatibility
+        if "transcript" in metadata:
+            row_dict["transcript"] = metadata["transcript"]
+        if "analysis" in metadata:
+            row_dict["analysis"] = metadata["analysis"]
+        # Also include candidate info if present
+        if "candidate_name" in metadata:
+            row_dict["candidate_name"] = metadata["candidate_name"]
+        if "candidate_email" in metadata:
+            row_dict["candidate_email"] = metadata["candidate_email"]
+
+    return jsonify({"success": True, "data": row_dict}), 200
 
 
 @interview_bp.route("/api/interviews/<interview_id>/status", methods=["PATCH"])
