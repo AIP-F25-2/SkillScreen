@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timezone
 import uuid
 import logging
@@ -12,8 +13,16 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'common-service'))
 # Import local database setup
 from db import DBFactory
 
-# Import resume controller
+# Import controllers
 from controllers.resume_controller import router as resume_router
+from controllers.job_position_controller import router as job_position_controller
+
+# Import services
+from services.email_service import EmailService
+
+# Import repositories and models
+from repository.interview_repository import InterviewRepository
+from models.interview import Interview
 
 # Load environment variables
 load_dotenv()
@@ -31,12 +40,25 @@ except Exception as e:
 
 app = FastAPI(title="Interview Service")
 
-# Include resume router
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for development
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include routers
 app.include_router(resume_router)
+app.include_router(job_position_controller)
 
 # In-memory storage for sessions
 sessions_db = {}
 token_store = {}
+
+# Initialize email service
+email_service = EmailService()
 
 def create_response(data, success=True):
     """Create standardized API response"""
@@ -59,6 +81,7 @@ def health_check():
         "service": "interview-service",
         "endpoints": {
             "resume_upload": "/resumes/upload",
+            "job_positions": "/job-positions",
             "health": "/health"
         }
     })
@@ -70,7 +93,7 @@ def health():
         "service": "interview-service",
         "status": "healthy",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "features": ["resume_upload", "file_processing", "email_extraction"]
+        "features": ["resume_upload", "file_processing", "email_extraction", "job_positions_crud"]
     })
 
 @app.post("/api/session/create")
@@ -134,6 +157,83 @@ async def save_session_transcript(session_id: str, request: Request):
     return create_response(sessions_db[session_id])
 
 # ========================================
+# Interview Management Endpoints
+# ========================================
+
+@app.get("/api/interviews")
+async def get_all_interviews(organization_id: str = None, limit: int = 100, offset: int = 0):
+    """Get all interviews from the database"""
+    try:
+        session = DBFactory.get_session()
+        try:
+            interview_repo = InterviewRepository(session)
+            interviews = interview_repo.get_all_interviews(organization_id=organization_id, limit=limit, offset=offset)
+            
+            # Convert to dict format with candidate info if available
+            interviews_data = []
+            for interview in interviews:
+                interview_dict = interview.to_dict()
+                
+                # Try to get candidate info if candidate_id exists
+                if interview.candidate_id:
+                    try:
+                        from repository.candidate_repository import CandidateRepository
+                        candidate_repo = CandidateRepository(session)
+                        candidate = candidate_repo.get_candidate_by_id(str(interview.candidate_id))
+                        if candidate:
+                            interview_dict['candidate_name'] = candidate.full_name
+                            interview_dict['candidate_email'] = candidate.email
+                    except Exception as e:
+                        logger.warning(f"Could not fetch candidate info for interview {interview.id}: {e}")
+                
+                interviews_data.append(interview_dict)
+            
+            return create_response({
+                "interviews": interviews_data,
+                "count": len(interviews_data)
+            })
+        finally:
+            session.close()
+    except Exception as e:
+        logger.error(f"Error fetching interviews: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch interviews: {str(e)}")
+
+@app.get("/api/interviews/{interview_id}")
+async def get_interview(interview_id: str):
+    """Get a specific interview by ID"""
+    try:
+        session = DBFactory.get_session()
+        try:
+            interview_repo = InterviewRepository(session)
+            interview = interview_repo.get_interview_by_id(interview_id)
+            
+            if not interview:
+                raise HTTPException(status_code=404, detail="Interview not found")
+            
+            interview_dict = interview.to_dict()
+            
+            # Try to get candidate info if candidate_id exists
+            if interview.candidate_id:
+                try:
+                    from repository.candidate_repository import CandidateRepository
+                    candidate_repo = CandidateRepository(session)
+                    candidate = candidate_repo.get_candidate_by_id(str(interview.candidate_id))
+                    if candidate:
+                        interview_dict['candidate_name'] = candidate.full_name
+                        interview_dict['candidate_email'] = candidate.email
+                except Exception as e:
+                    logger.warning(f"Could not fetch candidate info: {e}")
+            
+            return create_response(interview_dict)
+        finally:
+            session.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching interview: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch interview: {str(e)}")
+
+# ========================================
 # Token Management Endpoints
 # ========================================
 
@@ -165,26 +265,74 @@ async def validate_token(request: Request):
             logger.warning(f"Token already used: {token[:10]}...")
             raise HTTPException(status_code=410, detail="This interview link has already been used")
         
-        # Create interview record in media service
-        interview_id = f"interview_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        candidate_id = token_data['candidate_id']
         
-        # Create interview data matching media service format
-        interview_data = {
-            "interview_id": interview_id,
-            "session_id": interview_id,  # Keep for backwards compatibility
-            "candidate_id": token_data['candidate_id'],
-            "candidate_name": token_data['candidate_name'],
-            "candidate_email": token_data['candidate_email'],
-            "assigned_user": "system",  # Token-based interviews are system-assigned
-            "user_id": "system",  # Add this for backwards compatibility
-            "status": "in_progress",  # Interview is starting
-            "token": token,  # Store token for reference
-            "created_at": datetime.utcnow().isoformat(),
-            "scheduled_at": datetime.utcnow().isoformat()
-        }
-        
-        # Store interview in our local database (in production, this would call media service)
-        sessions_db[interview_id] = interview_data
+        # Try to find existing interview for this candidate (created when invitation was sent)
+        session = DBFactory.get_session()
+        interview_id = None
+        try:
+            interview_repo = InterviewRepository(session)
+            
+            # Look for scheduled interview with this candidate_id
+            interviews = interview_repo.get_interviews_by_candidate(candidate_id)
+            scheduled_interview = None
+            for inv in interviews:
+                if inv.status == 'scheduled' and inv.settings and inv.settings.get('token') == token:
+                    scheduled_interview = inv
+                    break
+            
+            if scheduled_interview:
+                # Update existing interview to in_progress
+                interview_id = str(scheduled_interview.id)
+                interview_repo.update_interview_status(interview_id, 'in_progress')
+                session.commit()
+                logger.info(f"Updated existing interview {interview_id} to in_progress for candidate {candidate_id}")
+            else:
+                # Create new interview record if not found
+                # Get candidate info to get organization_id
+                from repository.candidate_repository import CandidateRepository
+                candidate_repo = CandidateRepository(session)
+                candidate = candidate_repo.get_candidate_by_id(candidate_id)
+                
+                organization_id = str(candidate.organization_id) if candidate and candidate.organization_id else None
+                
+                interview_id = str(uuid.uuid4())
+                interview_data = {
+                    'organization_id': organization_id,
+                    'candidate_id': candidate_id,
+                    'status': 'in_progress',
+                    'scheduled_at': datetime.now(timezone.utc).isoformat(),
+                    'started_at': datetime.now(timezone.utc).isoformat(),
+                    'settings': {
+                        'token': token,
+                        'expires_at': token_data['expires_at']
+                    }
+                }
+                
+                interview = interview_repo.create_interview(interview_data)
+                session.commit()
+                interview_id = str(interview.id)
+                logger.info(f"Created new interview {interview_id} in database for candidate {candidate_id}")
+                
+        except Exception as e:
+            logger.error(f"Error creating/updating interview in database: {str(e)}")
+            session.rollback()
+            # Fallback to in-memory storage if database fails
+            interview_id = interview_id or f"interview_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            interview_data = {
+                "interview_id": interview_id,
+                "session_id": interview_id,
+                "candidate_id": candidate_id,
+                "candidate_name": token_data['candidate_name'],
+                "candidate_email": token_data['candidate_email'],
+                "status": "in_progress",
+                "token": token,
+                "created_at": datetime.utcnow().isoformat(),
+                "scheduled_at": datetime.utcnow().isoformat()
+            }
+            sessions_db[interview_id] = interview_data
+        finally:
+            session.close()
         
         # Mark token as used
         token_data['used_at'] = datetime.utcnow().isoformat()
@@ -254,7 +402,7 @@ async def store_token(request: Request):
 
 @app.post("/api/email/send-invitation")
 async def send_invitation(request: Request):
-    """Send an interview invitation email to a candidate"""
+    """Send an interview invitation email to a candidate and create interview record in database"""
     try:
         data = await request.json()
         
@@ -264,20 +412,60 @@ async def send_invitation(request: Request):
             if field not in data:
                 raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
         
+        candidate_id = data['candidate_id']
+        candidate_email = data['candidate_email']
+        
+        # Get candidate info from database to get organization_id and real candidate_id
+        session = DBFactory.get_session()
+        actual_candidate_id = candidate_id
+        organization_id = None
+        try:
+            from repository.candidate_repository import CandidateRepository
+            candidate_repo = CandidateRepository(session)
+            
+            # Try to find by ID first
+            candidate = candidate_repo.get_candidate_by_id(candidate_id)
+            
+            # If not found and candidate_id looks like a temp ID, try to find by email
+            if not candidate and (candidate_id.startswith('temp_') or len(candidate_id) < 36):
+                logger.info(f"Candidate ID {candidate_id} appears to be temporary, looking up by email: {candidate_email}")
+                # Try to find by email - we need organization_id for this, but we can try common org
+                # Or we can search across all orgs (less ideal but works for now)
+                # Actually, let's use the hardcoded org ID for now
+                hardcoded_org_id = "e5d2d50b-6c07-43cd-8a78-ffd7b5b377bb"
+                candidate = candidate_repo.get_candidate_by_email(hardcoded_org_id, candidate_email)
+                
+                if candidate:
+                    actual_candidate_id = str(candidate.id)
+                    logger.info(f"Found candidate by email: {actual_candidate_id}")
+            
+            if not candidate:
+                logger.warning(f"Candidate {candidate_id} (email: {candidate_email}) not found in database, creating interview without organization_id")
+                organization_id = None
+            else:
+                organization_id = str(candidate.organization_id)
+                actual_candidate_id = str(candidate.id)  # Use the real database ID
+                logger.info(f"Found candidate {actual_candidate_id} with organization {organization_id}")
+        except Exception as e:
+            logger.error(f"Error fetching candidate from database: {str(e)}")
+            organization_id = None
+        finally:
+            session.close()
+        
         # Send invitation email
         result = email_service.send_interview_invitation(
             candidate_email=data['candidate_email'],
             candidate_name=data['candidate_name'],
-            candidate_id=data['candidate_id'],
+            candidate_id=candidate_id,
             session_id=data['session_id'],
             recruiter_name=data.get('recruiter_name'),
             company_name=data.get('company_name'),
             expires_in_hours=data.get('expires_in_hours', 48)
         )
         
-        # Store token
+        # Store token with actual candidate ID
         token_store[result['token']] = {
-            'candidate_id': result['candidate_id'],
+            'candidate_id': actual_candidate_id,  # Use the real database candidate ID
             'candidate_name': result['candidate_name'],
             'candidate_email': result['candidate_email'],
             'session_id': result['session_id'],
@@ -285,11 +473,61 @@ async def send_invitation(request: Request):
             'used_at': None
         }
         
+        # Create interview record in database
+        interview_id = None
+        interview_session = DBFactory.get_session()
+        try:
+            # Only create interview if we have valid organization_id and candidate_id (UUID format)
+            if organization_id and actual_candidate_id and len(actual_candidate_id) == 36 and actual_candidate_id.count('-') == 4:
+                interview_repo = InterviewRepository(interview_session)
+                
+                interview_data = {
+                    'organization_id': organization_id,
+                    'candidate_id': actual_candidate_id,  # Use the real database candidate ID
+                    'status': 'scheduled',
+                    'scheduled_at': datetime.now(timezone.utc).isoformat(),
+                    'settings': {
+                        'token': result['token'],
+                        'expires_at': result['expires_at'],
+                        'recruiter_name': data.get('recruiter_name'),
+                        'company_name': data.get('company_name'),
+                        'original_candidate_id': candidate_id  # Store original in case it was temp
+                    }
+                }
+                
+                # Add optional fields if provided
+                if data.get('job_position_id'):
+                    interview_data['job_position_id'] = data['job_position_id']
+                if data.get('interviewer_id'):
+                    interview_data['interviewer_id'] = data['interviewer_id']
+                # Use provided template_id or default to dummy template_id
+                interview_data['template_id'] = data.get('template_id', '1ef03eb1-4ba0-4e42-a27d-5b5a868640f4')
+                if data.get('mode'):
+                    interview_data['mode'] = data['mode']
+                
+                interview = interview_repo.create_interview(interview_data)
+                interview_session.commit()
+                interview_id = str(interview.id)
+                
+                logger.info(f"Created interview record in database: {interview_id} for candidate {actual_candidate_id}")
+            else:
+                logger.warning(f"Skipping interview creation - missing valid organization_id or candidate_id. org_id={organization_id}, candidate_id={actual_candidate_id}")
+                interview_id = data.get('interview_id') or result.get('session_id') or str(uuid.uuid4())
+            
+        except Exception as e:
+            logger.error(f"Failed to create interview record in database: {str(e)}", exc_info=True)
+            interview_session.rollback()
+            # Don't fail the request if database save fails, email was already sent
+            interview_id = interview_id or data.get('interview_id') or result.get('session_id') or str(uuid.uuid4())
+        finally:
+            interview_session.close()
+        
         return create_response({
             "email_id": result['email_id'],
             "token": result['token'],
             "expires_at": result['expires_at'],
-            "interview_link": f"{email_service.base_url}/interview-link?token={result['token']}"
+            "interview_link": f"{email_service.base_url}/interview-link?token={result['token']}",
+            "interview_id": interview_id
         })
         
     except HTTPException:

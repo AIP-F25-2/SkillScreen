@@ -3,7 +3,7 @@ sys.path.append('/common-service')
 
 from repository.base_repository import BaseRepository
 from db import UnitOfWork
-from sqlalchemy import Table, Column, Text, Integer, String, Boolean, DateTime, MetaData, select, insert, update, text, BigInteger, and_
+from sqlalchemy import Table, Column, Text, Integer, String, Boolean, DateTime, MetaData, select, insert, update, text, BigInteger, and_, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB, NUMERIC
 from datetime import datetime, timezone
 from typing import List, Dict, Optional
@@ -17,20 +17,19 @@ metadata = MetaData()
 # TABLE DEFINITIONS - UPDATED SCHEMA
 # ==========================================
 
-# NEW: column media_files table matching your database
 media_files_table = Table(
     "media_files",
     metadata,
     Column("id", UUID, primary_key=True),
     Column("interview_id", UUID),
     Column("session_id", UUID),
-    Column("file_type", String),  # Changed from media_type
-    Column("storage_uri", String),  # Changed from file_path
-    Column("file_size", BigInteger),  # Changed from size_bytes
-    Column("duration", Integer),  # Changed from duration_ms
-    Column("mime_type", String),  # Changed from content_type
-    Column("checksum", String),  # No 'extra' field anymore
-    Column("metadata", JSONB),  # Use this instead of 'extra'
+    Column("file_type", String),
+    Column("storage_uri", String),
+    Column("file_size", BigInteger),
+    Column("duration", Integer),
+    Column("mime_type", String),
+    Column("checksum", String),
+    Column("metadata", JSONB),
     Column("created_at", DateTime),
     Column("deleted_at", DateTime),
     Column("blob_name", String),
@@ -163,7 +162,7 @@ class AudioRepository(BaseRepository):
             self.session = session_or_uow
     
     # ==========================================
-    # MEDIA FILE OPERATIONS (NEW SCHEMA)
+    # MEDIA FILE OPERATIONS
     # ==========================================
     
     def get_media_file_by_id(self, media_file_id: str) -> Optional[Dict]:
@@ -187,12 +186,12 @@ class AudioRepository(BaseRepository):
         extra_data: Optional[Dict] = None
     ):
         """
-        Update media file status and extra data
+        Update media file status and metadata
         
         Args:
             media_file_id: UUID of media file
             status: 'processing', 'completed', 'failed'
-            extra_data: Additional data to store in extra JSONB field
+            extra_data: Additional data to store in metadata JSONB field
         """
         update_values = {
             'status': status,
@@ -200,7 +199,6 @@ class AudioRepository(BaseRepository):
         }
         
         if extra_data:
-            # Merge with existing metadata
             existing = self.get_media_file_by_id(media_file_id)
             if existing and existing.get('metadata'):
                 merged_extra = {**existing['metadata'], **extra_data}
@@ -271,12 +269,12 @@ class AudioRepository(BaseRepository):
         if not media_file:
             return 0
         
-        extra = media_file.get('extra', {})
-        retry_count = extra.get('retry_count', 0) + 1
+        metadata = media_file.get('metadata', {})
+        retry_count = metadata.get('retry_count', 0) + 1
         
         self.update_media_file_status(
             media_file_id,
-            'processing',  # Set back to processing for retry
+            'processing',
             {'retry_count': retry_count, 'last_retry_at': datetime.now(timezone.utc).isoformat()}
         )
         
@@ -299,7 +297,7 @@ class AudioRepository(BaseRepository):
             return result[0]
         
         logger.warning(f"⚠️ Candidate not found: {candidate_id}")
-        return "Unknown Candidate"
+        return None
     
     def get_interview_info(self, interview_id: str) -> Optional[Dict]:
         """Get interview details"""
@@ -327,21 +325,19 @@ class AudioRepository(BaseRepository):
         result = self.session.execute(query).fetchone()
 
         if not result:
-            return False  # No record = not processed
+            return False
 
-        # ✅ Check if processing was successful
         raw_results = result.raw_results if hasattr(result, 'raw_results') else {}
 
-        # If raw_results has status 'failed', consider it NOT processed
         if isinstance(raw_results, dict):
             status = raw_results.get('status', 'success')
             if status == 'failed':
-                return False  # Failed = allow reprocessing
+                return False
 
-        return True  # Success = skip processing
+        return True
     
     # ==========================================
-    # SAVE RESULTS (Same as before)
+    # SAVE RESULTS
     # ==========================================
     
     def save_transcript(self, data: Dict) -> str:
@@ -418,7 +414,7 @@ class AudioRepository(BaseRepository):
         logger.error(f"❌ Saved error analysis for interview {interview_id}")
     
     # ==========================================
-    # POLLING SUPPORT (Backup)
+    # POLLING SUPPORT
     # ==========================================
     
     def get_pending_media_files_for_polling(self, limit: int = 10) -> List[Dict]:
@@ -427,7 +423,7 @@ class AudioRepository(BaseRepository):
         
         Returns files where:
         - status is NULL, 'pending', or 'failed' (for retry)
-        - media_type is 'audio' or 'video'
+        - file_type is 'audio' or 'video'
         - NOT already successfully processed
         """
         query = text("""
@@ -435,27 +431,26 @@ class AudioRepository(BaseRepository):
                 mf.id,
                 mf.interview_id,
                 mf.session_id,
-                mf.media_type,
+                mf.file_type,
                 mf.blob_name,
-                mf.file_path,
-                mf.duration_ms,
+                mf.storage_uri,
+                mf.duration,
                 mf.status,
-                mf.extra,
-                mf.candidate_id,
+                mf.metadata,
                 mf.created_at
             FROM media_files mf
-            WHERE mf.media_type IN ('audio', 'video')
+            WHERE mf.file_type IN ('audio', 'video')
               AND (
                     mf.status IS NULL
                     OR mf.status = 'pending'
-                    OR (mf.status = 'failed' AND (mf.extra->>'retry_count')::int < 3)
+                    OR (mf.status = 'failed' AND (mf.metadata->>'retry_count')::int < 3)
               )
               AND NOT EXISTS (
                     SELECT 1 FROM ai_analysis aa
                     WHERE aa.interview_id = mf.interview_id
                       AND aa.session_id = mf.session_id
                       AND aa.service_name = 'audio-ai-service'
-                      AND aa.raw_results->>'error' IS NULL
+                      AND aa.raw_results->>'status' != 'failed'
               )
             ORDER BY mf.created_at ASC
             LIMIT :limit
@@ -466,3 +461,66 @@ class AudioRepository(BaseRepository):
 
         logger.info(f"📋 Found {len(files)} pending media files for polling")
         return files
+    
+    # ==========================================
+    # CANDIDATE ANALYSIS QUERIES
+    # ==========================================
+    
+    def check_candidate_has_interviews(self, candidate_id: str) -> bool:
+        """
+        Check if candidate has any interviews (scheduled or completed)
+        
+        Args:
+            candidate_id: Candidate identifier
+            
+        Returns:
+            True if candidate has interviews, False otherwise
+        """
+        query = select(func.count()).select_from(interviews_table).where(
+            interviews_table.c.candidate_id == candidate_id
+        )
+        
+        result = self.session.execute(query).scalar()
+        return result > 0
+
+    def get_candidate_transcripts(self, candidate_id: str):
+        """Get all transcripts for a candidate with interview details"""
+        query = (
+            select(
+                transcripts_table,
+                interviews_table.c.candidate_id
+            )
+            .select_from(
+                transcripts_table
+                .join(interviews_table, transcripts_table.c.interview_id == interviews_table.c.id)
+            )
+            .where(interviews_table.c.candidate_id == candidate_id)
+            .order_by(
+                transcripts_table.c.interview_id,
+                transcripts_table.c.start_time
+            )
+        )
+        
+        result = self.session.execute(query)
+        return [dict(row._mapping) for row in result]
+
+    def get_candidate_audio_analyses(self, candidate_id: str):
+        """Get all audio analyses for a candidate"""
+        query = (
+            select(
+                ai_analysis_table,
+                interviews_table.c.candidate_id
+            )
+            .select_from(
+                ai_analysis_table
+                .join(interviews_table, ai_analysis_table.c.interview_id == interviews_table.c.id)
+            )
+            .where(
+                interviews_table.c.candidate_id == candidate_id,
+                ai_analysis_table.c.service_name == 'audio-ai-service'
+            )
+            .order_by(ai_analysis_table.c.created_at.desc())
+        )
+        
+        result = self.session.execute(query)
+        return [dict(row._mapping) for row in result]

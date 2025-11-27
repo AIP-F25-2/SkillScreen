@@ -36,32 +36,6 @@ class MediaDownloader:
         """Check if URL is an Azure Blob Storage URL"""
         return 'blob.core.windows.net' in url.lower()
     
-    def _parse_azure_blob_url(self, url: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
-        """
-        Parse Azure Blob Storage URL to extract account, container, and blob name
-        
-        Returns:
-            (account_name, container_name, blob_name)
-        """
-        try:
-            parsed = urlparse(url)
-            # Format: https://accountname.blob.core.windows.net/container/blob/path
-            
-            # Extract account name from hostname
-            hostname_parts = parsed.hostname.split('.')
-            account_name = hostname_parts[0] if hostname_parts else None
-            
-            # Extract container and blob from path
-            path_parts = parsed.path.strip('/').split('/', 1)
-            container_name = path_parts[0] if len(path_parts) > 0 else None
-            blob_name = path_parts[1] if len(path_parts) > 1 else None
-            
-            return account_name, container_name, blob_name
-            
-        except Exception as e:
-            logger.warning(f"Failed to parse Azure Blob URL: {e}")
-            return None, None, None
-    
     def _download_from_azure_blob(
         self, 
         url: str, 
@@ -72,7 +46,7 @@ class MediaDownloader:
         Download file from Azure Blob Storage
         
         Args:
-            url: Azure Blob Storage URL
+            url: Complete Azure Blob Storage URL with SAS token
             destination_path: Local file path to save to
             log_prefix: Logging prefix
         
@@ -80,31 +54,11 @@ class MediaDownloader:
             True if successful, False otherwise
         """
         try:
-            # Parse blob URL
-            account_name, container_name, blob_name = self._parse_azure_blob_url(url)
+            logger.info(f"{log_prefix} Downloading from complete Azure Blob URL")
             
-            if not blob_name:
-                logger.error(f"{log_prefix} Could not extract blob name from URL")
-                return False
-            
-            # Use configured account and container if available, otherwise use parsed values
-            account_name = self.azure_account_name or account_name
-            container_name = self.azure_container_name or container_name
-            
-            logger.info(f"{log_prefix} Downloading from Azure Blob: {blob_name}")
-            
-            # Build blob URL with SAS token
-            if self.azure_sas_token:
-                # Check if URL already has SAS token
-                if '?' not in url:
-                    blob_url = f"{url}?{self.azure_sas_token}"
-                else:
-                    blob_url = url  # Already has SAS
-            else:
-                blob_url = url
-            
-            # Create blob client and download
-            blob_client = BlobClient.from_blob_url(blob_url)
+            # Use the complete URL directly with BlobClient
+            # No need to parse and reconstruct - the URL is already complete
+            blob_client = BlobClient.from_blob_url(url)
             
             with open(destination_path, "wb") as download_file:
                 download_stream = blob_client.download_blob()
@@ -177,7 +131,7 @@ class MediaDownloader:
         Supports: HTTP/HTTPS, Google Drive, Azure Blob Storage, local files
         
         Args:
-            media_url: URL of media to download
+            media_url: URL of media to download (can be complete Azure Blob URL with SAS)
             media_file_id: Optional UUID for database tracking
         
         Returns:
@@ -339,7 +293,7 @@ class MediaDownloader:
         Perform the actual download operation
 
         Args:
-            media_url: URL to download from
+            media_url: URL to download from (complete URL for Azure)
             media_path: Destination file path
             is_azure: Whether this is an Azure Blob Storage download
             log_prefix: Logging prefix
@@ -413,7 +367,7 @@ class MediaDownloader:
 
         Args:
             attempt: Current attempt number
-            media_url: URL to download from
+            media_url: URL to download from (complete URL for Azure)
             suffix: File extension
             media_type: Detected media type
             log_prefix: Logging prefix
@@ -458,7 +412,7 @@ class MediaDownloader:
         Download media with exponential backoff retry logic
 
         Args:
-            media_url: URL to download from
+            media_url: URL to download from (complete URL for Azure)
             suffix: File extension
             media_type: Detected media type
             log_prefix: Logging prefix
