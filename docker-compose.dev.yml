@@ -109,8 +109,24 @@ services:
       - PORT=8080
       - HOST=0.0.0.0
       - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+      - PYTHONPATH=/app:/common-service
+      # logging
+      - ENV=dev
+      - LOG_LEVEL=DEBUG
+      - LOG_TO_FILE=true
+      - LOG_DIR=/var/log/app
+      - LOG_FILE=coding-service.log
+      - ENABLE_SEQ=false
+      - SEQ_URL=http://seq:5341
+      - JUDGE0_BASE_URL=https://judge0-ce.p.rapidapi.com
+      - JUDGE0_RAPIDAPI_KEY=
+      - JUDGE0_RAPIDAPI_HOST=judge0-ce.p.rapidapi.com
     volumes:
       - ./backend/coding-service:/app
+      - ./backend/common-service:/common-service
+      - ./_logs:/var/log/app
+    depends_on:
+      - seq
     networks:
       - skill-screen-network
 
@@ -197,6 +213,8 @@ services:
     container_name: interview-service
     ports:
       - "8003:8080"
+    env_file:
+      - ./backend/interview-service/.env
     environment:
       - PORT=8080
       - HOST=0.0.0.0
@@ -275,6 +293,7 @@ services:
       - LOG_DIR=/var/log/app
       - LOG_FILE=user-service.log
       - ENABLE_SEQ=false
+      - SEQ_URL=http://seq:5341
     volumes:
       - ./backend/common-service:/app
       - ./_logs:/var/log/app
