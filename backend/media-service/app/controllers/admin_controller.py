@@ -1,5 +1,5 @@
 from app.repositories.media_repository import MediaRepository
-from common.db import UnitOfWork
+from db import UnitOfWork
 import mimetypes
 from flask import Blueprint, request, jsonify, redirect, current_app
 from urllib.parse import urlsplit, urlunsplit, quote

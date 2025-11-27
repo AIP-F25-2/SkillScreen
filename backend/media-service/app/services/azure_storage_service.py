@@ -140,7 +140,6 @@ class AzureStorageService:
         blobs = cc.list_blobs(name_starts_with="videos/")
         return [b.name for b in blobs]
     
-
     # ------------------------------------------------------------------
     # Generic single-blob upload for audio
     # ------------------------------------------------------------------

@@ -102,7 +102,6 @@ class StorageService:
             return _Cloud.upload_from_path(interview_id, local_path, dest_filename, content_type)
         return LocalStorageService.upload_from_path(interview_id, local_path, dest_filename, content_type)
 
-
     # -------------------------------------------------------------------
     # 🔄 Audio upload (non-chunked)
     # -------------------------------------------------------------------
@@ -121,3 +120,4 @@ class StorageService:
 
         # Local fallback
         return LocalStorageService.save_file(folder, blob_name, data)
+

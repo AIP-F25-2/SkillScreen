@@ -115,4 +115,3 @@ class LocalStorageService:
             f.write(data)
 
         return dest
-

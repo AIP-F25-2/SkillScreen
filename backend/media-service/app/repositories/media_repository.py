@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Optional, Dict, Any
 from sqlalchemy import text
-from common.db import UnitOfWork
+from db import UnitOfWork
 import json
 
 

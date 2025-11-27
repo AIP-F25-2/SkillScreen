@@ -3,7 +3,7 @@ from flask import Blueprint, request, jsonify, send_file, current_app
 from sqlalchemy import text, select
 from app.services.storage_service import StorageService
 from app.repositories.media_repository import MediaRepository
-from common.db import UnitOfWork
+from db import UnitOfWork
 from app.db.schema import media
 from app.utils.filename import secure_part
 from typing import Optional
@@ -11,6 +11,7 @@ from app.utils.ids import require_uuid_str
 import app.utils.constants as CONSTANTS
 upload_bp = Blueprint("upload", __name__)
 storage_service = StorageService()
+import uuid
 
 
 def _server_chunk_name(idx_zero_based: int) -> str:
@@ -337,7 +338,7 @@ def chunks_status():
             "missing": missing,
             "status": status.get("status", "uploading")
         }), 200
-    
+
 # ---------------------------------------------------------------------------
 #  /audio/upload → one-shot audio upload per question
 # ---------------------------------------------------------------------------
@@ -374,14 +375,12 @@ def upload_audio():
         # Save DB record
         with UnitOfWork() as uow:
             repo = MediaRepository(uow)
-            repo.create_audio_record(
+            repo.create_media_entry(
                 interview_id=interview_id,
                 session_id=session_id,
-                question_id=question_id,
                 blob_name=blob_name,
-                storage_uri=storage_uri,
-                mime_type=file.mimetype,
-                file_size=len(file.read())
+                file_type="audio",
+                expected_total=1
             )
             uow.session.commit()
 
