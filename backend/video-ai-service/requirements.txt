@@ -1,5 +1,5 @@
 python-dotenv==1.0.1
-# Optional (identity/emotion):
+
 deepface==0.0.93
 face-recognition==1.3.0
 

@@ -29,8 +29,8 @@ RUN pip install --no-cache-dir -r requirements.txt && \
 
 # ---- Copy application code ----
 # NOTE: Sensitive files (.env, .git, build artifacts) are excluded via .dockerignore
-COPY app /app
-COPY media_service.py /app/
+COPY app /app/app
+COPY media_service.py /app/media_service.py
 
 # ---- File permissions & uploads dir ----
 RUN mkdir -p /app/uploads && \
