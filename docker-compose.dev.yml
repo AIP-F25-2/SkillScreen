@@ -1,6 +1,7 @@
 # SkillScreen Platform - Development Environment (Azure Postgres)
 
 services:
+
   # Core Infrastructure Services (5000-5009)
   api-gateway:
     build:
@@ -56,7 +57,7 @@ services:
       LOG_TO_FILE: 'true'
       LOG_DIR: /var/log/app
       LOG_FILE: user-service.log
-      ENABLE_SEQ: 'true'
+      ENABLE_SEQ: 'false'
       SEQ_URL: http://seq:5341
     volumes:
       - ./backend/user-service:/app
@@ -80,6 +81,7 @@ services:
     environment:
       - PORT=8080
       - HOST=0.0.0.0
+      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
       - USE_LLM_WEIGHTS=false   
     volumes:
       - ./backend/assessment-service:/app
@@ -93,11 +95,27 @@ services:
       dockerfile: Dockerfile
     container_name: coding-service
     environment:
-      PORT: 8080
-      HOST: 0.0.0.0
-      DATABASE_URL: postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+      - PORT=8080
+      - HOST=0.0.0.0
+      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+      - PYTHONPATH=/app:/common-service
+      # logging
+      - ENV=dev
+      - LOG_LEVEL=DEBUG
+      - LOG_TO_FILE=true
+      - LOG_DIR=/var/log/app
+      - LOG_FILE=coding-service.log
+      - ENABLE_SEQ=false
+      - SEQ_URL=http://seq:5341
+      - JUDGE0_BASE_URL=https://judge0-ce.p.rapidapi.com
+      - JUDGE0_RAPIDAPI_KEY=
+      - JUDGE0_RAPIDAPI_HOST=judge0-ce.p.rapidapi.com
     volumes:
       - ./backend/coding-service:/app
+      - ./backend/common-service:/common-service
+      - ./_logs:/var/log/app
+    depends_on:
+      - seq
     networks:
       - skill-screen-network
 
@@ -131,7 +149,7 @@ services:
     ports:
       - "8000:8080"
     env_file:
-      - ./backend/audio-ai-service/.env 
+      - ./backend/audio-ai-service/.env  
     environment:
       PORT: 8080
       HOST: 0.0.0.0
@@ -184,12 +202,15 @@ services:
     container_name: interview-service
     ports:
       - "8003:8080"
+    env_file:
+      - ./backend/interview-service/.env
     environment:
-      PORT: 8080
-      HOST: 0.0.0.0
-      DATABASE_URL: postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
-      PYTHONPATH: /app:/common-service
-      CORS_ORIGINS: http://localhost:3000
+      - PORT=8080
+      - HOST=0.0.0.0
+      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+      - PYTHONPATH=/app:/common-service
+      - CORS_ORIGINS=http://localhost:3000
+      - AZURE_RESUME_SAS_URL=https://skillscreenstorage00.blob.core.windows.net/resumes?sp=racwdl&st=2025-11-18T22:03:40Z&se=2026-01-01T06:18:40Z&spr=https&sv=2024-11-04&sr=c&sig=OwDaTiu32nUCTpk3OCrcHtwbUELDWpGBh8PGcNZ3r0o%3D
     volumes:
       - ./backend/interview-service:/app
       - ./backend/common-service:/common-service
@@ -268,7 +289,6 @@ services:
     networks:
       - skill-screen-network
 
-  # 🌟 FIXED INDENTATION HERE 🌟
   orchestration-service: 
     build:
       context: ./backend/orchestration-service
@@ -301,7 +321,7 @@ services:
     image: datalust/seq:2024.3
     container_name: seq
     environment:
-      ACCEPT_EULA: Y
+      - ACCEPT_EULA=Y
     ports:
       - "5341:5341" # ingestion endpoint
       - "8081:80" # web UI -> http://localhost:8081

@@ -84,22 +84,34 @@ def init_logger(service_name: str) -> logging.Logger:
         else:
             try:
                 seq_min = getattr(logging, os.getenv("SEQ_MIN_LEVEL", level_name).upper(), level)
+                # Try to configure Seq logging with retry logic
+                # Note: default_properties is not supported in seqlog 0.3.31
+                # Service name will be included via logger name
                 seqlog.log_to_seq(
                     server_url=seq_url,
                     level=seq_min,
                     batch_size=10,
                     auto_flush_timeout=2.0,
-                    override_root_logger=True,  # send everything including root logs
-                    default_properties={
-                        "service": service_name,
-                        "env": os.getenv("ENV", "local")
-                    }
+                    override_root_logger=True  # send everything including root logs
                 )
+                # Set up structured logging with service context via logger name
+                service_logger = logging.getLogger(service_name)
+                service_logger.setLevel(level)
                 logging.getLogger(__name__).info(
                     f"Seq logging enabled at {seq_url} for {service_name}"
                 )
+            except (ConnectionError, OSError) as e:
+                # Connection errors - Seq might not be ready yet, but service should continue
+                # These errors are expected during startup if Seq is still initializing
+                logging.getLogger(__name__).warning(
+                    f"Seq connection failed (service will continue, Seq may not be ready yet): {e}"
+                )
+                _SEQ_ENABLED = False
             except Exception as e:
-                logging.getLogger(__name__).error(f"Failed to configure Seq logging: {e}")
+                # Other errors - log but don't fail
+                logging.getLogger(__name__).warning(
+                    f"Failed to configure Seq logging (service will continue): {e}"
+                )
                 _SEQ_ENABLED = False
 
     _INITIALIZED = True

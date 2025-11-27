@@ -75,6 +75,33 @@ class JobPositionRepository:
         
         return query.count()
     
+    def get_all_job_positions(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+        is_active: Optional[bool] = True
+    ) -> List[JobPosition]:
+        """Get all job positions across all organizations"""
+        query = self.session.query(JobPosition).filter(
+            JobPosition.deleted_at.is_(None)
+        )
+        
+        if is_active is not None:
+            query = query.filter(JobPosition.is_active == is_active)
+        
+        return query.order_by(JobPosition.created_at.desc()).offset(offset).limit(limit).all()
+    
+    def count_all_job_positions(self, is_active: Optional[bool] = True) -> int:
+        """Count all job positions across all organizations"""
+        query = self.session.query(JobPosition).filter(
+            JobPosition.deleted_at.is_(None)
+        )
+        
+        if is_active is not None:
+            query = query.filter(JobPosition.is_active == is_active)
+        
+        return query.count()
+    
     def update_job_position(self, job_position_id: str, update_data: Dict[str, Any]) -> Optional[JobPosition]:
         """Update job position information"""
         job_position = self.get_job_position_by_id(job_position_id)

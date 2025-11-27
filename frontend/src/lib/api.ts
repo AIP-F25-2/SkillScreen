@@ -352,7 +352,7 @@ class ApiClient {
   }
 
   // Use interview-service resume upload/parsing instead of text-service
-  async uploadResumeForParsing(files: File | File[], organizationId: string = "00000000-0000-0000-0000-000000000001"): Promise<ApiResponse<any>> {
+  async uploadResumeForParsing(files: File | File[], organizationId: string = "e5d2d50b-6c07-43cd-8a78-ffd7b5b377bb"): Promise<ApiResponse<any>> {
     const formData = new FormData();
     const fileArray = Array.isArray(files) ? files : [files];
     
@@ -378,7 +378,56 @@ class ApiClient {
       body: formData,
     });
 
-    return response.json();
+    // Handle non-JSON / error responses gracefully so the UI doesn't crash on 500s
+    let payload: any = null;
+    try {
+      const text = await response.text();
+      try {
+        payload = text ? JSON.parse(text) : null;
+      } catch {
+        // Backend may return plain text ("Internal Server Error"), wrap it
+        payload = {
+          success: false,
+          data: null,
+          error: text || `Request failed with status ${response.status}`,
+          meta: {
+            timestamp: new Date().toISOString(),
+            request_id: '',
+            version: 'v1',
+          },
+        };
+      }
+    } catch (e) {
+      // If even reading text fails, surface a generic error
+      payload = {
+        success: false,
+        data: null,
+        error: (e as Error).message || 'Upload failed',
+        meta: {
+          timestamp: new Date().toISOString(),
+          request_id: '',
+          version: 'v1',
+        },
+      };
+    }
+
+    if (!response.ok) {
+      // Normalize error shape for callers
+      return (payload && typeof payload === 'object' && 'success' in payload)
+        ? payload
+        : {
+            success: false,
+            data: null,
+            error: `Upload failed with status ${response.status}`,
+            meta: {
+              timestamp: new Date().toISOString(),
+              request_id: '',
+              version: 'v1',
+            },
+          };
+    }
+
+    return payload as ApiResponse<any>;
   }
 
   async createAICandidate(candidateData: {
@@ -476,6 +525,7 @@ class ApiClient {
     candidate_name: string;
     candidate_id: string;
     session_id: string;
+    job_position_id?: string;
     recruiter_name?: string;
     company_name?: string;
     expires_in_hours?: number;
@@ -493,6 +543,14 @@ class ApiClient {
     });
 
     return response.json();
+  }
+
+  // =========================================
+  // Job Position Methods
+  // =========================================
+
+  async getJobPositions(organizationId: string): Promise<ApiResponse<{ job_positions: any[]; total: number }>> {
+    return this.request<{ job_positions: any[]; total: number }>(`/interview/job-positions?organization_id=${organizationId}`);
   }
 }
 

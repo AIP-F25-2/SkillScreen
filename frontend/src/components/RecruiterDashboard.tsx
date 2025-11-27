@@ -315,7 +315,7 @@ export default function RecruiterDashboard() {
               <div className="text-center py-12">
                 <FileText className="w-16 h-16 text-white/30 mx-auto mb-4" />
                 <p className="text-white/60">No interviews yet</p>
-                <p className="text-white/40 text-sm">Interviews will appear here after they are completed</p>
+                <p className="text-white/40 text-sm">Scheduled and completed interviews will appear here</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
