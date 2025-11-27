@@ -28,7 +28,7 @@ COPY requirements_production.txt .
 RUN pip install --no-cache-dir -r requirements_production.txt
 
 # Copy only necessary application files (not recursive)
-COPY simple_fastapi_app.py .
+COPY fastapi_app.py .
 COPY services/ ./services/
 COPY utils/ ./utils/
 COPY database/ ./database/

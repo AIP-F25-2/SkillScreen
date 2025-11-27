@@ -1,4 +1,5 @@
 """
+
 Model Interpretability Service for SkillScreen
 Provides SHAP and LIME explanations for ML model predictions
 """
@@ -35,7 +36,7 @@ class ModelInterpretabilityService:
     def __init__(self):
         self.shap_explainers = {}
         self.lime_explainers = {}
-        log_info("[OK] Model Interpretability Service initialized")
+        log_info("✅ Model Interpretability Service initialized")
     
     async def explain_prediction_with_shap(
         self,
@@ -221,4 +222,6 @@ class ModelInterpretabilityService:
 
 # Global instance
 model_interpretability_service = ModelInterpretabilityService()
+
+
 

@@ -4,6 +4,7 @@ Manages coding questions, integrates with LeetCode, and handles coding sessions
 """
 
 import uuid
+import asyncio
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone, timedelta
 import logging
@@ -34,22 +35,46 @@ class CodingQuestionService:
         difficulty: str = 'medium',
         db = None
     ) -> Dict[str, Any]:
-        """Generate a coding question based on job requirements and candidate skills"""
+        """Generate a coding question based on job requirements, candidate skills, resume, and job description"""
         try:
             # Get job skills and candidate skills
             job_skills = getattr(job, 'required_skills', getattr(job, 'skills_required', [])) or []
             candidate_skills = getattr(candidate, 'skills', []) or []
             
+            # Get job description and candidate resume information
+            job_description = getattr(job, 'description', '') or ''
+            candidate_experience = getattr(candidate, 'experience', {})
+            if isinstance(candidate_experience, dict):
+                experience_years = candidate_experience.get('years', 0)
+            else:
+                experience_years = 0
+            
             # Determine question type based on job requirements
             question_type = self._determine_question_type(job_skills)
             
-            # Fetch question from LeetCode
+            # Use LLM to generate personalized coding question based on resume and job description
+            personalized_question = await self._generate_personalized_coding_question(
+                job_skills=job_skills,
+                candidate_skills=candidate_skills,
+                job_description=job_description,
+                candidate_experience_years=experience_years,
+                difficulty=difficulty,
+                question_type=question_type
+            )
+            
+            # Fetch question from LeetCode (using web search via LeetCode service)
             leetcode_question = await leetcode_service.get_question_by_requirements(
                 job_skills=job_skills,
                 candidate_skills=candidate_skills,
                 difficulty=difficulty,
                 question_type=question_type
             )
+            
+            # Enhance LeetCode question with personalized context from LLM
+            if leetcode_question and personalized_question:
+                # Merge LLM-generated context with LeetCode question
+                leetcode_question['personalized_context'] = personalized_question
+                leetcode_question['description'] = f"{personalized_question}\n\n{leetcode_question.get('description', '')}"
             
             if not leetcode_question:
                 log_warning("Failed to fetch LeetCode question, using fallback")
@@ -296,6 +321,61 @@ class CodingQuestionService:
             log_error(f"Error getting coding session status: {e}")
             raise
     
+    async def _generate_personalized_coding_question(
+        self,
+        job_skills: List[str],
+        candidate_skills: List[str],
+        job_description: str,
+        candidate_experience_years: float,
+        difficulty: str,
+        question_type: str
+    ) -> str:
+        """Generate personalized coding question context using LLM based on resume and job description"""
+        try:
+            from services.llm_service import llm_service
+            
+            # Build prompt for LLM to generate personalized coding question context
+            prompt = f"""You are generating a coding interview question for a candidate. Based on the following information, create a personalized context that explains why this coding question is relevant.
+
+JOB REQUIREMENTS:
+- Required Skills: {', '.join(job_skills[:10]) if job_skills else 'Various technical skills'}
+- Job Description: {job_description[:500] if job_description else 'Technical development role'}
+- Difficulty Level: {difficulty}
+
+CANDIDATE BACKGROUND:
+- Skills: {', '.join(candidate_skills[:10]) if candidate_skills else 'Technical skills'}
+- Experience: {candidate_experience_years} years
+
+QUESTION TYPE: {question_type}
+
+Generate a brief, personalized introduction (2-3 sentences) that:
+1. Connects the coding question to the job requirements
+2. References the candidate's skills and experience level
+3. Explains why this question is relevant for this specific role
+4. Makes it feel tailored to this candidate
+
+Return only the personalized context text, no additional formatting."""
+            
+            # Use LLM to generate personalized context
+            if llm_service and llm_service.gemini_model:
+                try:
+                    loop = asyncio.get_event_loop()
+                    response = await loop.run_in_executor(
+                        None,
+                        lambda: llm_service.gemini_model.generate_content(prompt)
+                    )
+                    if response and response.text:
+                        return response.text.strip()
+                except Exception as e:
+                    log_warning(f"LLM generation failed, using fallback: {e}")
+            
+            # Fallback personalized context
+            return f"Based on your experience with {', '.join(candidate_skills[:3]) if candidate_skills else 'technical skills'} and the requirements for this {difficulty} level position, please solve the following coding challenge."
+            
+        except Exception as e:
+            log_warning(f"Error generating personalized coding question: {e}")
+            return f"Please solve the following {difficulty} level coding challenge relevant to this position."
+    
     def _determine_question_type(self, job_skills: List[str]) -> str:
         """Determine question type based on job skills"""
         skills_lower = [s.lower() for s in job_skills]
@@ -317,4 +397,5 @@ class CodingQuestionService:
 
 # Global instance
 coding_question_service = CodingQuestionService()
+
 

@@ -146,7 +146,7 @@ class AntiCheatingService:
         response_text: str,
         previous_responses: List
     ) -> Dict:
-        """Detect duplicate or near-duplicate responses - supports both database and in-memory"""
+        """Detect duplicate or near-duplicate responses using LLM for better detection - supports both database and in-memory"""
         try:
             if not previous_responses:
                 return {
@@ -155,6 +155,70 @@ class AntiCheatingService:
                     'similarity_score': 0.0
                 }
             
+            # Use LLM for duplicate detection if available
+            try:
+                from services.llm_service import llm_service
+                if llm_service.gemini_model:
+                    # Use LLM to check for duplicates
+                    prev_responses_text = "\n".join([
+                        f"Response {i+1}: {r.response_text if hasattr(r, 'response_text') else r.get('response_text', '')}"
+                        for i, r in enumerate(previous_responses[-5:])  # Check last 5 responses
+                    ])
+                    
+                    duplicate_check_prompt = f"""Check if the following new response is a duplicate or very similar to any of the previous responses.
+
+Previous Responses:
+{prev_responses_text}
+
+New Response:
+{response_text}
+
+Analyze if the new response:
+1. Is identical or nearly identical to any previous response
+2. Contains the same key points or information
+3. Is a copy-paste or minimal variation
+
+Respond with JSON format:
+{{
+    "is_duplicate": true/false,
+    "similarity_score": 0.0-1.0,
+    "duplicate_count": number of similar responses found,
+    "reason": "explanation"
+}}"""
+                    
+                    import asyncio
+                    loop = asyncio.get_event_loop()
+                    llm_response = await loop.run_in_executor(
+                        None,
+                        lambda: llm_service.gemini_model.generate_content(duplicate_check_prompt)
+                    )
+                    
+                    if llm_response and llm_response.text:
+                        import json
+                        try:
+                            # Try to extract JSON from response
+                            response_text_clean = llm_response.text.strip()
+                            # Remove markdown code blocks if present
+                            if '```json' in response_text_clean:
+                                response_text_clean = response_text_clean.split('```json')[1].split('```')[0]
+                            elif '```' in response_text_clean:
+                                response_text_clean = response_text_clean.split('```')[1].split('```')[0]
+                            
+                            duplicate_result = json.loads(response_text_clean)
+                            if duplicate_result.get('is_duplicate', False):
+                                log_warning(f"[ANTI-CHEAT] LLM detected duplicate response: {duplicate_result.get('reason', 'Similar to previous response')}")
+                                return {
+                                    'is_duplicate': True,
+                                    'duplicate_count': duplicate_result.get('duplicate_count', 1),
+                                    'similarity_score': duplicate_result.get('similarity_score', 0.85),
+                                    'reason': duplicate_result.get('reason', 'LLM detected similarity')
+                                }
+                        except:
+                            pass  # Fall through to rule-based detection
+            except Exception as e:
+                log_warning(f"[WARNING] LLM duplicate detection failed: {e}, using rule-based")
+            
+            # Fallback: Rule-based duplicate detection
             # Normalize response text
             normalized_response = self._normalize_text(response_text)
             duplicate_count = 0

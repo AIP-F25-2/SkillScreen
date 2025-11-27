@@ -192,7 +192,7 @@ training_result = await quality_prediction_service.train_model([
 
 ---
 
-## Integration into simple_fastapi_app.py
+## Integration into fastapi_app.py
 
 ### Example Integration in `submit_response()`:
 
@@ -423,7 +423,7 @@ def test_quality_prediction():
 
 ## Next Steps
 
-1. **Integrate into simple_fastapi_app.py**: Add service calls in `submit_response()`
+1. **Integrate into fastapi_app.py**: Add service calls in `submit_response()`
 2. **Add API endpoints**: Create endpoints for model training and bias reports
 3. **Collect training data**: Start collecting labeled data for model training
 4. **Monitor performance**: Track prediction accuracy and bias detection rates

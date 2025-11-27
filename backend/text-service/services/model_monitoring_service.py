@@ -1,4 +1,5 @@
 """
+
 Model Monitoring Service for SkillScreen
 Tracks model performance, detects drift, and manages model versions
 """
@@ -33,7 +34,7 @@ class ModelMonitoringService:
         # Performance metrics
         self.performance_metrics = {}  # {model_name: {metric: value}}
         
-        log_info("[OK] Model Monitoring Service initialized")
+        log_info("✅ Model Monitoring Service initialized")
     
     def track_prediction(
         self,
@@ -271,4 +272,6 @@ class ModelMonitoringService:
 
 # Global instance
 model_monitoring_service = ModelMonitoringService()
+
+
 

@@ -1,4 +1,5 @@
 """
+
 LeetCode Integration Service for SkillScreen
 Fetches coding questions from LeetCode based on job requirements and candidate skills
 """
@@ -52,7 +53,7 @@ class LeetCodeService:
             'union-find': ['union find', 'disjoint set']
         }
         
-        log_info("[OK] LeetCode Service initialized")
+        log_info("✅ LeetCode Service initialized")
     
     async def fetch_question_by_slug(self, slug: str) -> Optional[Dict[str, Any]]:
         """Fetch a specific LeetCode question by slug"""
@@ -445,4 +446,6 @@ class LeetCodeService:
 
 # Global instance
 leetcode_service = LeetCodeService()
+
+
 

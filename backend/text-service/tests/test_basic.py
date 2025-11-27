@@ -32,7 +32,7 @@ def test_file_structure():
     assert 'backend' in parent_dir or 'text-service' in current_dir
     
     # Check that key files exist
-    assert os.path.exists(os.path.join(parent_dir, 'simple_fastapi_app.py'))
+    assert os.path.exists(os.path.join(parent_dir, 'fastapi_app.py'))
     assert os.path.exists(os.path.join(parent_dir, 'requirements_production.txt'))
 
 

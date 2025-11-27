@@ -100,11 +100,26 @@ class ResumeParser:
             return ""
 
     def extract_name(self, text: str) -> Optional[str]:
-        """Extract candidate name from resume text"""
+        """Extract candidate name from resume text, filtering out location names"""
         lines = text.split('\n')
         
-        # Check first few lines for name patterns (increased to 10 lines)
-        for i, line in enumerate(lines[:10]):
+        # Common location/city names to filter out
+        location_names = {
+            'scarborough', 'toronto', 'vancouver', 'montreal', 'calgary', 'ottawa', 'edmonton',
+            'winnipeg', 'mississauga', 'brampton', 'hamilton', 'london', 'markham', 'vaughan',
+            'kitchener', 'windsor', 'saskatoon', 'regina', 'halifax', 'st john', 'victoria',
+            'new york', 'los angeles', 'chicago', 'houston', 'phoenix', 'philadelphia',
+            'san antonio', 'san diego', 'dallas', 'san jose', 'austin', 'jacksonville',
+            'san francisco', 'indianapolis', 'columbus', 'fort worth', 'charlotte', 'seattle',
+            'denver', 'washington', 'boston', 'el paso', 'detroit', 'nashville', 'portland',
+            'oklahoma city', 'las vegas', 'memphis', 'louisville', 'baltimore', 'milwaukee',
+            'albuquerque', 'tucson', 'fresno', 'sacramento', 'kansas city', 'mesa', 'atlanta',
+            'omaha', 'colorado springs', 'raleigh', 'miami', 'long beach', 'virginia beach',
+            'oakland', 'minneapolis', 'tulsa', 'cleveland', 'wichita', 'arlington'
+        }
+        
+        # Check first few lines for name patterns (increased to 15 lines)
+        for i, line in enumerate(lines[:15]):
             line = line.strip()
             if not line or len(line) < 3:
                 continue
@@ -123,13 +138,21 @@ class ResumeParser:
                     # Validate name (should be 2-4 words, not too long)
                     name_parts = name.split()
                     if 2 <= len(name_parts) <= 4 and len(name) < 50:
+                        # Filter out location names
+                        if any(part.lower() in location_names for part in name_parts):
+                            continue
                         # Check if it's not a common false positive
                         if not any(word.lower() in ['resume', 'cv', 'curriculum', 'vitae', 'profile'] 
                                  for word in name_parts):
+                            # Return only first 2-3 words (typically First Last or First Middle Last)
+                            # Exclude location names that might be at the end
+                            filtered_parts = [part for part in name_parts if part.lower() not in location_names]
+                            if len(filtered_parts) >= 2:
+                                return ' '.join(filtered_parts[:3]).title()
                             return name.title()
         
         # Fallback: Look for capitalized name pattern in first few lines
-        for i, line in enumerate(lines[:8]):
+        for i, line in enumerate(lines[:10]):
             line = line.strip()
             if not line or len(line) < 5:
                 continue
@@ -138,19 +161,135 @@ class ResumeParser:
             if 2 <= len(words) <= 4:
                 # Check if all words start with capital and rest lowercase (typical name pattern)
                 if all(w and w[0].isupper() and (len(w) == 1 or w[1:].islower()) for w in words):
-                    # Exclude common false positives
-                    if not any(w.lower() in ['resume', 'cv', 'phone', 'email', 'linkedin', 'github'] for w in words):
-                        return ' '.join(words)
+                    # Filter out location names
+                    filtered_words = [w for w in words if w.lower() not in location_names]
+                    if len(filtered_words) >= 2:
+                        # Exclude common false positives
+                        if not any(w.lower() in ['resume', 'cv', 'phone', 'email', 'linkedin', 'github'] for w in filtered_words):
+                            return ' '.join(filtered_words[:3])
         
         return None
 
     def extract_email(self, text: str) -> Optional[str]:
-        """Extract email address from resume text"""
-        match = re.search(self.email_pattern, text)
-        if match:
-            email = match.group(0)
-            if validate_email(email):
-                return email.lower()
+        """Extract email address from resume text with enhanced patterns - checks ALL lines
+        Handles patterns like: 'Email: text@gmail.com', 'Contact text@gmail.com', 'text@gmail.com', etc.
+        Uses LLM if available for better extraction.
+        """
+        # Comprehensive email pattern (handles gmail.com, company emails, etc.)
+        email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+        
+        # Try LLM-based extraction first if available
+        try:
+            from services.llm_service import llm_service
+            if llm_service.gemini_model:
+                # Use LLM to extract email from resume text
+                email_extraction_prompt = f"""Extract the email address from the following resume text. Look for patterns like "Email: ...", "Contact: ...", or just the email address itself.
+
+Resume Text (first 2000 characters):
+{text[:2000]}
+
+Extract ONLY the email address. Return just the email address, nothing else. If no email is found, return "NOT_FOUND"."""
+                
+                import asyncio
+                loop = asyncio.get_event_loop()
+                llm_response = loop.run_until_complete(
+                    loop.run_in_executor(
+                        None,
+                        lambda: llm_service.gemini_model.generate_content(email_extraction_prompt)
+                    )
+                )
+                
+                if llm_response and llm_response.text:
+                    extracted_email = llm_response.text.strip()
+                    # Clean up the response
+                    extracted_email = re.sub(r'[^\w.@+-]', '', extracted_email)  # Remove special chars except email chars
+                    # Extract email pattern from LLM response
+                    email_match = re.search(email_pattern, extracted_email, re.IGNORECASE)
+                    if email_match:
+                        email = email_match.group(0).lower()
+                        if validate_email(email):
+                            print(f"[LLM] Extracted email using LLM: {email}")
+                            return email
+        except Exception as e:
+            print(f"[WARNING] LLM email extraction failed: {e}, using rule-based")
+        
+        # Fallback: Rule-based extraction
+        # Split text into lines and check EVERY line (PDFs can have email anywhere)
+        lines = text.split('\n')
+        found_emails = []
+        
+        # Strategy 1: Check all lines for email pattern (handles "text@gmail.com" anywhere in line)
+        for i, line in enumerate(lines):
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Look for email pattern in the line - this will match even if there's text before it
+            matches = re.finditer(email_pattern, line, re.IGNORECASE)
+            for match in matches:
+                email = match.group(0).strip()
+                # Clean up common prefixes/suffixes and surrounding text
+                email = re.sub(r'^(Email|E-mail|E-Mail|Contact|Mail)[:\s]*', '', email, flags=re.IGNORECASE)
+                email = email.strip('.,;:()[]{}"\'')
+                # Remove any text that might be before the @ symbol (but keep the email)
+                if '@' in email:
+                    # Extract just the email part (username@domain)
+                    email_match = re.search(r'([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,})', email, re.IGNORECASE)
+                    if email_match:
+                        email = email_match.group(1)
+                if validate_email(email):
+                    found_emails.append((i, email.lower()))
+        
+        # Strategy 2: Check for "Email:" or "Contact:" label pattern in all lines
+        # This handles cases like "Email: text@gmail.com" or "Contact text@gmail.com"
+        if not found_emails:
+            for i, line in enumerate(lines):
+                line_lower = line.lower()
+                # Check for email-related labels
+                if any(label in line_lower for label in ['email', 'e-mail', 'contact', 'mail']):
+                    # Extract email after colon, space, or label
+                    if ':' in line:
+                        parts = line.split(':', 1)
+                        if len(parts) == 2:
+                            value = parts[1].strip()
+                            # Look for email in the value part
+                            match = re.search(email_pattern, value, re.IGNORECASE)
+                            if match:
+                                email = match.group(0).strip()
+                                email = email.strip('.,;:()[]{}"\'')
+                                if validate_email(email):
+                                    found_emails.append((i, email.lower()))
+                    # Also check if email appears after label word (e.g., "Contact text@gmail.com")
+                    match = re.search(r'(?:email|e-mail|contact|mail)[:\s]+([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,})', line, re.IGNORECASE)
+                    if match:
+                        email = match.group(1).strip()
+                        email = email.strip('.,;:()[]{}"\'')
+                        if validate_email(email):
+                            found_emails.append((i, email.lower()))
+                    # Also check the line itself for any email pattern
+                    match = re.search(email_pattern, line, re.IGNORECASE)
+                    if match:
+                        email = match.group(0).strip()
+                        email = email.strip('.,;:()[]{}"\'')
+                        if validate_email(email):
+                            found_emails.append((i, email.lower()))
+        
+        # Strategy 3: Search entire text if still not found (fallback)
+        if not found_emails:
+            matches = re.finditer(email_pattern, text, re.IGNORECASE)
+            for match in matches:
+                email = match.group(0).strip()
+                email = email.strip('.,;:()[]{}"\'')
+                if validate_email(email):
+                    found_emails.append((0, email.lower()))
+                    break  # Take first valid email
+        
+        # Return the email found earliest in the document (most likely to be the contact email)
+        if found_emails:
+            # Sort by line number and return the first one
+            found_emails.sort(key=lambda x: x[0])
+            return found_emails[0][1]
+        
         return None
 
     def extract_phone(self, text: str) -> Optional[str]:

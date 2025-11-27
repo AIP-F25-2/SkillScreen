@@ -86,7 +86,7 @@ After setting up your configuration:
 ```bash
 # Start the FastAPI backend
 cd backend/text-service
-python simple_fastapi_app.py
+python -m uvicorn fastapi_app:app --host 0.0.0.0 --port 8000
 
 # Start the Streamlit frontend (in another terminal)
 cd frontend/streamlit-app
