@@ -108,7 +108,7 @@ services:
       - ENABLE_SEQ=false
       - SEQ_URL=http://seq:5341
       - JUDGE0_BASE_URL=https://judge0-ce.p.rapidapi.com
-      - JUDGE0_RAPIDAPI_KEY=
+      - JUDGE0_RAPIDAPI_KEY=51a8a459afmsh0d9fa8864da57d9p19258fjsn0a24328cb69c
       - JUDGE0_RAPIDAPI_HOST=judge0-ce.p.rapidapi.com
     volumes:
       - ./backend/coding-service:/app
