@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Request, Form
-from typing import List
+from typing import List, Optional
 import logging
 from datetime import datetime, timezone
 import uuid
@@ -27,7 +27,13 @@ def create_response(data, success=True, error=None):
 @router.post("/upload", response_model=ResumeUploadResponse)
 async def upload_resumes(
     files: List[UploadFile] = File(..., description="Resume files to upload (PDF, DOC, DOCX, ZIP)"),
-    organization_id: str = Form(..., description="Organization ID for the candidates")
+    organization_id: str = Form(..., description="Organization ID for the candidates"),
+    job_position_id: str = Form(..., description="Job Position ID for the interviews"),
+    mode: Optional[str] = Form(None, description="Interview mode: chat, audio, video, hybrid (default: video)"),
+    difficulty: Optional[str] = Form(None, description="Difficulty level: easy, medium, hard (default: medium)"),
+    max_questions: Optional[int] = Form(None, description="Maximum number of questions (default: 15)"),
+    interview_type: Optional[str] = Form(None, description="Interview type: mixed, technical, behavioral (default: mixed)"),
+    target_duration_minutes: Optional[int] = Form(None, description="Target duration in minutes (default: 12)")
 ):
     """
     Upload single or multiple resume files for a specific organization
@@ -36,6 +42,13 @@ async def upload_resumes(
     - PDF files (.pdf)
     - Word documents (.doc, .docx)
     - ZIP archives containing multiple resumes
+    
+    Optional parameters for interview settings (uses defaults if not provided):
+    - mode: Interview mode (default: video)
+    - difficulty: Difficulty level (default: medium)
+    - max_questions: Maximum questions (default: 15)
+    - interview_type: Interview type (default: mixed)
+    - target_duration_minutes: Target duration (default: 12)
     
     Returns upload ID, processing status, and extracted information.
     """
@@ -47,15 +60,31 @@ async def upload_resumes(
         if len(files) > 10:  # Limit to 10 files per upload
             raise HTTPException(status_code=400, detail="Maximum 10 files allowed per upload")
         
-        # organization_id is now passed as a form parameter
+        logger.info(f"Received {len(files)} files for upload for organization: {organization_id}, job_position: {job_position_id}")
         
-        logger.info(f"Received {len(files)} files for upload for organization: {organization_id}")
+        # Prepare optional interview settings
+        interview_settings = {}
+        if mode:
+            interview_settings['mode'] = mode
+        if difficulty:
+            interview_settings['difficulty'] = difficulty
+        if max_questions is not None:
+            interview_settings['max_questions'] = max_questions
+        if interview_type:
+            interview_settings['interview_type'] = interview_type
+        if target_duration_minutes is not None:
+            interview_settings['target_duration_minutes'] = target_duration_minutes
         
         # Initialize resume service
         resume_service = ResumeService()
         
-        # Process files with organization_id
-        result = await resume_service.process_resume_upload(files, organization_id)
+        # Process files with organization_id, job_position_id, and optional settings
+        result = await resume_service.process_resume_upload(
+            files, 
+            organization_id, 
+            job_position_id,
+            interview_settings if interview_settings else None
+        )
         
         if result["success"]:
             return create_response(result["data"])

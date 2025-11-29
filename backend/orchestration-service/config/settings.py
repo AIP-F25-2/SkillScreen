@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     AUDIO_AI_SERVICE_URL: str = "http://audio-ai-service:8080"
     VIDEO_AI_SERVICE_URL: str = "http://video-ai-service:8080"
     MEDIA_SERVICE_URL: str = "http://media-service:8080"
-    ASSESSMENT_SERVICE_URL: str = "http://assessment-service:8080"
+    ASSESSMENT_SERVICE_URL: str = "http://assessment-service:8005"
     
     INTERVIEW_SERVICE_TIMEOUT: int = 60
     TEXT_SERVICE_TIMEOUT: int = 30

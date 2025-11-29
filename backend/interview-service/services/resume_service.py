@@ -31,7 +31,13 @@ class ResumeService:
         self.azure_storage = AzureResumeStorage()
     
     
-    async def process_resume_upload(self, files: List[Any], organization_id: str) -> Dict[str, Any]:
+    async def process_resume_upload(
+        self, 
+        files: List[Any], 
+        organization_id: str, 
+        job_position_id: str,
+        interview_settings: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Process uploaded resume files"""
         try:
             # Generate upload ID and path
@@ -44,7 +50,12 @@ class ResumeService:
             processed_files = await self._process_all_files(files, upload_path, upload_id)
             
             # Save candidates to database
-            saved_candidates = self._save_candidates_to_database(processed_files, organization_id)
+            saved_candidates = self._save_candidates_to_database(
+                processed_files, 
+                organization_id, 
+                job_position_id,
+                interview_settings
+            )
             
             # Prepare response data
             response_data = self._prepare_response_data(upload_id, files, processed_files, saved_candidates)
@@ -73,7 +84,13 @@ class ResumeService:
         
         return processed_files
     
-    def _save_candidates_to_database(self, processed_files: List[Dict[str, Any]], organization_id: str) -> List[Dict[str, Any]]:
+    def _save_candidates_to_database(
+        self, 
+        processed_files: List[Dict[str, Any]], 
+        organization_id: str, 
+        job_position_id: str,
+        interview_settings: Optional[Dict[str, Any]] = None
+    ) -> List[Dict[str, Any]]:
         """Save candidates to database"""
         saved_candidates = []
         logger.info(f"Checking {len(processed_files)} files for candidate saving...")
@@ -81,7 +98,12 @@ class ResumeService:
         for file_result in processed_files:
             if self._should_save_candidate(file_result):
                 candidate_data = self._prepare_candidate_data(file_result, organization_id)
-                save_result = self._save_single_candidate(candidate_data, file_result)
+                save_result = self._save_single_candidate(
+                    candidate_data, 
+                    file_result, 
+                    job_position_id,
+                    interview_settings
+                )
                 if save_result:
                     saved_candidates.append(save_result)
         
@@ -114,7 +136,13 @@ class ResumeService:
             'projects': projects if projects else None  # Store as JSONB array
         }
     
-    def _save_single_candidate(self, candidate_data: Dict[str, Any], file_result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _save_single_candidate(
+        self, 
+        candidate_data: Dict[str, Any], 
+        file_result: Dict[str, Any], 
+        job_position_id: str,
+        interview_settings: Optional[Dict[str, Any]] = None
+    ) -> Optional[Dict[str, Any]]:
         """Save a single candidate to database, upload resume to Azure, and create interview record"""
         logger.info(f"File: {file_result.get('filename')}, Status: {file_result.get('status')}, Name: {file_result.get('extracted_name')}, Emails: {file_result.get('extracted_emails')}")
         
@@ -148,7 +176,12 @@ class ResumeService:
             
             # Create interview record automatically
             try:
-                self._create_interview_for_candidate(result['data'], candidate_data.get('organization_id'))
+                self._create_interview_for_candidate(
+                    result['data'], 
+                    candidate_data.get('organization_id'), 
+                    job_position_id,
+                    interview_settings
+                )
             except Exception as e:
                 logger.error(f"Failed to create interview record for candidate {candidate_id}: {str(e)}")
                 # Don't fail the whole process if interview creation fails
@@ -173,13 +206,21 @@ class ResumeService:
         except Exception as e:
             logger.error(f"Failed to update candidate resume URL: {str(e)}")
     
-    def _create_interview_for_candidate(self, candidate_data: Dict[str, Any], organization_id: Optional[str]) -> None:
+    def _create_interview_for_candidate(
+        self, 
+        candidate_data: Dict[str, Any], 
+        organization_id: Optional[str], 
+        job_position_id: str,
+        interview_settings: Optional[Dict[str, Any]] = None
+    ) -> None:
         """Create an interview record automatically when a candidate is created"""
         try:
             from repository.interview_repository import InterviewRepository
+            from repository.interview_template_repository import InterviewTemplateRepository
             session = DBFactory.get_session()
             try:
                 interview_repo = InterviewRepository(session)
+                template_repo = InterviewTemplateRepository(session)
                 
                 # Extract candidate_id - handle both dict with 'id' key and direct string
                 candidate_id = candidate_data.get('id') if isinstance(candidate_data, dict) else str(candidate_data)
@@ -189,32 +230,51 @@ class ResumeService:
                 
                 # Ensure candidate_id is a string
                 candidate_id = str(candidate_id)
+                organization_id = organization_id or "e5d2d50b-6c07-43cd-8a78-ffd7b5b377bb"
+                
+                # Option 3: Query for organization's template (simple fallback)
+                template = template_repo.get_template_by_organization(organization_id)
+                if not template:
+                    logger.error(f"No interview template found for organization {organization_id}. Please create a template first.")
+                    raise ValueError(f"No interview template found for organization {organization_id}")
+                
+                template_id = str(template.id)
+                logger.info(f"Using template {template_id} ({template.name}) for organization {organization_id}")
                 
                 # Generate session_id
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 session_id = f"session_{timestamp}_{uuid.uuid4().hex[:8]}"
                 
-                # Create interview record matching the sample format
+                # Use provided settings or defaults
+                mode = interview_settings.get('mode') if interview_settings and 'mode' in interview_settings else 'video'  # Default: video
+                difficulty = interview_settings.get('difficulty') if interview_settings and 'difficulty' in interview_settings else 'medium'
+                max_questions = interview_settings.get('max_questions') if interview_settings and 'max_questions' in interview_settings else 15
+                interview_type = interview_settings.get('interview_type') if interview_settings and 'interview_type' in interview_settings else 'mixed'
+                target_duration_minutes = interview_settings.get('target_duration_minutes') if interview_settings and 'target_duration_minutes' in interview_settings else 12
+                
+                # Create interview record with job_position_id and template_id
                 interview_data = {
-                    'organization_id': organization_id or "e5d2d50b-6c07-43cd-8a78-ffd7b5b377bb",  # Use hardcoded org if not provided
+                    'organization_id': organization_id,
+                    'job_position_id': job_position_id,  # Required field
                     'candidate_id': candidate_id,
+                    'template_id': template_id,  # Required field
                     'status': 'scheduled',  # Start as scheduled
-                    'mode': 'chat',  # Default mode
+                    'mode': mode,  # Configurable, default: video
                     'scheduled_at': datetime.now(timezone.utc).isoformat(),
                     'settings': {
-                        'difficulty': 'medium',
+                        'difficulty': difficulty,
                         'session_id': session_id,
-                        'max_questions': 15,
-                        'interview_type': 'mixed',
+                        'max_questions': max_questions,
+                        'interview_type': interview_type,
                         'candidate_record_id': candidate_id,
-                        'target_duration_minutes': 12
+                        'target_duration_minutes': target_duration_minutes
                     }
                 }
                 
                 interview = interview_repo.create_interview(interview_data)
                 session.commit()
                 
-                logger.info(f"Created interview record {interview.id} for candidate {candidate_id}")
+                logger.info(f"Created interview record {interview.id} for candidate {candidate_id} with job_position {job_position_id} and template {template_id} (mode: {mode})")
             finally:
                 session.close()
         except Exception as e:

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException
+import httpx
 
 from schemas.interview_schemas import (
    
@@ -15,6 +16,23 @@ router = APIRouter()
 interview_client = InterviewServiceClient()
 text_client = TextServiceClient()
 audio_client = AudioServiceClient()
+
+@router.get("/{interview_id}")
+async def get_interview(interview_id: str):
+    """Get interview details by ID"""
+    logger.info(f"📋 Getting interview {interview_id}")
+    
+    try:
+        result = await interview_client.get_interview(interview_id)
+        logger.info(f"✅ Interview retrieved")
+        return result
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Interview not found")
+        raise HTTPException(status_code=e.response.status_code, detail=e.response.text)
+    except Exception as e:
+        logger.error(f"❌ Get interview failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/validate-token")
 async def validate_token(request: ValidateTokenRequest):

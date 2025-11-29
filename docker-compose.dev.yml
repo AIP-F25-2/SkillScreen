@@ -17,7 +17,7 @@ services:
       ALGORITHM: HS256
       USER_SERVICE_URL: http://user-service:8080
       SSO_SERVICE_URL: http://sso-service:8080
-      ASSESSMENT_SERVICE_URL: http://assessment-service:8080
+      ASSESSMENT_SERVICE_URL: http://assessment-service:8005
       CODING_SERVICE_URL: http://coding-service:8080
       MEDIA_SERVICE_URL: http://media-service:8080
       TEXT_SERVICE_URL: http://text-service:8080
@@ -304,7 +304,7 @@ services:
       AUDIO_AI_SERVICE_URL: http://audio-ai-service:8080
       VIDEO_AI_SERVICE_URL: http://video-ai-service:8080
       MEDIA_SERVICE_URL: http://media-service:8080
-      ASSESSMENT_SERVICE_URL: http://assessment-service:8080
+      ASSESSMENT_SERVICE_URL: http://assessment-service:8005
     volumes:
       - ./backend/orchestration-service:/app
     depends_on:
