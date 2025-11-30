@@ -14,7 +14,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'common-service'))
 from db import DBFactory
 
 # Import controllers
-from controllers.resume_controller import router as resume_router
+from controllers.resume_controller import router as resume_router, set_email_service
 from controllers.job_position_controller import router as job_position_controller
 
 # Import services
@@ -22,7 +22,9 @@ from services.email_service import EmailService
 
 # Import repositories and models
 from repository.interview_repository import InterviewRepository
+from repository.interview_token_repository import InterviewTokenRepository
 from models.interview import Interview
+from models.interview_token import InterviewToken
 
 # Load environment variables
 load_dotenv()
@@ -57,8 +59,11 @@ app.include_router(job_position_controller)
 sessions_db = {}
 token_store = {}
 
-# Initialize email service
-email_service = EmailService()
+# Initialize email service with token_store reference
+email_service = EmailService(token_store=token_store)
+
+# Inject email_service into resume_controller so it has the token_store reference
+set_email_service(email_service)
 
 def create_response(data, success=True):
     """Create standardized API response"""
@@ -243,28 +248,38 @@ async def validate_token(request: Request):
     try:
         data = await request.json()
         token = data.get('token')
-        
+
         if not token:
             raise HTTPException(status_code=400, detail="Token is required")
-        
-        # Check if token exists
-        if token not in token_store:
-            logger.warning(f"Token not found: {token[:10]}...")
-            raise HTTPException(status_code=404, detail="Invalid or expired token")
-        
-        token_data = token_store[token]
-        
-        # Check if token is expired
-        expires_at = datetime.fromisoformat(token_data['expires_at'])
-        if datetime.utcnow() > expires_at:
-            logger.warning(f"Token expired: {token[:10]}...")
-            raise HTTPException(status_code=410, detail="This interview link has expired")
-        
-        # Check if token was already used
-        if token_data.get('used_at'):
-            logger.warning(f"Token already used: {token[:10]}...")
-            raise HTTPException(status_code=410, detail="This interview link has already been used")
-        
+
+        # First try to validate from database
+        interview_token = InterviewTokenRepository.validate_token(token)
+
+        if not interview_token:
+            # Fallback to in-memory token_store if database lookup fails
+            if token not in token_store:
+                logger.warning(f"Token not found in database or memory: {token[:10]}...")
+                raise HTTPException(status_code=404, detail="Invalid or expired token")
+
+            # Use in-memory token data
+            token_data = token_store[token]
+            candidate_id = token_data['candidate_id']
+            candidate_name = token_data['candidate_name']
+            candidate_email = token_data['candidate_email']
+            expires_at_str = token_data['expires_at']
+        else:
+            # Use database token data
+            candidate_id = str(interview_token.candidate_id)
+            candidate_name = interview_token.candidate_name
+            candidate_email = interview_token.candidate_email
+            expires_at_str = interview_token.expires_at.isoformat()
+            token_data = {
+                'candidate_id': candidate_id,
+                'candidate_name': candidate_name,
+                'candidate_email': candidate_email,
+                'expires_at': expires_at_str
+            }
+
         candidate_id = token_data['candidate_id']
         
         # Try to find existing interview for this candidate (created when invitation was sent)
@@ -273,22 +288,22 @@ async def validate_token(request: Request):
         try:
             interview_repo = InterviewRepository(session)
             
-            # Look for scheduled interview with this candidate_id
+            # Look for ANY scheduled interview with this candidate_id
             interviews = interview_repo.get_interviews_by_candidate(candidate_id)
             scheduled_interview = None
             for inv in interviews:
-                if inv.status == 'scheduled' and inv.settings and inv.settings.get('token') == token:
+                if inv.status == 'scheduled':
                     scheduled_interview = inv
                     break
-            
+
             if scheduled_interview:
                 # Update existing interview to in_progress
                 interview_id = str(scheduled_interview.id)
                 interview_repo.update_interview_status(interview_id, 'in_progress')
                 session.commit()
-                logger.info(f"Updated existing interview {interview_id} to in_progress for candidate {candidate_id}")
+                logger.info(f"✅ Updated existing interview {interview_id} to in_progress for candidate {candidate_id}")
             else:
-                # Create new interview record if not found
+                # No scheduled interview found - create new one as fallback
                 # Get candidate info to get organization_id
                 from repository.candidate_repository import CandidateRepository
                 candidate_repo = CandidateRepository(session)
@@ -333,26 +348,28 @@ async def validate_token(request: Request):
             sessions_db[interview_id] = interview_data
         finally:
             session.close()
-        
-        # Mark token as used
-        token_data['used_at'] = datetime.utcnow().isoformat()
-        token_data['interview_id'] = interview_id  # Link token to interview
-        
+
+        # Mark token as used in database
+        try:
+            InterviewTokenRepository.mark_token_used(token)
+            logger.info(f"Token marked as used in database: {token[:10]}...")
+        except Exception as e:
+            logger.warning(f"Failed to mark token as used in database: {str(e)}")
+            # Fallback: mark in memory
+            token_data['used_at'] = datetime.utcnow().isoformat()
+
         logger.info(f"Token validated and interview created: {token[:10]}... -> {interview_id} for {token_data['candidate_email']}")
-        
-        return {
-            "valid": True,
-            "data": {
-                "token": token,
-                "candidateId": token_data['candidate_id'],
-                "candidateName": token_data['candidate_name'],
-                "candidateEmail": token_data['candidate_email'],
-                "sessionId": interview_id,  # Use interview_id as session_id
-                "interviewId": interview_id,  # Add explicit interview_id
-                "expiresAt": token_data['expires_at'],
-                "usedAt": token_data.get('used_at')
-            }
-        }
+
+        return create_response(
+            data={
+                "interview_id": interview_id,
+                "candidate_id": token_data['candidate_id'],
+                "candidate_name": token_data['candidate_name'],
+                "candidate_email": token_data['candidate_email'],
+                "status": "in_progress"
+            },
+            success=True
+        )
         
     except HTTPException:
         raise

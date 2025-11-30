@@ -10,6 +10,7 @@ from services.file_processor import FileProcessor
 from services.text_extractor import TextExtractor
 from services.email_extractor import EmailExtractor
 from services.azure_resume_storage import AzureResumeStorage
+from services.email_service import email_service
 # Import local candidate service
 from services.candidate_service import CandidateService
 
@@ -22,13 +23,15 @@ logger = logging.getLogger(__name__)
 
 class ResumeService:
     """Main service for handling resume uploads and processing"""
-    
-    def __init__(self):
+
+    def __init__(self, email_service_instance=None):
         self.file_processor = FileProcessor()
         self.text_extractor = TextExtractor()
         self.email_extractor = EmailExtractor()
         self.candidate_service = CandidateService()
         self.azure_storage = AzureResumeStorage()
+        # Use injected email_service instance if provided, otherwise use default
+        self.email_service = email_service_instance or email_service
     
     
     async def process_resume_upload(
@@ -273,8 +276,33 @@ class ResumeService:
                 
                 interview = interview_repo.create_interview(interview_data)
                 session.commit()
-                
-                logger.info(f"Created interview record {interview.id} for candidate {candidate_id} with job_position {job_position_id} and template {template_id} (mode: {mode})")
+                interview_id = str(interview.id)
+
+                logger.info(f"Created interview record {interview_id} for candidate {candidate_id} with job_position {job_position_id} and template {template_id} (mode: {mode})")
+
+                # Send email invitation to candidate
+                try:
+                    candidate_name = candidate_data.get('full_name', 'Candidate')
+                    candidate_email = candidate_data.get('email')
+
+                    if candidate_email:
+                        email_result = self.email_service.send_interview_invitation(
+                            candidate_email=candidate_email,
+                            candidate_name=candidate_name,
+                            candidate_id=str(candidate_id),
+                            session_id=session_id,
+                            recruiter_name=None,
+                            company_name=None,
+                            expires_in_hours=48
+                        )
+
+                        logger.info(f"✅ Interview invitation email sent to {candidate_email} for interview {interview_id}")
+                    else:
+                        logger.warning(f"No email address available to send invitation for candidate {candidate_id}")
+                except Exception as e:
+                    logger.error(f"Failed to send invitation email for candidate {candidate_id}: {str(e)}")
+                    # Don't fail the interview creation if email fails
+
             finally:
                 session.close()
         except Exception as e:

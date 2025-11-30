@@ -7,9 +7,17 @@ import uuid
 from services.resume_service import ResumeService
 from schemas.resume_schemas import ResumeUploadResponse, APIResponse
 
+# Note: email_service is passed as a parameter during router setup in interview.py
+_email_service_instance = None
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/resumes", tags=["resumes"])
+
+def set_email_service(email_service_instance):
+    """Inject email_service instance (called from interview.py)"""
+    global _email_service_instance
+    _email_service_instance = email_service_instance
 
 def create_response(data, success=True, error=None):
     """Create standardized API response"""
@@ -61,7 +69,7 @@ async def upload_resumes(
             raise HTTPException(status_code=400, detail="Maximum 10 files allowed per upload")
         
         logger.info(f"Received {len(files)} files for upload for organization: {organization_id}, job_position: {job_position_id}")
-        
+
         # Prepare optional interview settings
         interview_settings = {}
         if mode:
@@ -74,9 +82,9 @@ async def upload_resumes(
             interview_settings['interview_type'] = interview_type
         if target_duration_minutes is not None:
             interview_settings['target_duration_minutes'] = target_duration_minutes
-        
-        # Initialize resume service
-        resume_service = ResumeService()
+
+        # Initialize resume service with the injected email_service instance
+        resume_service = ResumeService(email_service_instance=_email_service_instance)
         
         # Process files with organization_id, job_position_id, and optional settings
         result = await resume_service.process_resume_upload(

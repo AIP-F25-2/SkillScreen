@@ -18,7 +18,7 @@ class TextServiceClient:
     ) -> Dict:
         """Start interview - get first question"""
         url = f"{self.base_url}/api/interviews/start"
-        
+
         payload = {
             "candidate_id": candidate_id,
             "job_id": job_id,
@@ -26,7 +26,7 @@ class TextServiceClient:
             "difficulty": difficulty,
             "max_questions": max_questions
         }
-        
+
         try:
             logger.info("📝 Starting interview via text-service")
             async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -35,6 +35,22 @@ class TextServiceClient:
                 return response.json()
         except Exception as e:
             logger.error(f"❌ Start interview failed: {str(e)}")
+            raise
+
+    async def get_first_question(self, interview_id: str) -> Dict:
+        """Get first question for an interview"""
+        url = f"{self.base_url}/api/interviews/{interview_id}/first-question"
+
+        try:
+            logger.info(f"📝 Fetching first question for interview {interview_id}")
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(url)
+                response.raise_for_status()
+                result = response.json()
+                logger.info(f"✅ First question retrieved")
+                return result
+        except Exception as e:
+            logger.error(f"❌ Get first question failed: {str(e)}")
             raise
     
     async def evaluate_and_generate_next_question(

@@ -1,8 +1,9 @@
 from fastapi import APIRouter, HTTPException
+from datetime import datetime, timezone
+import uuid
 import httpx
 
 from schemas.interview_schemas import (
-   
     ValidateTokenRequest,
     StartInterviewRequest,
     StartInterviewResponse
@@ -17,11 +18,149 @@ interview_client = InterviewServiceClient()
 text_client = TextServiceClient()
 audio_client = AudioServiceClient()
 
+
+def create_response(data, success=True, message="Success", error=None):
+    """Create standardized API response"""
+    return {
+        "success": success,
+        "message": message,
+        "data": data,
+        "error": error,
+        "meta": {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "version": "v1",
+            "request_id": f"req_{uuid.uuid4().hex[:8]}"
+        }
+    }
+
+# ========================================
+# STEP 2: Token Validation & Interview Start
+# ========================================
+
+@router.get("/validate-token")
+async def validate_token_query(token: str):
+    """
+    STEP 2.1: Validate interview token (candidate clicks email link)
+
+    Flow:
+    1. Candidate clicks email link with token: /interview?token=xxx
+    2. Frontend calls GET /api/interviews/validate-token?token=xxx
+    3. Orchestration validates token via Interview Service
+    4. Returns interview details if valid
+
+    Response: { interview_id, candidate_id, candidate_name, status }
+    """
+    logger.info(f"🔑 STEP 2.1 - Validating token")
+
+    try:
+        # Call Interview Service to validate token
+        result = await interview_client.validate_token(token)
+
+        if not result.get("success"):
+            logger.warning(f"❌ Token validation failed: {result.get('message')}")
+            raise HTTPException(status_code=401, detail=result.get("message"))
+
+        interview_data = result.get("data", {})
+
+        logger.info(f"✅ STEP 2.1 - Token validated for candidate {interview_data.get('candidate_id')}")
+
+        return create_response(
+            data=interview_data,
+            success=True,
+            message="Token validated. Interview ready to start."
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Token validation failed: {str(e)}")
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+
+@router.post("/start/{interview_id}")
+async def start_interview_step2(interview_id: str):
+    """
+    STEP 2.2: Start interview and get first question + TTS
+
+    Flow:
+    1. Candidate clicks "Start Interview" button
+    2. Frontend calls POST /api/interviews/start/{interview_id}
+    3. Orchestration:
+       - Updates interview status to "in_progress"
+       - Calls Text Service to get first question
+       - Calls Audio Service to generate TTS
+    4. Returns question + audio URL
+
+    Response: { interview_id, question_number, question_text, audio_url }
+    """
+    logger.info(f"🎬 STEP 2.2 - Starting interview {interview_id}")
+
+    try:
+        # Step 1: Mark interview as in_progress
+        logger.info(f"   Updating interview status to in_progress...")
+        status_result = await interview_client.update_interview_status(interview_id, "in_progress")
+
+        if not status_result.get("success"):
+            logger.error(f"❌ Failed to update interview status: {status_result.get('message')}")
+            raise HTTPException(status_code=500, detail="Failed to start interview")
+
+        # Step 2: Get first question from Text Service
+        logger.info(f"   Fetching first question from Text Service...")
+        question_result = await text_client.get_first_question(interview_id)
+
+        if not question_result.get("success"):
+            logger.error(f"❌ Failed to get question: {question_result.get('message')}")
+            raise HTTPException(status_code=500, detail="Failed to retrieve question")
+
+        question_data = question_result.get("data", {})
+        question_text = question_data.get("question_text", "")
+        question_number = question_data.get("question_number", 1)
+
+        # Step 3: Generate TTS for question
+        logger.info(f"   Generating TTS audio for question...")
+        audio_result = await audio_client.generate_speech(
+            text=question_text,
+            interview_id=interview_id
+        )
+
+        if not audio_result.get("success"):
+            logger.warning(f"⚠️ TTS generation failed, continuing without audio: {audio_result.get('message')}")
+            audio_url = None
+        else:
+            audio_url = audio_result.get("data", {}).get("audio_url")
+
+        # Step 4: Build response
+        response_data = {
+            "interview_id": interview_id,
+            "question_number": question_number,
+            "question_text": question_text,
+            "audio_url": audio_url,
+            "estimated_answer_time": question_data.get("estimated_answer_time", 60)
+        }
+
+        logger.info(f"✅ STEP 2.2 - Interview started, first question ready")
+
+        return create_response(
+            data=response_data,
+            success=True,
+            message="Interview started. First question retrieved."
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Start interview failed: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to start interview: {str(e)}")
+
+
+# ========================================
+# Legacy Endpoints
+# ========================================
+
 @router.get("/{interview_id}")
 async def get_interview(interview_id: str):
     """Get interview details by ID"""
     logger.info(f"📋 Getting interview {interview_id}")
-    
+
     try:
         result = await interview_client.get_interview(interview_id)
         logger.info(f"✅ Interview retrieved")

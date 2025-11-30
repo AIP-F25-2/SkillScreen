@@ -18,12 +18,18 @@ logger = logging.getLogger(__name__)
 # Configure Resend API key
 resend.api_key = os.getenv("RESEND_API_KEY", "")
 
+# Import token repository for database persistence
+from repository.interview_token_repository import InterviewTokenRepository
+
 class EmailService:
     """Service for sending interview invitation emails"""
-    
-    def __init__(self):
-        self.from_email = os.getenv("FROM_EMAIL", "interviews@skillscreen.io")
+
+    def __init__(self, token_store=None):
+        self.from_email = os.getenv("FROM_EMAIL", "onboarding@resend.dev")
         self.base_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+        self.email_mode = os.getenv("EMAIL_MODE", "production")  # test or production
+        self.test_email_redirect = os.getenv("TEST_EMAIL_REDIRECT", "")  # Redirect test emails to this address
+        self.token_store = token_store or {}  # Reference to token store for persisting tokens
     
     def generate_interview_token(self) -> str:
         """Generate a secure random token for interview access"""
@@ -76,16 +82,50 @@ class EmailService:
                 original_email=None  # No longer redirecting
             )
             
+            # Determine recipient email (redirect in test mode if configured)
+            recipient_email = candidate_email
+            redirect_note = ""
+            if self.email_mode == "test" and self.test_email_redirect:
+                recipient_email = self.test_email_redirect
+                redirect_note = f" (redirected from {candidate_email})"
+
             # Send email via Resend
             response = resend.Emails.send({
                 "from": self.from_email,
-                "to": candidate_email,
+                "to": recipient_email,
                 "subject": subject,
                 "html": html_content,
             })
-            
-            logger.info(f"Interview invitation sent to {candidate_email} (session: {session_id})")
-            
+
+            mode_str = f"[{self.email_mode.upper()}]" if self.email_mode == "test" else ""
+            logger.info(f"✅ Interview invitation sent {mode_str} to {recipient_email}{redirect_note} (session: {session_id}, token expires: {expires_at.isoformat()})")
+
+            # Store token in database for persistence
+            try:
+                expires_at_utc = expires_at.replace(tzinfo=None)  # Convert to naive datetime if needed
+                InterviewTokenRepository.create_token(
+                    token=token,
+                    candidate_id=candidate_id,
+                    candidate_name=candidate_name,
+                    candidate_email=candidate_email,
+                    session_id=session_id,
+                    interview_id=None,  # Interview ID will be set during validation
+                    expires_at=expires_at_utc
+                )
+                logger.info(f"✅ Token stored in database (token: {token[:20]}...)")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to store token in database: {str(e)}")
+                # Continue anyway - token is still in memory
+                if self.token_store is not None:
+                    self.token_store[token] = {
+                        "candidate_id": candidate_id,
+                        "candidate_name": candidate_name,
+                        "candidate_email": candidate_email,
+                        "session_id": session_id,
+                        "expires_at": expires_at.isoformat()
+                    }
+                    logger.info(f"✅ Token stored in memory (token: {token[:20]}...)")
+
             return {
                 "success": True,
                 "email_id": response.get("id"),
@@ -386,6 +426,7 @@ class EmailService:
         """
 
 
-# Create a singleton instance
+# Create a singleton instance WITHOUT token_store (will be injected from interview.py)
+# This allows interview.py to pass the token_store reference
 email_service = EmailService()
 
