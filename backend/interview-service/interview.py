@@ -139,14 +139,17 @@ async def update_session_status(session_id: str, request: Request):
     """Update session status"""
     body = await request.json()
     status = body.get("status")
-    
+
     if session_id not in sessions_db:
         return create_response({"error": "Session not found"}, success=False)
-    
+
     sessions_db[session_id]["status"] = status
     sessions_db[session_id]["updated_at"] = datetime.utcnow().isoformat()
-    
-    return create_response(sessions_db[session_id])
+
+    return create_response(
+        data=sessions_db[session_id],
+        success=True
+    )
 
 @app.post("/api/session/{session_id}/transcript")
 async def save_session_transcript(session_id: str, request: Request):

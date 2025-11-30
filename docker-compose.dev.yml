@@ -36,7 +36,7 @@ services:
       - assessment-service
       - coding-service
       - interview-service
-      - text-service
+      - text-ai-service
       - orchestration-service
     networks:
       - skill-screen-network
@@ -120,25 +120,25 @@ services:
       - skill-screen-network
 
   # AI Services
-  text-service:
-    build:
-      context: ./backend/text-service
-      dockerfile: Dockerfile.dev
-    container_name: text-service
-    ports:
-      - "8001:8080"
-    environment:
-      PORT: 8080
-      HOST: 0.0.0.0
-      APP_NAME: text-service
-      ENVIRONMENT: development
-      DEBUG: 'True'
-      LOG_LEVEL: INFO
-      DATABASE_URL: postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
-    volumes:
-      - ./backend/text-service:/app
-    networks:
-      - skill-screen-network
+  # text-service:
+  #   build:
+  #     context: ./backend/text-service
+  #     dockerfile: Dockerfile.dev
+  #   container_name: text-service
+  #   ports:
+  #     - "8001:8080"
+  #   environment:
+  #     PORT: 8080
+  #     HOST: 0.0.0.0
+  #     APP_NAME: text-service
+  #     ENVIRONMENT: development
+  #     DEBUG: 'True'
+  #     LOG_LEVEL: INFO
+  #     DATABASE_URL: postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+  #   volumes:
+  #     - ./backend/text-service:/app
+  #   networks:
+  #     - skill-screen-network
 
   audio-ai-service:
     build:
@@ -185,12 +185,23 @@ services:
       context: ./backend/text-ai-service
       dockerfile: Dockerfile
     container_name: text-ai-service
+    ports:
+      - "8002:8080"
+    env_file:
+      - ./backend/text-ai-service/.env  
     environment:
       PORT: 8080
       HOST: 0.0.0.0
+      APP_NAME: text-ai-service
+      ENVIRONMENT: development
+      DEBUG: 'True'
+      LOG_LEVEL: INFO
       DATABASE_URL: postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
     volumes:
       - ./backend/text-ai-service:/app
+      - ./backend/common-service:/common-service
+    depends_on:
+      - seq
     networks:
       - skill-screen-network
 
@@ -300,7 +311,8 @@ services:
       PORT: 8080
       HOST: 0.0.0.0
       INTERVIEW_SERVICE_URL: http://interview-service:8080
-      TEXT_SERVICE_URL: http://text-service:8080
+      #TEXT_SERVICE_URL: http://text-service:8080
+      TEXT_AI_SERVICE_URL: http://text-ai-service:8080
       AUDIO_AI_SERVICE_URL: http://audio-ai-service:8080
       VIDEO_AI_SERVICE_URL: http://video-ai-service:8080
       MEDIA_SERVICE_URL: http://media-service:8080
@@ -309,7 +321,7 @@ services:
       - ./backend/orchestration-service:/app
     depends_on:
       - interview-service
-      - text-service
+      #- text-service
       - audio-ai-service
       - media-service
       - assessment-service

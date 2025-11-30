@@ -85,7 +85,7 @@ async def start_interview_step2(interview_id: str):
     1. Candidate clicks "Start Interview" button
     2. Frontend calls POST /api/interviews/start/{interview_id}
     3. Orchestration:
-       - Updates interview status to "in_progress"
+       - Interview status is already "in_progress" (set during STEP 2.1 token validation)
        - Calls Text Service to get first question
        - Calls Audio Service to generate TTS
     4. Returns question + audio URL
@@ -95,15 +95,9 @@ async def start_interview_step2(interview_id: str):
     logger.info(f"🎬 STEP 2.2 - Starting interview {interview_id}")
 
     try:
-        # Step 1: Mark interview as in_progress
-        logger.info(f"   Updating interview status to in_progress...")
-        status_result = await interview_client.update_interview_status(interview_id, "in_progress")
+        # Note: Interview status was already updated to in_progress during token validation (STEP 2.1)
 
-        if not status_result.get("success"):
-            logger.error(f"❌ Failed to update interview status: {status_result.get('message')}")
-            raise HTTPException(status_code=500, detail="Failed to start interview")
-
-        # Step 2: Get first question from Text Service
+        # Step 1: Get first question from Text Service
         logger.info(f"   Fetching first question from Text Service...")
         question_result = await text_client.get_first_question(interview_id)
 
