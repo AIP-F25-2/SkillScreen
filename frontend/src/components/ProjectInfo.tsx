@@ -2,8 +2,32 @@
 
 import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { motion } from "framer-motion";
 
 export default function ProjectInfo() {
+    const cards = [
+        {
+            title: "AI Analysis",
+            content: "Automated code review and behavioral analysis using state-of-the-art LLMs.",
+            delay: 0.1
+        },
+        {
+            title: "Real-time",
+            content: "Live coding environment with collaborative features and instant feedback.",
+            delay: 0.2
+        },
+        {
+            title: "Secure",
+            content: "Enterprise-grade security with proctoring and cheat detection mechanisms.",
+            delay: 0.3
+        },
+        {
+            title: "Scalable",
+            content: "Microservices architecture ensuring high availability and easy scaling.",
+            delay: 0.4
+        }
+    ];
+
     return (
         <section className="py-24 relative overflow-hidden">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
@@ -46,38 +70,26 @@ export default function ProjectInfo() {
                     <div className="relative">
                         <div className="absolute inset-0 bg-indigo-500/20 blur-3xl rounded-full" />
                         <div className="relative grid grid-cols-2 gap-4">
-                            <Card className="bg-[#1a1a1a] border-white/10 p-6">
-                                <CardHeader className="p-0 mb-4">
-                                    <CardTitle className="text-indigo-400 text-xl">AI Analysis</CardTitle>
-                                </CardHeader>
-                                <CardContent className="p-0 text-gray-400">
-                                    Automated code review and behavioral analysis using state-of-the-art LLMs.
-                                </CardContent>
-                            </Card>
-                            <Card className="bg-[#1a1a1a] border-white/10 p-6 mt-8">
-                                <CardHeader className="p-0 mb-4">
-                                    <CardTitle className="text-indigo-400 text-xl">Real-time</CardTitle>
-                                </CardHeader>
-                                <CardContent className="p-0 text-gray-400">
-                                    Live coding environment with collaborative features and instant feedback.
-                                </CardContent>
-                            </Card>
-                            <Card className="bg-[#1a1a1a] border-white/10 p-6">
-                                <CardHeader className="p-0 mb-4">
-                                    <CardTitle className="text-indigo-400 text-xl">Secure</CardTitle>
-                                </CardHeader>
-                                <CardContent className="p-0 text-gray-400">
-                                    Enterprise-grade security with proctoring and cheat detection mechanisms.
-                                </CardContent>
-                            </Card>
-                            <Card className="bg-[#1a1a1a] border-white/10 p-6 mt-8">
-                                <CardHeader className="p-0 mb-4">
-                                    <CardTitle className="text-indigo-400 text-xl">Scalable</CardTitle>
-                                </CardHeader>
-                                <CardContent className="p-0 text-gray-400">
-                                    Microservices architecture ensuring high availability and easy scaling.
-                                </CardContent>
-                            </Card>
+                            {cards.map((card, index) => (
+                                <motion.div
+                                    key={index}
+                                    initial={{ opacity: 0, y: 20 }}
+                                    whileInView={{ opacity: 1, y: 0 }}
+                                    viewport={{ once: true }}
+                                    transition={{ duration: 0.5, delay: card.delay }}
+                                    whileHover={{ scale: 1.05, zIndex: 10 }}
+                                    className={`${index % 2 === 1 ? 'mt-8' : ''}`}
+                                >
+                                    <Card className="bg-[#1a1a1a] border-white/10 p-6 h-[280px] flex flex-col justify-center hover:border-indigo-500/50 transition-colors duration-300">
+                                        <CardHeader className="p-0 mb-4">
+                                            <CardTitle className="text-indigo-400 text-xl">{card.title}</CardTitle>
+                                        </CardHeader>
+                                        <CardContent className="p-0 text-gray-400">
+                                            {card.content}
+                                        </CardContent>
+                                    </Card>
+                                </motion.div>
+                            ))}
                         </div>
                     </div>
                 </div>

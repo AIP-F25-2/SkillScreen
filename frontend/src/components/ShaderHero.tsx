@@ -19,7 +19,7 @@ export default function ShaderHero() {
                         className="bg-white text-indigo-950 hover:bg-indigo-50 text-lg px-8 py-6 rounded-full font-semibold transition-all hover:scale-105"
                         onClick={() => {
                             const MAIN_URL = process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : 'https://skillscreen.dev';
-                            window.location.href = `${MAIN_URL}/signup`;
+                            window.location.href = `${MAIN_URL}/onboarding`;
                         }}
                     >
                         Get Started
