@@ -37,52 +37,58 @@ export function DaisyWave({ className, style }: DaisyWaveProps) {
         const cellSize = 24; // Adjust for density
 
         // Colors
-        const colorYellow = [255, 215, 0]; // #FFD700
-        const colorOrange = [255, 140, 0]; // #FF8C00
-        const colorPurple = [46, 0, 62];   // #2E003E
+        const colorDeepBlue = [27, 60, 83];   // #1B3C53 (Requested)
+        const colorLightBlue = [100, 181, 246]; // Lighter blue for contrast
+        const colorDark = [15, 23, 42];       // #0F172A (Background match)
 
         const lerpColor = (c1: number[], c2: number[], t: number) => {
             return `rgb(${Math.round(c1[0] + (c2[0] - c1[0]) * t)}, ${Math.round(c1[1] + (c2[1] - c1[1]) * t)}, ${Math.round(c1[2] + (c2[2] - c1[2]) * t)})`;
         };
 
         const render = (time: number) => {
-            ctx.fillStyle = "#000000";
+            ctx.fillStyle = "#0F172A"; // Match app background
             ctx.fillRect(0, 0, width, height);
 
             ctx.font = `${cellSize}px monospace`;
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
 
-            const t = time * 0.001;
+            const t = time * 0.001; // Speed 1
             const cols = Math.ceil(width / cellSize);
             const rows = Math.ceil(height / cellSize);
 
+            // Parameters
+            const amplitude = 0.42;
+            const frequency = 0.51;
+            const angle = 90 * (Math.PI / 180); // Vertical (90 degrees)
+
+            const cosAngle = Math.cos(angle);
+            const sinAngle = Math.sin(angle);
+
             for (let y = 0; y < rows; y++) {
                 for (let x = 0; x < cols; x++) {
-                    const u = x / cols;
-                    const v = y / rows;
+                    // Normalize coordinates -1 to 1
+                    const u = (x / cols) * 2 - 1;
+                    const v = (y / rows) * 2 - 1;
 
-                    // Wave function
-                    // Create a diagonal wave pattern
-                    const wave = Math.sin(u * 5 + v * 5 + t) * 0.5 + 0.5;
+                    // Rotate coordinates based on angle
+                    // We want the wave to propagate in the direction of the angle
+                    const rotatedU = u * cosAngle + v * sinAngle;
 
-                    // Secondary noise/variation
-                    const variation = Math.cos(u * 10 - v * 10 + t * 1.5) * 0.5 + 0.5;
+                    // Sine wave function
+                    // Frequency needs to be higher for the grid scale, multiplying by 10 as a baseline
+                    const wave = Math.sin(rotatedU * (frequency * 10) + t) * amplitude;
 
-                    const value = (wave + variation * 0.2) / 1.2;
+                    // Map -1..1 to 0..1 for value
+                    const value = (wave + 1) / 2;
 
                     // Character selection
-                    // Use * for brighter/higher values, ~ for lower
                     const charIndex = value > 0.5 ? 0 : 1;
                     const char = chars[charIndex];
 
                     // Color selection
-                    let color;
-                    if (value > 0.6) {
-                        color = lerpColor(colorOrange, colorYellow, (value - 0.6) / 0.4);
-                    } else {
-                        color = lerpColor(colorPurple, colorOrange, value / 0.6);
-                    }
+                    // Gradient from Deep Blue to Light Blue
+                    const color = lerpColor(colorDeepBlue, colorLightBlue, value);
 
                     ctx.fillStyle = color;
 
@@ -93,7 +99,6 @@ export function DaisyWave({ className, style }: DaisyWaveProps) {
                     ctx.fillText(char, posX, posY);
                 }
             }
-
             animationRef.current = requestAnimationFrame(render);
         };
 
