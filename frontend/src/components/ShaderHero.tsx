@@ -14,10 +14,19 @@ export default function ShaderHero() {
                 </p>
 
                 <div className="flex flex-col sm:flex-row gap-4 mt-4">
-                    <Button size="lg" className="bg-white text-indigo-950 hover:bg-indigo-50 text-lg px-8 py-6 rounded-full font-semibold transition-all hover:scale-105">
+                    <Button
+                        size="lg"
+                        className="bg-white text-indigo-950 hover:bg-indigo-50 text-lg px-8 py-6 rounded-full font-semibold transition-all hover:scale-105"
+                        onClick={() => window.location.href = '/signup'}
+                    >
                         Get Started
                     </Button>
-                    <Button size="lg" variant="outline" className="border-white/20 text-white hover:bg-white/10 text-lg px-8 py-6 rounded-full font-semibold backdrop-blur-sm transition-all hover:scale-105">
+                    <Button
+                        size="lg"
+                        variant="outline"
+                        className="border-white/20 text-white hover:bg-white/10 text-lg px-8 py-6 rounded-full font-semibold backdrop-blur-sm transition-all hover:scale-105"
+                        onClick={() => document.getElementById('demo')?.scrollIntoView({ behavior: 'smooth' })}
+                    >
                         View Demo
                     </Button>
                 </div>

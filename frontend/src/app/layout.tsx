@@ -1,10 +1,14 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Questrial } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { CheatPreventionProvider } from "@/contexts/CheatPreventionContext";
 
-const inter = Inter({ subsets: ["latin"] });
+const questrial = Questrial({
+  subsets: ["latin"],
+  weight: "400",
+  variable: "--font-questrial",
+});
 
 export const metadata: Metadata = {
   title: "IntervuAI",
@@ -18,7 +22,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className={`${inter.className} min-h-screen bg-background text-foreground antialiased`}>
+      <body className={`${questrial.className} min-h-screen bg-background text-foreground antialiased`}>
         <AuthProvider>
           <CheatPreventionProvider>
             {children}

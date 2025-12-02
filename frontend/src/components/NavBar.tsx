@@ -13,7 +13,7 @@ export default function NavBar() {
   const { scrollY } = useScroll();
   const [isScrolled, setIsScrolled] = useState(false);
   const { user, isAuthenticated, logout } = useAuth();
-  
+
   const isActive = (path: string) => pathname === path;
 
   const initialState = {
@@ -112,6 +112,11 @@ export default function NavBar() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  // ... existing code ...
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // ... existing code ...
+
   return (
     <motion.div
       className="fixed top-0 left-1/2 z-50"
@@ -120,7 +125,7 @@ export default function NavBar() {
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3 }}
     >
-      <div className="flex items-center justify-between h-16">
+      <div className="flex items-center justify-between h-16 relative">
         {/* Logo */}
         <motion.div style={{ transform: logoTransform }}>
           <Link href="/" className="flex items-center space-x-2">
@@ -138,19 +143,35 @@ export default function NavBar() {
             </span>
           </Link>
         </motion.div>
-        {/* Right: Nav Links + User Menu */}
-        <motion.div style={{ transform: signOutTransform }} className="flex items-center space-x-4 ml-auto">
+
+        {/* Mobile Hamburger Button */}
+        <div className="md:hidden">
+          <button
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="text-white p-2 focus:outline-none"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              {isMobileMenuOpen ? (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              )}
+            </svg>
+          </button>
+        </div>
+
+        {/* Right: Nav Links + User Menu (Desktop) */}
+        <motion.div style={{ transform: signOutTransform }} className="hidden md:flex items-center space-x-4 ml-auto">
           {/* Navigation Links */}
-          <div className="hidden md:flex items-center space-x-2 mr-2">
+          <div className="flex items-center space-x-2 mr-2">
             {/* Show dashboard link based on user type */}
             {isAuthenticated && user && (
               <Link
                 href={user.userType === 'recruiter' ? '/recruiter' : '/candidate'}
-                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 ${
-                  isActive(user.userType === 'recruiter' ? '/recruiter' : '/candidate')
+                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 ${isActive(user.userType === 'recruiter' ? '/recruiter' : '/candidate')
                     ? 'bg-white/10 text-white shadow-lg shadow-black/10'
                     : 'text-white/70 hover:bg-white/5 hover:text-white hover:shadow-lg hover:shadow-black/10'
-                }`}
+                  }`}
               >
                 {user.userType === 'recruiter' ? 'Recruiter Dashboard' : 'Candidate Dashboard'}
               </Link>
@@ -159,11 +180,10 @@ export default function NavBar() {
             {/* Contact */}
             <Link
               href="/contact"
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 ${
-                isActive('/contact')
+              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 ${isActive('/contact')
                   ? 'bg-white/10 text-white shadow-lg shadow-black/10'
                   : 'text-white/70 hover:bg-white/5 hover:text-white hover:shadow-lg hover:shadow-black/10'
-              }`}
+                }`}
             >
               Contact
             </Link>
@@ -171,39 +191,38 @@ export default function NavBar() {
             {/* About */}
             <Link
               href="/about"
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 ${
-                isActive('/about')
+              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 ${isActive('/about')
                   ? 'bg-white/10 text-white shadow-lg shadow-black/10'
                   : 'text-white/70 hover:bg-white/5 hover:text-white hover:shadow-lg hover:shadow-black/10'
-              }`}
+                }`}
             >
               About
             </Link>
           </div>
-          <button 
-              onClick={() => router.push('/interview-setup')}
-              className="bg-white text-black px-5 py-2 rounded-lg text-sm font-medium transition-all duration-300 hover:bg-white/90"
-            >
-              Join Meeting
+          <button
+            onClick={() => router.push('/interview-setup')}
+            className="bg-white text-black px-5 py-2 rounded-lg text-sm font-medium transition-all duration-300 hover:bg-white/90"
+          >
+            Join Meeting
           </button>
           {/* User Menu */}
           {isAuthenticated && user ? (
             <>
               {/* User Info */}
-              <div className="hidden md:flex flex-col items-end">
+              <div className="flex flex-col items-end">
                 <span className="text-white text-sm font-medium">{user.name}</span>
                 <span className="text-white/60 text-xs capitalize">{user.userType}</span>
               </div>
-              
+
               {/* User Avatar */}
               <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
                 <span className="text-white text-sm font-bold">
                   {user.name.split(' ').map((n: string) => n[0]).join('').toUpperCase()}
                 </span>
               </div>
-              
+
               {/* Sign Out Button */}
-              <button 
+              <button
                 onClick={() => {
                   logout();
                   router.push('/login');
@@ -216,13 +235,13 @@ export default function NavBar() {
           ) : (
             /* Auth CTA Buttons */
             <div className="flex items-center space-x-3">
-              <button 
+              <button
                 onClick={() => router.push('/onboarding')}
                 className="px-5 py-2 rounded-lg text-sm font-medium transition-all duration-300 bg-white/10 text-white hover:bg-white/20"
               >
                 Sign Up
               </button>
-              <button 
+              <button
                 onClick={() => router.push('/login')}
                 className="bg-white text-black px-5 py-2 rounded-lg text-sm font-medium transition-all duration-300 hover:bg-white/90"
               >
@@ -232,6 +251,84 @@ export default function NavBar() {
           )}
         </motion.div>
       </div>
+
+      {/* Mobile Menu Dropdown */}
+      {isMobileMenuOpen && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -20 }}
+          className="md:hidden absolute top-16 left-0 w-full bg-[#1a1a1a] border border-white/10 rounded-b-2xl p-4 flex flex-col space-y-4 shadow-xl"
+        >
+          {isAuthenticated && user && (
+            <Link
+              href={user.userType === 'recruiter' ? '/recruiter' : '/candidate'}
+              className="text-white/80 hover:text-white py-2"
+              onClick={() => setIsMobileMenuOpen(false)}
+            >
+              {user.userType === 'recruiter' ? 'Recruiter Dashboard' : 'Candidate Dashboard'}
+            </Link>
+          )}
+          <Link href="/contact" className="text-white/80 hover:text-white py-2" onClick={() => setIsMobileMenuOpen(false)}>Contact</Link>
+          <Link href="/about" className="text-white/80 hover:text-white py-2" onClick={() => setIsMobileMenuOpen(false)}>About</Link>
+          <button
+            onClick={() => {
+              router.push('/interview-setup');
+              setIsMobileMenuOpen(false);
+            }}
+            className="bg-white text-black px-5 py-2 rounded-lg text-sm font-medium w-full"
+          >
+            Join Meeting
+          </button>
+
+          {isAuthenticated && user ? (
+            <div className="pt-4 border-t border-white/10 flex flex-col space-y-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+                  <span className="text-white text-sm font-bold">
+                    {user.name.split(' ').map((n: string) => n[0]).join('').toUpperCase()}
+                  </span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-white text-sm font-medium">{user.name}</span>
+                  <span className="text-white/60 text-xs capitalize">{user.userType}</span>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  logout();
+                  router.push('/login');
+                  setIsMobileMenuOpen(false);
+                }}
+                className="bg-[#27272A] text-white px-5 py-2 rounded-lg text-sm font-medium w-full"
+              >
+                Sign Out
+              </button>
+            </div>
+          ) : (
+            <div className="pt-4 border-t border-white/10 flex flex-col space-y-3">
+              <button
+                onClick={() => {
+                  router.push('/onboarding');
+                  setIsMobileMenuOpen(false);
+                }}
+                className="px-5 py-2 rounded-lg text-sm font-medium bg-white/10 text-white w-full"
+              >
+                Sign Up
+              </button>
+              <button
+                onClick={() => {
+                  router.push('/login');
+                  setIsMobileMenuOpen(false);
+                }}
+                className="bg-white text-black px-5 py-2 rounded-lg text-sm font-medium w-full"
+              >
+                Sign In
+              </button>
+            </div>
+          )}
+        </motion.div>
+      )}
     </motion.div>
   );
 }
