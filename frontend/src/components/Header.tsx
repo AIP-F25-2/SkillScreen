@@ -3,14 +3,23 @@
 import { useState } from 'react';
 import Image from 'next/image';
 
-export default function Header() {
+export default function Header({ isPortfolio = false }: { isPortfolio?: boolean }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  const MAIN_URL = process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : 'https://skillscreen.dev';
+
+  const getLinkUrl = (path: string) => {
+    if (isPortfolio) {
+      return `${MAIN_URL}${path}`;
+    }
+    return path;
+  };
 
   return (
     <header className="relative z-20 px-6 py-8 md:px-12">
       <nav className="flex items-center justify-between">
         {/* Logo */}
-        <a href="/" className="flex items-center space-x-3">
+        <a href={getLinkUrl("/")} className="flex items-center space-x-3">
           <Image src="/logo.png" alt="InterviewAI" width={40} height={40} />
           <span className="text-white text-2xl font-bold tracking-wide">
             INTERVUAI
@@ -19,26 +28,26 @@ export default function Header() {
 
         {/* Desktop Navigation */}
         <div className="hidden md:flex items-center space-x-8">
-          <a 
-            href="/features" 
+          <a
+            href={getLinkUrl("/features")}
             className="text-white hover:text-primary-100 transition-colors duration-300 font-medium"
           >
             Features
           </a>
-          <a 
-            href="/candidate" 
+          <a
+            href={getLinkUrl("/candidate")}
             className="text-white hover:text-primary-100 transition-colors duration-300 font-medium"
           >
             Candidate Dashboard
           </a>
-          <a 
-            href="/recruiter" 
+          <a
+            href={getLinkUrl("/recruiter")}
             className="text-white hover:text-primary-100 transition-colors duration-300 font-medium"
           >
             Recruiter Dashboard
           </a>
-          <a 
-            href="#contact" 
+          <a
+            href={getLinkUrl("#contact")}
             className="text-white hover:text-primary-100 transition-colors duration-300 font-medium"
           >
             Contact
@@ -80,29 +89,29 @@ export default function Header() {
       {isMenuOpen && (
         <div className="md:hidden mt-4 py-4 border-t border-primary-200">
           <div className="flex flex-col space-y-4">
-            <a 
-              href="/features" 
+            <a
+              href={getLinkUrl("/features")}
               className="text-white hover:text-primary-100 transition-colors duration-300 font-medium"
               onClick={() => setIsMenuOpen(false)}
             >
               Features
             </a>
-            <a 
-              href="/candidate" 
+            <a
+              href={getLinkUrl("/candidate")}
               className="text-white hover:text-primary-100 transition-colors duration-300 font-medium"
               onClick={() => setIsMenuOpen(false)}
             >
               Candidate Dashboard
             </a>
-            <a 
-              href="/recruiter" 
+            <a
+              href={getLinkUrl("/recruiter")}
               className="text-white hover:text-primary-100 transition-colors duration-300 font-medium"
               onClick={() => setIsMenuOpen(false)}
             >
               Recruiter Dashboard
             </a>
-            <a 
-              href="#contact" 
+            <a
+              href={getLinkUrl("#contact")}
               className="text-white hover:text-primary-100 transition-colors duration-300 font-medium"
               onClick={() => setIsMenuOpen(false)}
             >

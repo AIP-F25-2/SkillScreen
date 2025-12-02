@@ -28,12 +28,12 @@ export default function PortfolioPage() {
             </div>
 
             <div className="relative z-10">
-                <NavBar />
+                <NavBar isPortfolio={true} />
                 <ShaderHero />
                 <ProjectInfo />
                 <DemoSection />
                 <TeamSection />
-                <Footer />
+                <Footer isPortfolio={true} />
             </div>
         </div>
     );

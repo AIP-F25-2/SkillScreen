@@ -7,12 +7,29 @@ import { motion, useScroll, useTransform } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 
-export default function NavBar() {
+export default function NavBar({ isPortfolio = false }: { isPortfolio?: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
   const { scrollY } = useScroll();
   const [isScrolled, setIsScrolled] = useState(false);
   const { user, isAuthenticated, logout } = useAuth();
+
+  const MAIN_URL = process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : 'https://skillscreen.dev';
+
+  const getLinkUrl = (path: string) => {
+    if (isPortfolio) {
+      return `${MAIN_URL}${path}`;
+    }
+    return path;
+  };
+
+  const handleNavigation = (path: string) => {
+    if (isPortfolio) {
+      window.location.href = `${MAIN_URL}${path}`;
+    } else {
+      router.push(path);
+    }
+  };
 
   const isActive = (path: string) => pathname === path;
 
@@ -128,7 +145,7 @@ export default function NavBar() {
       <div className="flex items-center justify-between h-16 relative">
         {/* Logo */}
         <motion.div style={{ transform: logoTransform }}>
-          <Link href="/" className="flex items-center space-x-2">
+          <Link href={getLinkUrl("/")} className="flex items-center space-x-2">
             <div className="relative w-8 h-8">
               <Image
                 src="/logo.png"
@@ -167,10 +184,10 @@ export default function NavBar() {
             {/* Show dashboard link based on user type */}
             {isAuthenticated && user && (
               <Link
-                href={user.userType === 'recruiter' ? '/recruiter' : '/candidate'}
+                href={getLinkUrl(user.userType === 'recruiter' ? '/recruiter' : '/candidate')}
                 className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 ${isActive(user.userType === 'recruiter' ? '/recruiter' : '/candidate')
-                    ? 'bg-white/10 text-white shadow-lg shadow-black/10'
-                    : 'text-white/70 hover:bg-white/5 hover:text-white hover:shadow-lg hover:shadow-black/10'
+                  ? 'bg-white/10 text-white shadow-lg shadow-black/10'
+                  : 'text-white/70 hover:bg-white/5 hover:text-white hover:shadow-lg hover:shadow-black/10'
                   }`}
               >
                 {user.userType === 'recruiter' ? 'Recruiter Dashboard' : 'Candidate Dashboard'}
@@ -179,10 +196,10 @@ export default function NavBar() {
 
             {/* Contact */}
             <Link
-              href="/contact"
+              href={getLinkUrl("/contact")}
               className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 ${isActive('/contact')
-                  ? 'bg-white/10 text-white shadow-lg shadow-black/10'
-                  : 'text-white/70 hover:bg-white/5 hover:text-white hover:shadow-lg hover:shadow-black/10'
+                ? 'bg-white/10 text-white shadow-lg shadow-black/10'
+                : 'text-white/70 hover:bg-white/5 hover:text-white hover:shadow-lg hover:shadow-black/10'
                 }`}
             >
               Contact
@@ -190,17 +207,17 @@ export default function NavBar() {
 
             {/* About */}
             <Link
-              href="/about"
+              href={getLinkUrl("/about")}
               className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 ${isActive('/about')
-                  ? 'bg-white/10 text-white shadow-lg shadow-black/10'
-                  : 'text-white/70 hover:bg-white/5 hover:text-white hover:shadow-lg hover:shadow-black/10'
+                ? 'bg-white/10 text-white shadow-lg shadow-black/10'
+                : 'text-white/70 hover:bg-white/5 hover:text-white hover:shadow-lg hover:shadow-black/10'
                 }`}
             >
               About
             </Link>
           </div>
           <button
-            onClick={() => router.push('/interview-setup')}
+            onClick={() => handleNavigation('/interview-setup')}
             className="bg-white text-black px-5 py-2 rounded-lg text-sm font-medium transition-all duration-300 hover:bg-white/90"
           >
             Join Meeting
@@ -225,7 +242,7 @@ export default function NavBar() {
               <button
                 onClick={() => {
                   logout();
-                  router.push('/login');
+                  handleNavigation('/login');
                 }}
                 className="bg-[#27272A] text-white px-5 py-2 rounded-lg text-sm font-medium transition-all duration-300 hover:bg-[#3F3F46]"
               >
@@ -236,13 +253,13 @@ export default function NavBar() {
             /* Auth CTA Buttons */
             <div className="flex items-center space-x-3">
               <button
-                onClick={() => router.push('/onboarding')}
+                onClick={() => handleNavigation('/onboarding')}
                 className="px-5 py-2 rounded-lg text-sm font-medium transition-all duration-300 bg-white/10 text-white hover:bg-white/20"
               >
                 Sign Up
               </button>
               <button
-                onClick={() => router.push('/login')}
+                onClick={() => handleNavigation('/login')}
                 className="bg-white text-black px-5 py-2 rounded-lg text-sm font-medium transition-all duration-300 hover:bg-white/90"
               >
                 Sign In
@@ -262,18 +279,18 @@ export default function NavBar() {
         >
           {isAuthenticated && user && (
             <Link
-              href={user.userType === 'recruiter' ? '/recruiter' : '/candidate'}
+              href={getLinkUrl(user.userType === 'recruiter' ? '/recruiter' : '/candidate')}
               className="text-white/80 hover:text-white py-2"
               onClick={() => setIsMobileMenuOpen(false)}
             >
               {user.userType === 'recruiter' ? 'Recruiter Dashboard' : 'Candidate Dashboard'}
             </Link>
           )}
-          <Link href="/contact" className="text-white/80 hover:text-white py-2" onClick={() => setIsMobileMenuOpen(false)}>Contact</Link>
-          <Link href="/about" className="text-white/80 hover:text-white py-2" onClick={() => setIsMobileMenuOpen(false)}>About</Link>
+          <Link href={getLinkUrl("/contact")} className="text-white/80 hover:text-white py-2" onClick={() => setIsMobileMenuOpen(false)}>Contact</Link>
+          <Link href={getLinkUrl("/about")} className="text-white/80 hover:text-white py-2" onClick={() => setIsMobileMenuOpen(false)}>About</Link>
           <button
             onClick={() => {
-              router.push('/interview-setup');
+              handleNavigation('/interview-setup');
               setIsMobileMenuOpen(false);
             }}
             className="bg-white text-black px-5 py-2 rounded-lg text-sm font-medium w-full"
@@ -297,7 +314,7 @@ export default function NavBar() {
               <button
                 onClick={() => {
                   logout();
-                  router.push('/login');
+                  handleNavigation('/login');
                   setIsMobileMenuOpen(false);
                 }}
                 className="bg-[#27272A] text-white px-5 py-2 rounded-lg text-sm font-medium w-full"
@@ -309,7 +326,7 @@ export default function NavBar() {
             <div className="pt-4 border-t border-white/10 flex flex-col space-y-3">
               <button
                 onClick={() => {
-                  router.push('/onboarding');
+                  handleNavigation('/onboarding');
                   setIsMobileMenuOpen(false);
                 }}
                 className="px-5 py-2 rounded-lg text-sm font-medium bg-white/10 text-white w-full"
@@ -318,7 +335,7 @@ export default function NavBar() {
               </button>
               <button
                 onClick={() => {
-                  router.push('/login');
+                  handleNavigation('/login');
                   setIsMobileMenuOpen(false);
                 }}
                 className="bg-white text-black px-5 py-2 rounded-lg text-sm font-medium w-full"

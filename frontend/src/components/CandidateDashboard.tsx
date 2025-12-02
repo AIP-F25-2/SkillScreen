@@ -99,7 +99,7 @@ export default function CandidateDashboard() {
     <div className="min-h-screen bg-background p-6">
       {/* Breathing circle background */}
       <div className="breathing-circle"></div>
-      
+
       <div className="relative z-10 max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
@@ -108,42 +108,42 @@ export default function CandidateDashboard() {
         </div>
         {/*Video Interview History */}
         <div className="lg:col-span-2">
-            <div className="glass rounded-xl p-6">
-              <h2 className="text-2xl font-semibold text-white mb-6">Practice Interview Performance</h2>
-              <div className="space-y-4">
-                {mockPracticeInterviews.map((practiceinterview) => (
-                  <div
-                    key={practiceinterview.id}
-                    className="glass-dark rounded-xl p-6 cursor-pointer hover:bg-white/5 transition-all duration-300 transform hover:scale-[1.02]"
-                    onClick={() => setSelectedInterview(practiceinterview)}
-                  >
-                    <div className="w-full h-[200px] bg-gray-700/50 rounded-lg mb-4 flex items-center justify-center">
-                      <Video className="w-16 h-16 text-white/50" />
+          <div className="glass rounded-xl p-6">
+            <h2 className="text-2xl font-semibold text-white mb-6">Practice Interview Performance</h2>
+            <div className="space-y-4">
+              {mockPracticeInterviews.map((practiceinterview) => (
+                <div
+                  key={practiceinterview.id}
+                  className="glass-dark rounded-xl p-6 cursor-pointer hover:bg-white/5 transition-all duration-300 transform hover:scale-[1.02]"
+                  onClick={() => setSelectedInterview(practiceinterview)}
+                >
+                  <div className="w-full h-[200px] bg-gray-700/50 rounded-lg mb-4 flex items-center justify-center">
+                    <Video className="w-16 h-16 text-white/50" />
+                  </div>
+                  <div className="flex justify-between items-start mb-4">
+
+                    <div>
+                      <h3 className="text-white font-semibold text-lg mb-2">{practiceinterview.position}</h3>
+                      <p className="text-white/80 mb-1">{practiceinterview.company}</p>
+                      <p className="text-white/60 text-sm">{practiceinterview.date} • {practiceinterview.duration}</p>
                     </div>
-                    <div className="flex justify-between items-start mb-4">
-                      
-                      <div>
-                        <h3 className="text-white font-semibold text-lg mb-2">{practiceinterview.position}</h3>
-                        <p className="text-white/80 mb-1">{practiceinterview.company}</p>
-                        <p className="text-white/60 text-sm">{practiceinterview.date} • {practiceinterview.duration}</p>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-3xl font-bold text-white mb-1">{practiceinterview.score}%</div>
-                        <div className="text-sm text-white/60">Overall Score</div>
-                      </div>
-                    </div>
-                    <div className="flex space-x-3">
-                      {practiceinterview.strengths.slice(0, 2).map((strength, index) => (
-                        <span key={index} className="glass px-3 py-1.5 rounded-full text-xs font-medium text-white/90">
-                          {strength}
-                        </span>
-                      ))}
+                    <div className="text-right">
+                      <div className="text-3xl font-bold text-white mb-1">{practiceinterview.score}%</div>
+                      <div className="text-sm text-white/60">Overall Score</div>
                     </div>
                   </div>
-                ))}
-              </div>
+                  <div className="flex space-x-3">
+                    {practiceinterview.strengths.slice(0, 2).map((strength, index) => (
+                      <span key={index} className="glass px-3 py-1.5 rounded-full text-xs font-medium text-white/90">
+                        {strength}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
+        </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Interview History */}
           <div className="lg:col-span-2">
@@ -220,22 +220,27 @@ export default function CandidateDashboard() {
             <div className="glass rounded-xl p-6">
               <h3 className="text-xl font-semibold text-white mb-6">Quick Actions</h3>
               <div className="space-y-4">
-                <a 
-                  href="/interview" 
+                <a
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    const MAIN_URL = process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : 'https://skillscreen.dev';
+                    window.location.href = `${MAIN_URL}/interview`;
+                  }}
                   className="block w-full glass text-white py-4 px-6 rounded-xl font-semibold 
                            hover:bg-white/10 transition-all duration-300 transform hover:scale-[1.02]
                            text-center shadow-lg hover:shadow-xl"
                 >
                   Start Interview
                 </a>
-                <button 
+                <button
                   className="w-full glass-dark text-white py-4 px-6 rounded-xl font-semibold 
                            hover:bg-white/5 transition-all duration-300 transform hover:scale-[1.02]
                            shadow-lg hover:shadow-xl"
                 >
                   Practice Interview
                 </button>
-                <button 
+                <button
                   className="w-full glass-dark text-white py-4 px-6 rounded-xl font-semibold 
                            hover:bg-white/5 transition-all duration-300 transform hover:scale-[1.02]
                            shadow-lg hover:shadow-xl"
