@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+// Middleware for subdomain routing
 import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
