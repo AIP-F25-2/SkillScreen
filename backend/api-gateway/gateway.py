@@ -27,10 +27,10 @@ app.add_middleware(
 
 # RBAC rules: endpoint prefix → allowed roles
 RBAC_RULES = {
-    "/user": ["admin"],  # only admins can access user service
+    "/user": ["admin", "user"],  # only admins can access user service
     "/auth": ["admin", "user"],  # both admin and user can access auth service
     "/assessment": ["admin", "user"],  # both admin and user can access assessment
-    "/coding": ["user"],  # only normal users can access coding
+    "/coding": ["admin", "user"],  # only normal users can access coding
     "/text-service": ["admin", "user"],  # both admin and user can access text service
     "/audio-ai": ["admin", "user"],  # both admin and user can access audio AI
     "/video-ai": ["admin", "user"],  # both admin and user can access video AI
@@ -38,8 +38,9 @@ RBAC_RULES = {
     "/interview": ["admin", "user"],  # both admin and user can access interview
     "/media": ["admin", "user"],  # both admin and user can access media
     "/notification": ["admin", "user"],  # both admin and user can access notification
-    "/logger": ["admin"],  # only admins can access logger service
-    "/sso": ["admin", "user"]  # both admin and user can access SSO
+    "/logger": ["admin", "user"],  # only admins can access logger service
+    "/sso": ["admin", "user"],  # both admin and user can access SSO
+    "/orchestration": ["admin", "user"]  # both admin and user can access SSO
 }
 
 # Internal Docker service URLs - HTTP is acceptable for internal container communication
@@ -57,7 +58,8 @@ SERVICE_MAP = {
     "interview": os.getenv("INTERVIEW_SERVICE_URL", "http://localhost:8003"),
     "media": os.getenv("MEDIA_SERVICE_URL", "http://media-service:8080"),
     "notification": os.getenv("NOTIFICATION_SERVICE_URL", "http://notification-service:8080"),
-    "sso": os.getenv("SSO_SERVICE_URL", "http://sso-service:8080")
+    "sso": os.getenv("SSO_SERVICE_URL", "http://sso-service:8080"),
+    "orchestration": os.getenv("ORCHESTRATION_SERVICE_URL", "http://orchestration-service:8080")
 }
 
 # Middleware for JWT validation and RBAC

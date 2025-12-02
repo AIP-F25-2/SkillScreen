@@ -486,6 +486,8 @@ async def send_invitation(request: Request):
                     'candidate_id': actual_candidate_id,  # Use the real database candidate ID
                     'status': 'scheduled',
                     'scheduled_at': datetime.now(timezone.utc).isoformat(),
+                    # Ensure required fields for DB constraints are always populated
+                    'mode': data.get('mode', 'chat'),  # Default mode to 'chat' if not provided
                     'settings': {
                         'token': result['token'],
                         'expires_at': result['expires_at'],
@@ -502,8 +504,6 @@ async def send_invitation(request: Request):
                     interview_data['interviewer_id'] = data['interviewer_id']
                 # Use provided template_id or default to dummy template_id
                 interview_data['template_id'] = data.get('template_id', '1ef03eb1-4ba0-4e42-a27d-5b5a868640f4')
-                if data.get('mode'):
-                    interview_data['mode'] = data['mode']
                 
                 interview = interview_repo.create_interview(interview_data)
                 interview_session.commit()

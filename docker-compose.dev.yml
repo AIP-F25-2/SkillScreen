@@ -1,6 +1,20 @@
 # SkillScreen Platform - Development Environment (Azure Postgres)
 
 services:
+
+  seq:
+    image: datalust/seq:2024.3
+    container_name: seq
+    environment:
+      - ACCEPT_EULA=Y
+    ports:
+      - "5341:5341"
+      - "8081:80"
+    volumes:
+      - seq-data:/data
+    networks:
+      - skill-screen-network
+
   # Core Infrastructure Services (5000-5009)
   api-gateway:
     build:
@@ -54,7 +68,7 @@ services:
       - LOG_TO_FILE=true
       - LOG_DIR=/var/log/app
       - LOG_FILE=user-service.log
-      - ENABLE_SEQ=true
+      - ENABLE_SEQ=false
       - SEQ_URL=http://seq:5341
     volumes:
       - ./backend/user-service:/app
@@ -78,6 +92,7 @@ services:
     environment:
       - PORT=8080
       - HOST=0.0.0.0
+      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
       - USE_LLM_WEIGHTS=false   
     volumes:
       - ./backend/assessment-service:/app
@@ -94,8 +109,24 @@ services:
       - PORT=8080
       - HOST=0.0.0.0
       - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+      - PYTHONPATH=/app:/common-service
+      # logging
+      - ENV=dev
+      - LOG_LEVEL=DEBUG
+      - LOG_TO_FILE=true
+      - LOG_DIR=/var/log/app
+      - LOG_FILE=coding-service.log
+      - ENABLE_SEQ=false
+      - SEQ_URL=http://seq:5341
+      - JUDGE0_BASE_URL=https://judge0-ce.p.rapidapi.com
+      - JUDGE0_RAPIDAPI_KEY=
+      - JUDGE0_RAPIDAPI_HOST=judge0-ce.p.rapidapi.com
     volumes:
       - ./backend/coding-service:/app
+      - ./backend/common-service:/common-service
+      - ./_logs:/var/log/app
+    depends_on:
+      - seq
     networks:
       - skill-screen-network
 
@@ -140,6 +171,9 @@ services:
       - WHISPER_MODEL_SIZE=base
       - WHISPER_DEVICE=cpu
       - PYTHONPATH=/app:/common-service
+      - AZURE_STORAGE_ACCOUNT_NAME=skillscreenstorage00
+      - AZURE_STORAGE_CONTAINER_NAME=audio-recordings
+      - AZURE_STORAGE_SAS_TOKEN=sp=racwdl&st=2025-11-18T21:59:51Z&se=2026-01-01T06:14:51Z&spr=https&sv=2024-11-04&sr=c&sig=JpSO0RP%2Bd2jaQfpUWNcjmgunr9ty22YAvehAogh4ifU%3D
     volumes:
       - ./backend/audio-ai-service:/app
       - ./backend/common-service:/common-service
@@ -182,6 +216,8 @@ services:
     container_name: interview-service
     ports:
       - "8003:8080"
+    env_file:
+      - ./backend/interview-service/.env
     environment:
       - PORT=8080
       - HOST=0.0.0.0
@@ -204,8 +240,11 @@ services:
       - PORT=8080
       - HOST=0.0.0.0
       - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+      - PYTHONPATH=/app:/common-service
       - CORS_ORIGINS=http://localhost:3000
       - PYTHONPATH=/app:/common-service
+      - AZURE_BLOB_CONTAINER_URL=https://skillscreenstorage00.blob.core.windows.net/video-recordings?sp=racwdl&st=2025-11-18T22:02:53Z&se=2026-01-01T06:17:53Z&spr=https&sv=2024-11-04&sr=c&sig=7nA14qtnnJ6wGV9Mu5RQJDPBfLANTdFu2rcgD1QikBI%3D
+      - AZURE_BLOB_CONTAINER=video-recordings
     volumes:
       - ./backend/media-service:/app
       - ./backend/common-service:/common-service
@@ -258,7 +297,8 @@ services:
       - LOG_TO_FILE=true
       - LOG_DIR=/var/log/app
       - LOG_FILE=user-service.log
-      - ENABLE_SEQ=true
+      - ENABLE_SEQ=false
+      - SEQ_URL=http://seq:5341
     volumes:
       - ./backend/common-service:/app
       - ./_logs:/var/log/app
@@ -267,16 +307,33 @@ services:
     networks:
       - skill-screen-network
 
-  seq:
-    image: datalust/seq:2024.3
-    container_name: seq
+  orchestration-service:
+    build:
+      context: ./backend/orchestration-service
+      dockerfile: Dockerfile
+    container_name: orchestration-service
     environment:
-      - ACCEPT_EULA=Y
-    ports:
-      - "5341:5341" # ingestion endpoint
-      - "8081:80" # web UI -> http://localhost:8081
+      - PORT=8080
+      - HOST=0.0.0.0
+      - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+      - PYTHONPATH=/app:/common-service
+      # Service URLs
+      - INTERVIEW_SERVICE_URL=http://interview-service:8080
+      - TEXT_SERVICE_URL=http://text-service:8080
+      # logging
+      - ENV=dev
+      - LOG_LEVEL=DEBUG
+      - LOG_TO_FILE=true
+      - LOG_DIR=/var/log/app
+      - LOG_FILE=orchestration-service.log
+      - ENABLE_SEQ=false
+      - SEQ_URL=http://seq:5341
     volumes:
-      - seq-data:/data
+      - ./backend/orchestration-service:/app
+      - ./backend/common-service:/common-service
+      - ./_logs:/var/log/app
+    depends_on:
+      - seq
     networks:
       - skill-screen-network
 
