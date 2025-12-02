@@ -90,13 +90,8 @@ export default function RecruiterDashboard() {
   const [loadingCandidates, setLoadingCandidates] = useState(true);
 
   // Job Description Management state
-  const [jobTemplates, setJobTemplates] = useState<JobTemplate[]>([{
-    id: 'tmpl-1',
-    title: 'Senior Software Engineer',
-    department: 'Engineering',
-    content: 'We are seeking a Senior Software Engineer with experience in React, Node.js, and cloud-native architectures. Responsibilities include building scalable features, mentoring, and collaborating across teams.',
-    required_skills: ['React', 'Node.js', 'TypeScript', 'AWS', 'Docker']
-  }]);
+  const [jobTemplates, setJobTemplates] = useState<JobTemplate[]>([]);
+  const [loadingJobTemplates, setLoadingJobTemplates] = useState(false);
   const [templateTitle, setTemplateTitle] = useState('');
   const [templateDepartment, setTemplateDepartment] = useState('');
   const [templateContent, setTemplateContent] = useState('');
@@ -104,12 +99,16 @@ export default function RecruiterDashboard() {
   const [skillInput, setSkillInput] = useState('');
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
 
-  // Fetch all interviews and candidates
+  // Hardcoded org for now – TODO: load from authenticated recruiter/org context
+  const DEFAULT_ORGANIZATION_ID = "ecf369b2-caae-4962-85a8-404db7ab0d7e";
+
+  // Fetch all interviews, candidates, and job templates
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoadingInterviews(true);
         setLoadingCandidates(true);
+        setLoadingJobTemplates(true);
 
         // Fetch all interviews
         const interviewsResponse = await apiClient.getAllInterviews();
@@ -122,11 +121,29 @@ export default function RecruiterDashboard() {
         if (candidatesResponse.success) {
           setCandidates(candidatesResponse.data.candidates || []);
         }
+
+        // Fetch job templates (job positions) from interview-service
+        try {
+          const jobPositionsRes = await apiClient.getJobPositions(DEFAULT_ORGANIZATION_ID);
+          if (jobPositionsRes.success && jobPositionsRes.data?.job_positions) {
+            const templates: JobTemplate[] = jobPositionsRes.data.job_positions.map((jp: any) => ({
+              id: jp.id,
+              title: jp.title,
+              department: jp.department || 'General',
+              content: jp.description || '',
+              required_skills: Array.isArray(jp.required_skills) ? jp.required_skills : undefined,
+            }));
+            setJobTemplates(templates);
+          }
+        } catch (jobErr) {
+          console.error('Failed to fetch job templates:', jobErr);
+        }
       } catch (error) {
         console.error('Failed to fetch data:', error);
       } finally {
         setLoadingInterviews(false);
         setLoadingCandidates(false);
+        setLoadingJobTemplates(false);
       }
     };
 

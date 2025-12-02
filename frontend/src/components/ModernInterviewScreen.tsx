@@ -271,18 +271,35 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
 
       // Reset chunks on server and wait for confirmation
       const userId = user?.id || sessionId; // Use sessionId for token-based interviews
-      console.log('🔄 Resetting chunks for user:', userId);
       
-      if (userId) {
+      // Get interview_id and session_id for reset_chunks (from state or token)
+      let resetInterviewId = interviewId;
+      let resetSessionId = sessionId;
+      
+      if (fromToken) {
+        const tokenData = getInterviewToken();
+        if (tokenData) {
+          resetInterviewId = resetInterviewId || tokenData.interviewId || '';
+          resetSessionId = resetSessionId || tokenData.sessionId || '';
+        }
+      }
+      
+      console.log('🔄 Resetting chunks for interview:', resetInterviewId, 'session:', resetSessionId);
+      
+      if (resetInterviewId && resetSessionId) {
         try {
           const resetResponse = await fetch(`${API_BASE_URL}/media/reset_chunks`, {
             method: 'POST',
             headers: user ? getAuthHeaders() : { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_id: userId })
+            body: JSON.stringify({ 
+              interview_id: resetInterviewId,
+              session_id: resetSessionId
+            })
           });
           
           if (!resetResponse.ok) {
-            console.warn('⚠️ Failed to reset chunks, continuing anyway:', resetResponse.status);
+            const errorText = await resetResponse.text();
+            console.warn('⚠️ Failed to reset chunks, continuing anyway:', resetResponse.status, errorText);
           } else {
             console.log('✅ Chunks reset successfully');
           }
@@ -475,8 +492,28 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
     cleanupRecording();
 
     try {
+      // Get interview_id before uploading chunks
+      let finalInterviewIdForChunks = interviewId;
+      if (!finalInterviewIdForChunks && fromToken) {
+        const tokenData = getInterviewToken();
+        finalInterviewIdForChunks = tokenData?.interviewId || '';
+      }
+      
+      if (!finalInterviewIdForChunks) {
+        console.error('Missing interview_id for chunk upload');
+        alert('Failed to upload interview: Missing interview_id');
+        return;
+      }
+      
+      if (!sessionId) {
+        console.error('Missing session_id for chunk upload');
+        alert('Failed to upload interview: Missing session_id');
+        return;
+      }
+      
       // Upload all chunks sequentially
-      console.log(`Uploading ${recordedChunksRef.current.length} chunks...`);
+      const totalChunks = recordedChunksRef.current.length;
+      console.log(`Uploading ${totalChunks} chunks for interview ${finalInterviewIdForChunks}...`);
       
       const headers: Record<string, string> = user ? { ...getAuthHeaders() } : {};
       delete headers['Content-Type'];
@@ -487,7 +524,10 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
         
         const formData = new FormData();
         formData.append('file', new Blob([chunk], { type: 'video/webm' }), chunkFilename);
-        formData.append('user_id', user?.id || sessionId); // Use sessionId for token-based interviews
+        formData.append('interview_id', finalInterviewIdForChunks);
+        formData.append('session_id', sessionId);
+        formData.append('chunk_index', String(i));
+        formData.append('total_chunks', String(totalChunks));
         
         try {
           const response = await fetch(`${API_BASE_URL}/media/upload_chunk`, {
@@ -497,9 +537,10 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
           });
           
           if (!response.ok) {
-            console.error(`Failed to upload chunk ${i}:`, await response.text());
+            const errorText = await response.text();
+            console.error(`Failed to upload chunk ${i}:`, errorText);
           } else {
-            console.log(`Uploaded chunk ${i + 1}/${recordedChunksRef.current.length}`);
+            console.log(`Uploaded chunk ${i + 1}/${totalChunks}`);
           }
         } catch (error) {
           console.error(`Failed to upload chunk ${i}:`, error);
@@ -509,10 +550,13 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
 
       console.log('All chunks uploaded, finalizing...');
       const userId = user?.id || sessionId; // Use sessionId for token-based interviews
+      
+      // Use the same interview_id that was used for chunk uploads
       console.log('Finalize request data:', {
         user_id: userId,
         session_id: sessionId,
-        candidate_id: participantName
+        candidate_id: participantName,
+        interview_id: finalInterviewIdForChunks
       });
 
       // Finalize upload on media service
@@ -522,7 +566,8 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
         body: JSON.stringify({
           user_id: userId,
           session_id: sessionId,
-          candidate_id: participantName
+          candidate_id: participantName,
+          interview_id: finalInterviewIdForChunks
         })
       });
 
@@ -530,8 +575,8 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
       console.log('Finalize response:', finalizeData);
       
       if (finalizeData.status === 'done') {
-        // Use existing interview ID for token-based interviews, or get new one from media service
-        const finalInterviewId = fromToken ? interviewId : finalizeData.interview_id;
+        // Use the interview_id that was used for chunk uploads (consistent throughout)
+        const finalInterviewId = finalInterviewIdForChunks || finalizeData.interview_id;
         const videoPath = finalizeData.file;
         console.log('Final Interview ID:', finalInterviewId, 'Video Path:', videoPath);
         

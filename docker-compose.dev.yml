@@ -171,6 +171,9 @@ services:
       - WHISPER_MODEL_SIZE=base
       - WHISPER_DEVICE=cpu
       - PYTHONPATH=/app:/common-service
+      - AZURE_STORAGE_ACCOUNT_NAME=skillscreenstorage00
+      - AZURE_STORAGE_CONTAINER_NAME=audio-recordings
+      - AZURE_STORAGE_SAS_TOKEN=sp=racwdl&st=2025-11-18T21:59:51Z&se=2026-01-01T06:14:51Z&spr=https&sv=2024-11-04&sr=c&sig=JpSO0RP%2Bd2jaQfpUWNcjmgunr9ty22YAvehAogh4ifU%3D
     volumes:
       - ./backend/audio-ai-service:/app
       - ./backend/common-service:/common-service
@@ -240,6 +243,8 @@ services:
       - PYTHONPATH=/app:/common-service
       - CORS_ORIGINS=http://localhost:3000
       - PYTHONPATH=/app:/common-service
+      - AZURE_BLOB_CONTAINER_URL=https://skillscreenstorage00.blob.core.windows.net/video-recordings?sp=racwdl&st=2025-11-18T22:02:53Z&se=2026-01-01T06:17:53Z&spr=https&sv=2024-11-04&sr=c&sig=7nA14qtnnJ6wGV9Mu5RQJDPBfLANTdFu2rcgD1QikBI%3D
+      - AZURE_BLOB_CONTAINER=video-recordings
     volumes:
       - ./backend/media-service:/app
       - ./backend/common-service:/common-service
