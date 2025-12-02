@@ -4,6 +4,7 @@ import { API_BASE_URL } from './config';
 export interface ApiResponse<T = any> {
   success: boolean;
   data: T;
+  error?: string;
   meta: {
     timestamp: string;
     request_id: string;
@@ -40,7 +41,7 @@ class ApiClient {
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
     const url = `${this.baseUrl}${endpoint}`;
-    
+
     const defaultHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
     };
@@ -61,7 +62,7 @@ class ApiClient {
 
     try {
       const response = await fetch(url, config);
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -355,12 +356,12 @@ class ApiClient {
   async uploadResumeForParsing(files: File | File[], organizationId: string = "e5d2d50b-6c07-43cd-8a78-ffd7b5b377bb"): Promise<ApiResponse<any>> {
     const formData = new FormData();
     const fileArray = Array.isArray(files) ? files : [files];
-    
+
     // Append all files to formData
     fileArray.forEach((file) => {
       formData.append('files', file);
     });
-    
+
     // Append organization_id (use default UUID if not provided)
     formData.append('organization_id', organizationId);
 
@@ -416,15 +417,15 @@ class ApiClient {
       return (payload && typeof payload === 'object' && 'success' in payload)
         ? payload
         : {
-            success: false,
-            data: null,
-            error: `Upload failed with status ${response.status}`,
-            meta: {
-              timestamp: new Date().toISOString(),
-              request_id: '',
-              version: 'v1',
-            },
-          };
+          success: false,
+          data: null,
+          error: `Upload failed with status ${response.status}`,
+          meta: {
+            timestamp: new Date().toISOString(),
+            request_id: '',
+            version: 'v1',
+          },
+        };
     }
 
     return payload as ApiResponse<any>;
@@ -441,7 +442,7 @@ class ApiClient {
   }): Promise<ApiResponse<any>> {
     const url = `${this.baseUrl}/text-service/candidates`;
     const token = this.getToken();
-    
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -463,7 +464,7 @@ class ApiClient {
   }): Promise<ApiResponse<any>> {
     const url = `${this.baseUrl}/text-service/jobs`;
     const token = this.getToken();
-    
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -485,7 +486,7 @@ class ApiClient {
   }): Promise<ApiResponse<any>> {
     const url = `${this.baseUrl}/text-service/interviews/start`;
     const token = this.getToken();
-    
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -508,7 +509,7 @@ class ApiClient {
   async getInterviewQuestions(sessionId: string): Promise<ApiResponse<any>> {
     const url = `${this.baseUrl}/text-service/interviews/${sessionId}/questions`;
     const token = this.getToken();
-    
+
     const response = await fetch(url, {
       method: 'GET',
       headers: {
@@ -532,7 +533,7 @@ class ApiClient {
   }): Promise<ApiResponse<any>> {
     const url = `${this.baseUrl}/interview/api/email/send-invitation`;
     const token = this.getToken();
-    
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
