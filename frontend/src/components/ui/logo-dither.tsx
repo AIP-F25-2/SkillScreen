@@ -89,8 +89,8 @@ ${proceduralHash11}
 ${proceduralHash21}
 
 float getSimplexNoise(vec2 uv, float t) {
-  float noise = .5 * snoise(uv - vec2(0., .3 * t));
-  noise += .5 * snoise(2. * uv + vec2(0., .32 * t));
+  float noise = 0.5 * snoise(uv - vec2(0.0, 0.3 * t));
+  noise += 0.5 * snoise(2.0 * uv + vec2(0.0, 0.32 * t));
   return noise;
 }
 
@@ -112,7 +112,7 @@ float getBayerValue(vec2 uv, int size) {
 }
 
 void main() {
-  float t = .5 * u_time;
+  float t = 0.5 * u_time;
   
   // Calculate centered UVs for logo
   // Normalize by the smaller dimension to ensure the logo fits within the screen
@@ -135,30 +135,30 @@ void main() {
   }
 
   vec2 uv = gl_FragCoord.xy / u_resolution.xy;
-  uv -= .5;
+  uv -= 0.5;
   
   // Apply pixelization
   float pxSize = u_pxSize;
   vec2 pxSizeUv = gl_FragCoord.xy;
-  pxSizeUv -= .5 * u_resolution;
+  pxSizeUv -= 0.5 * u_resolution;
   pxSizeUv /= pxSize;
   vec2 pixelizedUv = floor(pxSizeUv) * pxSize / u_resolution.xy;
-  pixelizedUv += .5;
-  pixelizedUv -= .5;
+  pixelizedUv += 0.5;
+  pixelizedUv -= 0.5;
   
   vec2 shape_uv = pixelizedUv;
   vec2 dithering_uv = pxSizeUv;
 
   // Wave Shape (Shape 4 from DitheringShader)
-  shape_uv *= 4.;
-  float wave = cos(.5 * shape_uv.x - 2. * t) * sin(1.5 * shape_uv.x + t) * (.75 + .25 * cos(3. * t));
-  float shape = 1. - smoothstep(-1., 1., shape_uv.y + wave);
+  shape_uv *= 4.0;
+  float wave = cos(0.5 * shape_uv.x - 2.0 * t) * sin(1.5 * shape_uv.x + t) * (0.75 + 0.25 * cos(3.0 * t));
+  float shape = 1.0 - smoothstep(-1.0, 1.0, shape_uv.y + wave);
 
   // Dithering (8x8)
   float dithering = getBayerValue(dithering_uv, 8);
-  dithering -= .5;
+  dithering -= 0.5;
   
-  float res = step(.5, shape + dithering);
+  float res = step(0.5, shape + dithering);
 
   vec3 fgColor = u_colorFront.rgb * u_colorFront.a;
   float fgOpacity = u_colorFront.a;

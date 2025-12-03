@@ -78,8 +78,7 @@ export function DaisyWave({ className, style }: DaisyWaveProps) {
                     // We want the "bands" to be vertical, but wavy.
                     // So the primary variation is along X, but shifted by Y
 
-                    const waveX = u * 10;
-                    const waveY = v * 10;
+
 
                     // A vertical wave: The phase depends on Y, but the value depends on X?
                     // No, a "wave" usually means the wavefronts are lines.

@@ -84,7 +84,7 @@ export default function ProjectInfo() {
                         <div className="relative grid grid-cols-1 sm:grid-cols-2 gap-4">
                             {cards.map((card, index) => (
                                 <motion.div
-                                    key={index}
+                                    key={card.title}
                                     layoutId={`card-${index}`}
                                     onClick={() => setSelectedId(index)}
                                     initial={{ opacity: 0, y: 20 }}

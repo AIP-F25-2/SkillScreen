@@ -822,7 +822,7 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
 
           <button
             onClick={toggleVideo}
-            className={`p-4 rounded-xl transition-all ${!isVideoOn ? 'bg-red-500/20 hover:bg-red-500/30' : 'hover:bg-white/10'
+            className={`p-4 rounded-xl transition-all ${isVideoOn ? 'hover:bg-white/10' : 'bg-red-500/20 hover:bg-red-500/30'
               }`}
           >
             {isVideoOn ? <Video className="w-6 h-6 text-white" /> : <VideoOff className="w-6 h-6 text-white" />}

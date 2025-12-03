@@ -28,11 +28,11 @@ export default function NavBar({ isPortfolio = false }: NavBarProps) {
   };
 
   const handleNavigation = (path: string) => {
-    if (isPortfolio) {
-      globalThis.location.href = `${MAIN_URL}${path}`;
-    } else {
-      router.push(path);
-    }
+    const navigate = isPortfolio
+      ? (p: string) => { globalThis.location.href = `${MAIN_URL}${p}`; }
+      : (p: string) => { router.push(p); };
+
+    navigate(path);
   };
 
   const isActive = (path: string) => pathname === path;
@@ -187,15 +187,21 @@ export default function NavBar({ isPortfolio = false }: NavBarProps) {
           <div className="flex items-center space-x-2 mr-2">
             {/* Show dashboard link based on user type */}
             {isAuthenticated && user && (
-              <Link
-                href={getLinkUrl(user.userType === 'recruiter' ? '/recruiter' : '/candidate')}
-                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 ${isActive(user.userType === 'recruiter' ? '/recruiter' : '/candidate')
-                  ? 'bg-white/10 text-white shadow-lg shadow-black/10'
-                  : 'text-white/70 hover:bg-white/5 hover:text-white hover:shadow-lg hover:shadow-black/10'
-                  }`}
-              >
-                {user.userType === 'recruiter' ? 'Recruiter Dashboard' : 'Candidate Dashboard'}
-              </Link>
+              (() => {
+                const dashboardPath = user.userType === 'recruiter' ? '/recruiter' : '/candidate';
+                const dashboardText = user.userType === 'recruiter' ? 'Recruiter Dashboard' : 'Candidate Dashboard';
+                return (
+                  <Link
+                    href={getLinkUrl(dashboardPath)}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 ${isActive(dashboardPath)
+                      ? 'bg-white/10 text-white shadow-lg shadow-black/10'
+                      : 'text-white/70 hover:bg-white/5 hover:text-white hover:shadow-lg hover:shadow-black/10'
+                      }`}
+                  >
+                    {dashboardText}
+                  </Link>
+                );
+              })()
             )}
 
             {/* Contact */}
