@@ -6,7 +6,6 @@ import ProjectInfo from "@/components/ProjectInfo";
 import DemoSection from "@/components/DemoSection";
 import { TeamSection } from "@/components/TeamSection";
 import Footer from "@/components/Footer";
-import { DitheringShader } from "@/components/ui/dithering-shader";
 import { LogoDither } from "@/components/ui/logo-dither";
 export default function PortfolioPage() {
     return (

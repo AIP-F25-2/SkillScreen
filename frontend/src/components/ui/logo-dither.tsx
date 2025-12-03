@@ -176,9 +176,9 @@ void main() {
 `;
 
 interface LogoDitherProps {
-  className?: string;
-  style?: React.CSSProperties;
-  scale?: number;
+  readonly className?: string;
+  readonly style?: React.CSSProperties;
+  readonly scale?: number;
 }
 
 function createShader(gl: WebGL2RenderingContext, type: number, source: string): WebGLShader | null {

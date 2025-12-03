@@ -91,7 +91,6 @@ export default function RecruiterDashboard() {
 
   // Job Description Management state
   const [jobTemplates, setJobTemplates] = useState<JobTemplate[]>([]);
-  const [loadingJobTemplates, setLoadingJobTemplates] = useState(false);
   const [templateTitle, setTemplateTitle] = useState('');
   const [templateDepartment, setTemplateDepartment] = useState('');
   const [templateContent, setTemplateContent] = useState('');
@@ -108,7 +107,6 @@ export default function RecruiterDashboard() {
       try {
         setLoadingInterviews(true);
         setLoadingCandidates(true);
-        setLoadingJobTemplates(true);
 
         // Fetch all interviews
         const interviewsResponse = await apiClient.getAllInterviews();
@@ -135,15 +133,14 @@ export default function RecruiterDashboard() {
             }));
             setJobTemplates(templates);
           }
-        } catch (jobErr) {
-          console.error('Failed to fetch job templates:', jobErr);
+        } catch (error_) {
+          console.error('Error loading job templates:', error_);
         }
       } catch (error) {
         console.error('Failed to fetch data:', error);
       } finally {
         setLoadingInterviews(false);
         setLoadingCandidates(false);
-        setLoadingJobTemplates(false);
       }
     };
 
@@ -252,9 +249,9 @@ export default function RecruiterDashboard() {
     <div className="min-h-screen p-6">
       {/* Breathing circle background */}
       <div className="breathing-circle"></div>
-      
+
       <div className="relative z-10 max-w-7xl mx-auto">
-        
+
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-white mb-2">Recruiter Dashboard</h1>
@@ -284,22 +281,20 @@ export default function RecruiterDashboard() {
         <div className="flex space-x-1 mb-8 bg-primary-200/10 rounded-lg p-1">
           <button
             onClick={() => setActiveTab('interviews')}
-            className={`px-6 py-3 rounded-md font-semibold transition-colors ${
-              activeTab === 'interviews'
-                ? 'bg-white text-primary-300'
-                : 'text-white hover:bg-primary-200/20'
-            }`}
+            className={`px-6 py-3 rounded-md font-semibold transition-colors ${activeTab === 'interviews'
+              ? 'bg-white text-primary-300'
+              : 'text-white hover:bg-primary-200/20'
+              }`}
           >
             Interviews
           </button>
-         
+
           <button
             onClick={() => setActiveTab('jobs')}
-            className={`px-6 py-3 rounded-md font-semibold transition-colors ${
-              activeTab === 'jobs'
-                ? 'bg-white text-primary-300'
-                : 'text-white hover:bg-primary-200/20'
-            }`}
+            className={`px-6 py-3 rounded-md font-semibold transition-colors ${activeTab === 'jobs'
+              ? 'bg-white text-primary-300'
+              : 'text-white hover:bg-primary-200/20'
+              }`}
           >
             Active Job Listings
           </button>
@@ -314,7 +309,7 @@ export default function RecruiterDashboard() {
               <FileUploadDemo />
             </div>
             <div className="flex justify-between items-center mb-6">
-              
+
               <h2 className="text-2xl font-semibold text-white flex items-center gap-2">
                 <FileText className="w-6 h-6" />
                 All Interviews
@@ -362,7 +357,7 @@ export default function RecruiterDashboard() {
                         <td className="py-4 px-4 text-white/80">{interview.assigned_user || interview.user_id || '-'}</td>
                         <td className="py-4 px-4 text-white/80">{formatDate(interview.created_at || interview.scheduled_at)}</td>
                         <td className="py-4 px-4 text-white/80">
-                          {interview.transcript?.duration_seconds 
+                          {interview.transcript?.duration_seconds
                             ? `${Math.floor(interview.transcript.duration_seconds / 60)}m`
                             : '-'}
                         </td>
@@ -397,7 +392,7 @@ export default function RecruiterDashboard() {
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-semibold text-white">Candidate Pipeline</h2>
             </div>
-            
+
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>

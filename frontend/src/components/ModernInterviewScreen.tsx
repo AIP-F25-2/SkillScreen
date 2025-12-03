@@ -32,7 +32,7 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
   const [showProcessingModal, setShowProcessingModal] = useState(false);
   const [interviewQuestions, setInterviewQuestions] = useState<any[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  
+
   // Media recording refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
@@ -48,20 +48,20 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
   const testRecording = async () => {
     try {
       console.log('Testing MediaRecorder...');
-      
+
       // Check MediaRecorder support
       if (!window.MediaRecorder) {
         throw new Error('MediaRecorder not supported');
       }
-      
+
       // Get user media
       const stream = await navigator.mediaDevices.getUserMedia({
         video: true,
         audio: true
       });
-      
+
       console.log('Got media stream:', stream);
-      
+
       // Check supported mimeTypes
       const supportedTypes = [
         'video/webm; codecs=vp8,opus',
@@ -69,46 +69,46 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
         'video/mp4',
         'video/webm; codecs=vp9,opus'
       ];
-      
+
       const supportedType = supportedTypes.find(type => MediaRecorder.isTypeSupported(type));
       console.log('Supported mimeType:', supportedType);
-      
+
       if (!supportedType) {
         throw new Error('No supported video format found');
       }
-      
+
       // Create MediaRecorder
       const recorder = new MediaRecorder(stream, { mimeType: supportedType });
       const testChunks: Blob[] = [];
-      
+
       recorder.ondataavailable = (event) => {
         console.log('Test ondataavailable:', event.data.size);
         if (event.data.size > 0) {
           testChunks.push(event.data);
         }
       };
-      
+
       recorder.onstop = () => {
         console.log('Test recording stopped, chunks:', testChunks.length);
         const result = testChunks.length > 0 ? 'SUCCESS' : 'FAILED - No chunks';
         console.log('Test result:', result);
         alert(`Recording test: ${result}`);
-        
+
         // Cleanup
         stream.getTracks().forEach(track => track.stop());
       };
-      
+
       recorder.onerror = (event) => {
         console.error('Test recorder error:', event);
         alert('Recording test FAILED - Error occurred');
       };
-      
+
       // Start recording for 3 seconds
       recorder.start(1000); // 1 second chunks
       setTimeout(() => {
         recorder.stop();
       }, 3000);
-      
+
     } catch (error) {
       console.error('Recording test failed:', error);
       alert(`Recording test FAILED: ${error instanceof Error ? error.message : String(error)}`);
@@ -137,7 +137,7 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
-    
+
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
@@ -165,7 +165,7 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
   // Create interview session on mount and auto-start recording
   useEffect(() => {
     let isActive = true;
-    
+
     const createSessionAndStart = async () => {
       // Handle token-based interviews
       if (fromToken) {
@@ -173,12 +173,12 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
         console.log('🔍 DEBUG: Token-based interview detected');
         console.log('🔍 DEBUG: Token data retrieved:', tokenData);
         console.log('🔍 DEBUG: Session storage contents:', sessionStorage.getItem('interview_token_data'));
-        
+
         if (tokenData && isActive) {
           console.log('✅ Using token-based session:', tokenData.sessionId, 'interview:', tokenData.interviewId);
           setSessionId(tokenData.sessionId);
           setInterviewId(tokenData.interviewId);
-          
+
           // Auto-start recording after session is set
           setTimeout(() => {
             if (isActive) {
@@ -193,31 +193,31 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
         }
         return;
       }
-      
+
       // Handle regular authenticated interviews
       if (!user || !isActive) return;
-      
+
       // Don't create a new session if we already have one
       if (sessionId) {
         console.log('Session already exists:', sessionId);
         return;
       }
-      
+
       try {
         console.log('Creating interview session for user:', user.id, 'participant:', participantName);
         const response = await apiClient.createInterviewSession(
           user.id,
           participantName
         );
-        
+
         console.log('Session creation response:', response);
-        
+
         if (response.success && isActive) {
           const newSessionId = response.data?.session_id || response.data?.interview_id;
           console.log('Setting session ID to:', newSessionId);
           setSessionId(newSessionId);
           console.log('Interview session created:', newSessionId);
-          
+
           // Auto-start recording after session is created
           setTimeout(() => {
             if (isActive) {
@@ -231,9 +231,9 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
         console.error('Failed to create interview session:', error);
       }
     };
-    
+
     createSessionAndStart();
-    
+
     // Cleanup on unmount
     return () => {
       isActive = false;
@@ -250,7 +250,7 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
     }
 
     console.log('🎬 Starting recording...');
-    
+
     try {
       // Get user media
       console.log('📹 Requesting camera and microphone access...');
@@ -271,11 +271,11 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
 
       // Reset chunks on server and wait for confirmation
       const userId = user?.id || sessionId; // Use sessionId for token-based interviews
-      
+
       // Get interview_id and session_id for reset_chunks (from state or token)
       let resetInterviewId = interviewId;
       let resetSessionId = sessionId;
-      
+
       if (fromToken) {
         const tokenData = getInterviewToken();
         if (tokenData) {
@@ -283,27 +283,27 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
           resetSessionId = resetSessionId || tokenData.sessionId || '';
         }
       }
-      
+
       console.log('🔄 Resetting chunks for interview:', resetInterviewId, 'session:', resetSessionId);
-      
+
       if (resetInterviewId && resetSessionId) {
         try {
           const resetResponse = await fetch(`${API_BASE_URL}/media/reset_chunks`, {
             method: 'POST',
             headers: user ? getAuthHeaders() : { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
+            body: JSON.stringify({
               interview_id: resetInterviewId,
               session_id: resetSessionId
             })
           });
-          
+
           if (!resetResponse.ok) {
             const errorText = await resetResponse.text();
             console.warn('⚠️ Failed to reset chunks, continuing anyway:', resetResponse.status, errorText);
           } else {
             console.log('✅ Chunks reset successfully');
           }
-          
+
           // Wait a bit to ensure filesystem is synced
           await new Promise(resolve => setTimeout(resolve, 100));
         } catch (resetError) {
@@ -359,14 +359,14 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
       mediaRecorder.start(5000); // Record in 5-second chunks for better quality
       mediaRecorderRef.current = mediaRecorder;
       setIsRecording(true);
-      
+
       // Update session status
       if (sessionId) {
         await apiClient.updateSessionStatus(sessionId, 'recording');
       }
     } catch (error) {
       console.error('❌ Failed to start recording:', error);
-      
+
       // More specific error messages
       let errorMessage = 'Failed to start recording. ';
       if (error instanceof Error) {
@@ -384,18 +384,18 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
       } else {
         errorMessage += 'Please check camera/microphone permissions.';
       }
-      
+
       alert(errorMessage);
     }
   };
 
   const cleanupRecording = () => {
     console.log('Cleaning up recording...');
-    
+
     // Stop media recorder if it exists
     if (mediaRecorderRef.current) {
       console.log('Stopping MediaRecorder, state:', mediaRecorderRef.current.state);
-      
+
       if (mediaRecorderRef.current.state !== 'inactive') {
         try {
           mediaRecorderRef.current.stop();
@@ -403,7 +403,7 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
           console.error('Error stopping recorder:', e);
         }
       }
-      
+
       // Remove all event handlers to prevent further events
       mediaRecorderRef.current.ondataavailable = null;
       mediaRecorderRef.current.onstop = null;
@@ -440,15 +440,15 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
     console.log('Stop recording called');
     console.log('MediaRecorder state:', mediaRecorderRef.current?.state);
     console.log('Current chunks count:', recordedChunksRef.current.length);
-    
+
     // Create a promise that resolves when the final chunk is received
     const finalChunkPromise = new Promise<void>((resolve) => {
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         console.log('MediaRecorder is active, setting up final chunk capture...');
-        
+
         // Keep track of whether we've received the final chunk
         let finalChunkReceived = false;
-        
+
         // Set up handler to capture the final chunk
         const handleFinalData = (event: BlobEvent) => {
           console.log(`Final dataavailable event: size=${event.data.size}`);
@@ -460,7 +460,7 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
             console.warn('Final chunk is empty');
           }
         };
-        
+
         // Set up onstop handler
         mediaRecorderRef.current.onstop = () => {
           console.log('MediaRecorder onstop fired');
@@ -470,10 +470,10 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
             resolve();
           }, 200);
         };
-        
+
         // Add the final data handler
         mediaRecorderRef.current.addEventListener('dataavailable', handleFinalData);
-        
+
         // Stop the recorder - this will trigger ondataavailable then onstop
         mediaRecorderRef.current.stop();
         console.log('MediaRecorder.stop() called');
@@ -485,9 +485,9 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
 
     // Wait for the final chunk to be captured
     await finalChunkPromise;
-    
+
     console.log(`Total chunks captured: ${recordedChunksRef.current.length}`);
-    
+
     // Now cleanup to prevent any more events
     cleanupRecording();
 
@@ -498,44 +498,44 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
         const tokenData = getInterviewToken();
         finalInterviewIdForChunks = tokenData?.interviewId || '';
       }
-      
+
       if (!finalInterviewIdForChunks) {
         console.error('Missing interview_id for chunk upload');
         alert('Failed to upload interview: Missing interview_id');
         return;
       }
-      
+
       if (!sessionId) {
         console.error('Missing session_id for chunk upload');
         alert('Failed to upload interview: Missing session_id');
         return;
       }
-      
+
       // Upload all chunks sequentially
       const totalChunks = recordedChunksRef.current.length;
       console.log(`Uploading ${totalChunks} chunks for interview ${finalInterviewIdForChunks}...`);
-      
+
       const headers: Record<string, string> = user ? { ...getAuthHeaders() } : {};
       delete headers['Content-Type'];
 
       for (let i = 0; i < recordedChunksRef.current.length; i++) {
         const chunk = recordedChunksRef.current[i];
         const chunkFilename = `chunk_${String(i).padStart(4, '0')}.webm`;
-        
+
         const formData = new FormData();
         formData.append('file', new Blob([chunk], { type: 'video/webm' }), chunkFilename);
         formData.append('interview_id', finalInterviewIdForChunks);
         formData.append('session_id', sessionId);
         formData.append('chunk_index', String(i));
         formData.append('total_chunks', String(totalChunks));
-        
+
         try {
           const response = await fetch(`${API_BASE_URL}/media/upload_chunk`, {
             method: 'POST',
             headers: headers,
             body: formData
           });
-          
+
           if (!response.ok) {
             const errorText = await response.text();
             console.error(`Failed to upload chunk ${i}:`, errorText);
@@ -550,7 +550,7 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
 
       console.log('All chunks uploaded, finalizing...');
       const userId = user?.id || sessionId; // Use sessionId for token-based interviews
-      
+
       // Use the same interview_id that was used for chunk uploads
       console.log('Finalize request data:', {
         user_id: userId,
@@ -573,19 +573,19 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
 
       const finalizeData = await finalizeResponse.json();
       console.log('Finalize response:', finalizeData);
-      
+
       if (finalizeData.status === 'done') {
         // Use the interview_id that was used for chunk uploads (consistent throughout)
         const finalInterviewId = finalInterviewIdForChunks || finalizeData.interview_id;
         const videoPath = finalizeData.file;
         console.log('Final Interview ID:', finalInterviewId, 'Video Path:', videoPath);
-        
+
         if (!finalInterviewId) {
           console.error('No interview_id available for completion');
           alert('Failed to create interview record. Please try again.');
           return;
         }
-        
+
         // Update interview status to processing (only if we have a valid sessionId)
         if (sessionId && sessionId !== '') {
           try {
@@ -620,14 +620,14 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
                 language: data.language
               }
             });
-            
+
             await apiClient.updateInterviewTranscript(finalInterviewId, {
               text: data.transcript,
               word_count: data.word_count,
               duration_seconds: data.duration_seconds,
               language: data.language
             });
-            
+
             console.log('✅ Transcript updated successfully');
             // Update status to completed after transcript is saved
             await apiClient.updateInterviewStatus(finalInterviewId, 'completed');
@@ -641,13 +641,13 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
 
         // Clear recorded chunks to free memory
         recordedChunksRef.current = [];
-        
+
         // For token-based interviews, clear the token after completion
         if (fromToken) {
           console.log('🧹 Clearing interview token after completion');
           const { clearInterviewToken } = await import('@/lib/interviewToken');
           clearInterviewToken();
-          
+
           // Redirect candidates to thank you page instead of interview summary
           console.log('Redirecting candidate to thank you page...');
           router.push(`/interview-thank-you?id=${finalInterviewId}`);
@@ -679,7 +679,7 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
     <div className="absolute inset-0 flex flex-col">
       {/* Interview Status Bar */}
       <div className="absolute top-6 left-0 right-0 flex justify-center z-10">
-        <motion.div 
+        <motion.div
           initial={{ y: -50, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           className="glass-dark rounded-xl shadow-lg flex items-center"
@@ -690,7 +690,7 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
               {isRecording ? 'Recording in Progress' : 'Interview in Progress'}
             </span>
           </div>
-          <button 
+          <button
             className="px-4 py-2 text-white/90 text-sm font-medium hover:bg-red-500/20 transition-all rounded-r-xl disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={stopRecording}
           >
@@ -704,7 +704,7 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
         <AnimatePresence>
           {!isCodeEditorOpen ? (
             /* Video Layout */
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -715,7 +715,7 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
                 {/* Main Video Container */}
                 <div className="relative w-full max-w-[1600px] mx-auto aspect-video">
                   {/* Main Video (Participant) */}
-                  <motion.div 
+                  <motion.div
                     className="absolute inset-0 rounded-2xl overflow-hidden bg-gray-800/90 border border-white/10"
                     layoutId="mainVideo"
                     transition={{
@@ -737,12 +737,12 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
                     {/* Fallback when no video stream */}
                     {!isRecording && (
                       <div className="absolute inset-0 w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800/50 to-gray-900/50">
-                      <div className="w-32 h-32 rounded-full bg-gray-700/50 flex items-center justify-center">
-                        <svg className="w-16 h-16 text-white/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                        </svg>
+                        <div className="w-32 h-32 rounded-full bg-gray-700/50 flex items-center justify-center">
+                          <svg className="w-16 h-16 text-white/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                        </div>
                       </div>
-                    </div>
                     )}
                     <div className="absolute bottom-4 left-4 glass-dark px-4 py-2 rounded-xl text-white/90 text-sm font-medium shadow-lg">
                       You
@@ -759,14 +759,14 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
             </motion.div>
           ) : (
             /* Code Editor Layout */
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="w-full h-full"
             >
               <div className="flex gap-4 px-6 py-4">
-                <motion.div 
+                <motion.div
                   className="w-48 h-32 glass-dark rounded-xl overflow-hidden relative shadow-lg"
                   layoutId="mainVideo"
                   whileHover={{ scale: 1.05 }}
@@ -789,7 +789,7 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
                 initial={{ y: 200, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 exit={{ y: 200, opacity: 0 }}
-                transition={{ 
+                transition={{
                   type: "spring",
                   stiffness: 100,
                   damping: 20,
@@ -805,27 +805,25 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
         </AnimatePresence>
       </div>
 
-        {/* Control Bar */}
-        <div className="fixed bottom-8 left-0 right-0 flex justify-center z-50">
-          <motion.div 
-            initial={{ y: 50, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            className="glass-dark px-3 py-3 rounded-2xl flex items-center space-x-4 shadow-lg"
-          >
+      {/* Control Bar */}
+      <div className="fixed bottom-8 left-0 right-0 flex justify-center z-50">
+        <motion.div
+          initial={{ y: 50, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          className="glass-dark px-3 py-3 rounded-2xl flex items-center space-x-4 shadow-lg"
+        >
           <button
             onClick={toggleMute}
-            className={`p-4 rounded-xl transition-all ${
-              isMuted ? 'bg-red-500/20 hover:bg-red-500/30' : 'hover:bg-white/10'
-            }`}
+            className={`p-4 rounded-xl transition-all ${isMuted ? 'bg-red-500/20 hover:bg-red-500/30' : 'hover:bg-white/10'
+              }`}
           >
             {isMuted ? <MicOff className="w-6 h-6 text-white" /> : <Mic className="w-6 h-6 text-white" />}
           </button>
 
           <button
             onClick={toggleVideo}
-            className={`p-4 rounded-xl transition-all ${
-              !isVideoOn ? 'bg-red-500/20 hover:bg-red-500/30' : 'hover:bg-white/10'
-            }`}
+            className={`p-4 rounded-xl transition-all ${!isVideoOn ? 'bg-red-500/20 hover:bg-red-500/30' : 'hover:bg-white/10'
+              }`}
           >
             {isVideoOn ? <Video className="w-6 h-6 text-white" /> : <VideoOff className="w-6 h-6 text-white" />}
           </button>
@@ -834,18 +832,16 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
 
           <button
             onClick={toggleCodeEditor}
-            className={`p-4 rounded-xl transition-all ${
-              isCodeEditorOpen ? 'bg-primary-200/20 hover:bg-primary-200/30' : 'hover:bg-white/10'
-            }`}
+            className={`p-4 rounded-xl transition-all ${isCodeEditorOpen ? 'bg-primary-200/20 hover:bg-primary-200/30' : 'hover:bg-white/10'
+              }`}
           >
             <Maximize2 className="w-6 h-6 text-white" />
           </button>
 
           <button
             onClick={toggleChat}
-            className={`p-4 rounded-xl transition-all ${
-              isChatOpen ? 'bg-primary-200/20 hover:bg-primary-200/30' : 'hover:bg-white/10'
-            }`}
+            className={`p-4 rounded-xl transition-all ${isChatOpen ? 'bg-primary-200/20 hover:bg-primary-200/30' : 'hover:bg-white/10'
+              }`}
           >
             <MessageSquare className="w-6 h-6 text-white" />
           </button>
@@ -854,9 +850,8 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
 
           <button
             onClick={toggleQuestionModal}
-            className={`p-4 rounded-xl transition-all relative ${
-              isQuestionModalOpen ? 'bg-purple-500/20 hover:bg-purple-500/30' : 'hover:bg-white/10'
-            }`}
+            className={`p-4 rounded-xl transition-all relative ${isQuestionModalOpen ? 'bg-purple-500/20 hover:bg-purple-500/30' : 'hover:bg-white/10'
+              }`}
             title="View Interview Questions"
           >
             <FileText className="w-6 h-6 text-white" />
@@ -890,7 +885,7 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
           </motion.div>
         )}
       </AnimatePresence>
-    
+
       {/* Processing Modal */}
       <AnimatePresence>
         {showProcessingModal && (

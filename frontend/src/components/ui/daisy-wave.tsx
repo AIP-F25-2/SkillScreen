@@ -3,8 +3,8 @@
 import React, { useEffect, useRef } from "react";
 
 interface DaisyWaveProps {
-    className?: string;
-    style?: React.CSSProperties;
+    readonly className?: string;
+    readonly style?: React.CSSProperties;
 }
 
 export function DaisyWave({ className, style }: DaisyWaveProps) {
@@ -39,7 +39,6 @@ export function DaisyWave({ className, style }: DaisyWaveProps) {
         // Colors
         const colorDeepBlue = [27, 60, 83];   // #1B3C53 (Requested)
         const colorLightBlue = [100, 181, 246]; // Lighter blue for contrast
-        const colorDark = [15, 23, 42];       // #0F172A (Background match)
 
         const lerpColor = (c1: number[], c2: number[], t: number) => {
             return `rgb(${Math.round(c1[0] + (c2[0] - c1[0]) * t)}, ${Math.round(c1[1] + (c2[1] - c1[1]) * t)}, ${Math.round(c1[2] + (c2[2] - c1[2]) * t)})`;

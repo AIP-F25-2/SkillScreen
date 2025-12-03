@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const teamMembers = [
@@ -67,8 +67,8 @@ export function TeamSection() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 justify-items-center">
-                    {teamMembers.map((member, index) => (
-                        <Card key={index} style={{ width: '300px', height: '450px' }} className="bg-[#1a1a1a] border-white/10 overflow-hidden hover:border-indigo-500/50 transition-all duration-300 group flex flex-col relative shrink-0">
+                    {teamMembers.map((member) => (
+                        <Card key={member.name} className="bg-white/5 border-white/10 overflow-hidden hover:bg-white/10 transition-colors duration-300 group flex flex-col relative shrink-0">
                             <CardHeader className="text-center p-6 h-full flex flex-col items-center justify-start pt-10">
                                 <div className="mb-6 w-32 h-32 rounded-full overflow-hidden ring-2 ring-indigo-500/30 ring-offset-2 ring-offset-transparent group-hover:ring-indigo-400 transition-all shrink-0">
                                     <Avatar className="w-full h-full">

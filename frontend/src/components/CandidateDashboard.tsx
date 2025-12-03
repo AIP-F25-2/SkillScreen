@@ -220,19 +220,18 @@ export default function CandidateDashboard() {
             <div className="glass rounded-xl p-6">
               <h3 className="text-xl font-semibold text-white mb-6">Quick Actions</h3>
               <div className="space-y-4">
-                <a
-                  href="#"
+                <button
                   onClick={(e) => {
                     e.preventDefault();
                     const MAIN_URL = process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : 'https://skillscreen.dev';
-                    window.location.href = `${MAIN_URL}/interview`;
+                    globalThis.location.href = `${MAIN_URL}/interview`;
                   }}
                   className="block w-full glass text-white py-4 px-6 rounded-xl font-semibold 
-                           hover:bg-white/10 transition-all duration-300 transform hover:scale-[1.02]
-                           text-center shadow-lg hover:shadow-xl"
+                             hover:bg-white/10 transition-all duration-300 transform hover:scale-[1.02]
+                             text-center shadow-lg hover:shadow-indigo-500/20 border border-white/10"
                 >
-                  Start Interview
-                </a>
+                  Start New Interview
+                </button>
                 <button
                   className="w-full glass-dark text-white py-4 px-6 rounded-xl font-semibold 
                            hover:bg-white/5 transition-all duration-300 transform hover:scale-[1.02]

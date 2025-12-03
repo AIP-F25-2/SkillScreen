@@ -4,7 +4,11 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Github, Twitter, Linkedin, Mail } from 'lucide-react';
 
-export default function Footer({ isPortfolio = false }: { isPortfolio?: boolean }) {
+interface FooterProps {
+  readonly isPortfolio?: boolean;
+}
+
+export default function Footer({ isPortfolio = false }: FooterProps) {
   const router = useRouter();
   const currentYear = new Date().getFullYear();
 

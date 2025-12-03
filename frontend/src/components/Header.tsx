@@ -3,7 +3,13 @@
 import { useState } from 'react';
 import Image from 'next/image';
 
-export default function Header({ isPortfolio = false }: { isPortfolio?: boolean }) {
+interface HeaderProps {
+  readonly isPortfolio?: boolean;
+  readonly toggleSidebar: () => void;
+  readonly isSidebarOpen: boolean;
+}
+
+export default function Header({ isPortfolio = false, toggleSidebar, isSidebarOpen }: HeaderProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const MAIN_URL = process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : 'https://skillscreen.dev';
