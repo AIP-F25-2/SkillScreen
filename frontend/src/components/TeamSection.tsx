@@ -61,7 +61,7 @@ export function TeamSection() {
                     <h2 className="text-3xl md:text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-200 to-white mb-4">
                         Meet Our Team
                     </h2>
-                    <p className="text-lg text-indigo-200/80 max-w-2xl mx-auto">
+                    <p className="text-2xl text-white-200/80 max-w-2xl mx-auto font-bold">
                         The talented individuals behind SkillScreen.
                     </p>
                 </div>

@@ -10,7 +10,7 @@ export default function DemoSection() {
                     <h2 className="text-4xl md:text-5xl font-bold text-white mb-6 tracking-tight">
                         See It In Action
                     </h2>
-                    <p className="text-xl text-indigo-200/80 max-w-2xl mx-auto font-light">
+                    <p className="text-xl text-white-200/80 max-w-2xl mx-auto font-light">
                         Watch how SkillScreen transforms the technical interview process with AI-driven insights.
                     </p>
                 </div>
