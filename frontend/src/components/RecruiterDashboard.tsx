@@ -98,7 +98,7 @@ export default function RecruiterDashboard() {
   const [skillInput, setSkillInput] = useState('');
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
 
-  // Hardcoded org for now – TODO: load from authenticated recruiter/org context
+  // Hardcoded org for now – TODO: load from authenticated recruiter/org context (For this make our login use actual users from our database) // NOSONAR
   const DEFAULT_ORGANIZATION_ID = "ecf369b2-caae-4962-85a8-404db7ab0d7e";
 
   // Fetch all interviews, candidates, and job templates

@@ -270,7 +270,7 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
       }
 
       // Reset chunks on server and wait for confirmation
-      const userId = user?.id || sessionId; // Use sessionId for token-based interviews
+      // const userId = user?.id || sessionId; // Use sessionId for token-based interviews
 
       // Get interview_id and session_id for reset_chunks (from state or token)
       let resetInterviewId = interviewId;
