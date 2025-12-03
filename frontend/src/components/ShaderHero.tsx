@@ -8,7 +8,10 @@ export default function ShaderHero() {
                 {/* Oval Backdrop */}
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[100%] bg-black/50 blur-3xl -z-10 rounded-[50%] pointer-events-none" />
 
-                <h1 className="text-6xl md:text-8xl font-bold text-white tracking-widest mb-6 drop-shadow-[0_4px_15px_rgba(0,0,0,0.8)]">
+                <h1
+                    className="text-6xl md:text-8xl font-bold text-white tracking-widest mb-6"
+                    style={{}}
+                >
                     SkillScreen
                 </h1>
                 <p className="text-white-100 text-xl md:text-3xl max-w-3xl mx-auto mb-10 font-light leading-relaxed drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">

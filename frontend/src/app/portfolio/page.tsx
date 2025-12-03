@@ -25,6 +25,7 @@ export default function PortfolioPage() {
                     className="w-full h-full opacity-60"
                 />*/}
                 <LogoDither className="w-full h-full" />
+                <div className="absolute inset-0 bg-black/45 pointer-events-none" />
                 <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/20 to-black pointer-events-none" />
             </div>
 

@@ -22,7 +22,7 @@ export default function Header({ isPortfolio = false }: { isPortfolio?: boolean 
         <a href={getLinkUrl("/")} className="flex items-center space-x-3">
           <Image src="/logo.png" alt="InterviewAI" width={40} height={40} />
           <span className="text-white text-2xl font-bold tracking-wide">
-            INTERVUAI
+            SKILLScreen
           </span>
         </a>
 

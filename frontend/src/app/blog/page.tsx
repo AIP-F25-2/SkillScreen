@@ -38,7 +38,7 @@ export default function BlogPage() {
   return (
     <div className="min-h-screen bg-black">
       <NavBar />
-      
+
       <main className="pt-32 pb-20 px-6">
         <div className="max-w-7xl mx-auto">
           {/* Header */}
@@ -49,7 +49,7 @@ export default function BlogPage() {
               transition={{ duration: 0.6 }}
             >
               <h1 className="text-4xl md:text-6xl font-bold text-white mb-6">
-                IntervuAI Blog
+                SkillScreen Blog
               </h1>
               <p className="text-xl text-white/70 max-w-3xl mx-auto">
                 Insights, best practices, and the latest trends in technical hiring and AI-powered interviews.
@@ -65,11 +65,10 @@ export default function BlogPage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: index * 0.1 }}
-                className={`px-6 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
-                  index === 0
+                className={`px-6 py-2 rounded-full text-sm font-medium transition-all duration-300 ${index === 0
                     ? 'bg-blue-500 text-white'
                     : 'bg-white/10 text-white/80 hover:bg-white/20'
-                }`}
+                  }`}
               >
                 {category}
               </motion.button>

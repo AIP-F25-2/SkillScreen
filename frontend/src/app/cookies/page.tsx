@@ -80,14 +80,14 @@ These third parties have their own privacy and cookie policies.`
     },
     {
       title: 'Contact Us',
-      content: 'If you have any questions about our use of cookies, please contact us at privacy@intervuai.com'
+      content: 'If you have any questions about our use of cookies, please contact us at privacy@skillscreen.dev'
     }
   ];
 
   return (
     <div className="min-h-screen bg-black">
       <NavBar />
-      
+
       <main className="pt-32 pb-20 px-6">
         <div className="max-w-4xl mx-auto">
           {/* Header */}
@@ -175,7 +175,7 @@ These third parties have their own privacy and cookie policies.`
           >
             <p className="text-white/70">
               Questions about our cookie practices?{' '}
-              <a href="mailto:privacy@intervuai.com" className="text-blue-400 hover:text-blue-300 transition-colors">
+              <a href="mailto:privacy@skillscreen.dev" className="text-blue-400 hover:text-blue-300 transition-colors">
                 Contact our Privacy Team
               </a>
             </p>

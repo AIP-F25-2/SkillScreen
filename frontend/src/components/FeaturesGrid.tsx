@@ -8,7 +8,7 @@ export function FeaturesGrid() {
     {
       id: 1,
       title: "AI that guides your interview, real-time",
-      description: "IntervuAI uses the screen, transcript, and AI to answer questions and suggest follow-ups for you, live.",
+      description: "SkillScreen uses the screen, transcript, and AI to answer questions and suggest follow-ups for you, live.",
       bgColor: "#234C6A",
       image: "https://images.unsplash.com/photo-1551434678-e076c223a692?w=600&h=400&fit=crop&q=80",
     },
@@ -54,10 +54,10 @@ export function FeaturesGrid() {
         {/* Features Grid - Asymmetric Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 max-w-7xl mx-auto w-full items-stretch">
           {/* Card 1 - Large spanning 2 columns */}
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
             transition={{ duration: 0.6 }}
             className="col-span-1 lg:col-span-2 h-full"
           >
@@ -80,26 +80,26 @@ export function FeaturesGrid() {
                 alt={features[0].title}
                 width={400}
                 height={400}
-                initial={{ 
-                  x: 150, 
+                initial={{
+                  x: 150,
                   opacity: 0,
                   scale: 0.8
                 }}
-                whileInView={{ 
-                  x: 0, 
+                whileInView={{
+                  x: 0,
                   opacity: 1,
                   scale: 1
                 }}
                 viewport={{ once: true, margin: "-100px" }}
-                transition={{ 
-                  duration: 0.8, 
+                transition={{
+                  duration: 0.8,
                   delay: 0.3,
                   type: "spring",
                   stiffness: 100,
                   damping: 15
                 }}
                 className="absolute -right-10 lg:-right-20 grayscale -bottom-8 lg:-bottom-12 object-cover rounded-2xl z-20 pointer-events-none w-[250px] h-[250px] lg:w-[350px] lg:h-[350px]"
-                style={{ 
+                style={{
                   display: 'block'
                 }}
                 onLoad={() => {
@@ -120,7 +120,7 @@ export function FeaturesGrid() {
             transition={{ duration: 0.6, delay: 0.1 }}
             className="col-span-1 h-full"
           >
-            <WobbleCard 
+            <WobbleCard
               containerClassName={`h-full min-h-[500px] lg:min-h-[300px]`}
               style={{ backgroundColor: features[1].bgColor }}
             >
@@ -141,7 +141,7 @@ export function FeaturesGrid() {
             transition={{ duration: 0.6, delay: 0.2 }}
             className="col-span-1 h-full"
           >
-            <WobbleCard 
+            <WobbleCard
               containerClassName={`h-full min-h-[500px] lg:min-h-[300px]`}
               style={{ backgroundColor: features[2].bgColor }}
             >
@@ -181,26 +181,26 @@ export function FeaturesGrid() {
                 alt={features[3].title}
                 width={400}
                 height={400}
-                initial={{ 
-                  x: 150, 
+                initial={{
+                  x: 150,
                   opacity: 0,
                   scale: 0.8
                 }}
-                whileInView={{ 
-                  x: 0, 
+                whileInView={{
+                  x: 0,
                   opacity: 1,
                   scale: 1
                 }}
                 viewport={{ once: true }}
-                transition={{ 
-                  duration: 0.8, 
+                transition={{
+                  duration: 0.8,
                   delay: 0.5,
                   type: "spring",
                   stiffness: 100,
                   damping: 15
                 }}
                 className="absolute -right-10 lg:-right-20 bottom-8 lg:bottom-12 object-cover rounded-2xl z-20 pointer-events-none w-[250px] h-[250px] lg:w-[350px] lg:h-[350px]"
-                style={{ 
+                style={{
                   display: 'block'
                 }}
                 onError={(e) => {
@@ -208,7 +208,7 @@ export function FeaturesGrid() {
                 }}
               />
             </WobbleCard>
-            </motion.div>
+          </motion.div>
         </div>
       </div>
     </section>

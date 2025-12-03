@@ -11,7 +11,7 @@ const questrial = Questrial({
 });
 
 export const metadata: Metadata = {
-  title: "IntervuAI",
+  title: "SkillScreen",
   description: "AI-powered interview platform",
 };
 

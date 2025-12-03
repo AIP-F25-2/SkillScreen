@@ -82,7 +82,7 @@ export default function AboutPage() {
                 </span>
               </h1>
               <p className="text-xl md:text-2xl text-white/70 max-w-3xl mx-auto leading-relaxed">
-                IntervuAI is revolutionizing the recruitment process by combining AI-powered video interviews, 
+                SkillScreen is revolutionizing the recruitment process by combining AI-powered video interviews,
                 intelligent coding assessments, and advanced analytics to help companies find the perfect candidates.
               </p>
             </motion.div>
@@ -131,9 +131,9 @@ export default function AboutPage() {
               </div>
               <h2 className="text-4xl font-bold text-white text-center mb-6">Our Mission</h2>
               <p className="text-xl text-white/70 text-center max-w-4xl mx-auto leading-relaxed">
-                We believe that hiring should be a seamless, unbiased, and data-driven process. 
-                IntervuAI empowers recruiters with intelligent tools to assess candidates fairly, 
-                saving time while ensuring the best talent rises to the top. Our platform combines 
+                We believe that hiring should be a seamless, unbiased, and data-driven process.
+                SkillScreen empowers recruiters with intelligent tools to assess candidates fairly,
+                saving time while ensuring the best talent rises to the top. Our platform combines
                 the human touch of traditional interviews with the precision and scalability of AI.
               </p>
             </motion.div>
@@ -226,7 +226,7 @@ export default function AboutPage() {
             >
               <h2 className="text-4xl font-bold text-white mb-6">Built with Cutting-Edge Technology</h2>
               <p className="text-xl text-white/70 mb-12 max-w-3xl mx-auto">
-                Our platform leverages the latest in AI, machine learning, and cloud infrastructure 
+                Our platform leverages the latest in AI, machine learning, and cloud infrastructure
                 to deliver a seamless, reliable, and scalable interviewing experience.
               </p>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
@@ -259,7 +259,7 @@ export default function AboutPage() {
             >
               <h2 className="text-4xl font-bold text-white mb-6">Ready to Transform Your Hiring?</h2>
               <p className="text-xl text-white/70 mb-8">
-                Join hundreds of companies already using IntervuAI to find their next great hire.
+                Join hundreds of companies already using SkillScreen to find their next great hire.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <button

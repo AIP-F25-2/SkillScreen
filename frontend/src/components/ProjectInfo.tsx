@@ -90,9 +90,9 @@ export default function ProjectInfo() {
                                     initial={{ opacity: 0, y: 20 }}
                                     whileInView={{ opacity: 1, y: 0 }}
                                     viewport={{ once: true }}
-                                    transition={{ duration: 0.5, delay: card.delay }}
+                                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
                                     whileHover={{ scale: 1.02 }}
-                                    className={`cursor-pointer ${index % 2 === 1 ? 'md:mt-8' : ''}`}
+                                    className={`cursor-pointer will-change-transform ${index % 2 === 1 ? 'md:mt-8' : ''}`}
                                 >
                                     <Card className="bg-[#1a1a1a] border-white/10 p-4 sm:p-6 h-[240px] sm:h-[280px] flex flex-col justify-center hover:border-indigo-500/50 transition-colors duration-300">
                                         <CardHeader className="p-0 mb-3 sm:mb-4">
@@ -117,11 +117,12 @@ export default function ProjectInfo() {
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
                             onClick={() => setSelectedId(null)}
-                            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                            className="absolute inset-0 bg-black/60 backdrop-blur-sm will-change-[opacity]"
                         />
                         <motion.div
                             layoutId={`card-${selectedId}`}
-                            className="w-full max-w-2xl bg-indigo-500/20 border border-white/10 rounded-xl overflow-hidden relative z-10 shadow-2xl max-h-[90vh] flex flex-col backdrop-blur-xl"
+                            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                            className="w-full max-w-2xl bg-[#1a1a1a] border border-white/10 rounded-xl overflow-hidden relative z-10 shadow-2xl max-h-[90vh] flex flex-col will-change-transform"
                         >
                             <button
                                 onClick={(e) => {
@@ -140,18 +141,27 @@ export default function ProjectInfo() {
                                     fill
                                     className="object-cover"
                                     onError={(e) => {
-                                        // Fallback if image fails
                                         e.currentTarget.style.display = 'none';
                                     }}
                                 />
-                                <div className="absolute inset-0 bg-gradient-to-t from-indigo-900/50 to-transparent" />
+                                <div className="absolute inset-0 bg-gradient-to-t from-[#1a1a1a] to-transparent" />
                             </div>
 
-                            <div className="p-8 overflow-y-auto bg-transparent">
-                                <motion.h3 className="text-3xl font-bold text-indigo-400 mb-4">
+                            <div className="p-8 overflow-y-auto bg-[#1a1a1a]">
+                                <motion.h3
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: 0.1 }}
+                                    className="text-3xl font-bold text-blue-400 mb-4"
+                                >
                                     {cards[selectedId].title}
                                 </motion.h3>
-                                <motion.p className="text-gray-100 text-lg leading-relaxed">
+                                <motion.p
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: 0.2 }}
+                                    className="text-gray-100 text-lg leading-relaxed"
+                                >
                                     {cards[selectedId].details}
                                 </motion.p>
                             </div>
