@@ -241,7 +241,7 @@ export function LogoDither({ className, style, scale = 0.35 }: LogoDitherProps) 
   const glRef = useRef<WebGL2RenderingContext | null>(null);
   const programRef = useRef<WebGLProgram | null>(null);
   const startTimeRef = useRef<number>(Date.now());
-  const logoAspectRef = useRef<number>(1.0);
+  const logoAspectRef = useRef<number>(1);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -315,7 +315,7 @@ export function LogoDither({ className, style, scale = 0.35 }: LogoDitherProps) 
       if (u_resolution) gl.uniform2f(u_resolution, canvas.width, canvas.height);
       if (u_colorBack) gl.uniform4fv(u_colorBack, hexToRgba("#0F172A"));
       if (u_colorFront) gl.uniform4fv(u_colorFront, hexToRgba("#64B5F6"));
-      if (u_pxSize) gl.uniform1f(u_pxSize, 4.0);
+      if (u_pxSize) gl.uniform1f(u_pxSize, 4);
       if (u_logoTexture) gl.uniform1i(u_logoTexture, 0);
       if (u_logoAspect) gl.uniform1f(u_logoAspect, logoAspectRef.current);
       if (u_logoScale) gl.uniform1f(u_logoScale, scale);
