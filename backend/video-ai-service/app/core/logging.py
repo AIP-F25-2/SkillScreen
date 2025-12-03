@@ -1,7 +1,7 @@
 # app/core/logging.py
 from __future__ import annotations
 import logging, json, sys
-from app.config import settings
+from app.utils.config import settings
 
 class JsonFormatter(logging.Formatter):
     def format(self, record):

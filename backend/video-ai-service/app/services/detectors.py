@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import List, Dict, Any, Optional, Iterable
 import numpy as np
 from app.core.logging import get_logger
-from app.config import settings
+from app.utils.config import settings
 
 _LOG = get_logger("detectors")
 

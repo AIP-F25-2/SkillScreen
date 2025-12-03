@@ -1,7 +1,7 @@
 from __future__ import annotations
 from app.core.logging import get_logger
 from app.helpers.device_select import pick_device
-from app.config import settings
+from app.utils.config import settings
 import os
 
 _LOG = get_logger("models_loader")
