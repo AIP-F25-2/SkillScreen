@@ -237,8 +237,12 @@ services:
       - SECRET_KEY=supersecret
       - ALGORITHM=HS256
       - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+      - PYTHONPATH=/app:/common-service 
+      - PYTHONPATH=/app:/common-service:/user-service
     volumes:
       - ./backend/sso-service:/app
+      - ./backend/common-service:/common-service
+      - ./backend/user-service:/user-service
     networks:
       - skill-screen-network
 

@@ -74,6 +74,9 @@ async def verify_jwt(request: Request, call_next):
         if request.url.path.startswith("/ai-logic/"):
             return await call_next(request)
         
+        if request.url.path.startswith("/user/onboard"):
+            return await call_next(request)
+        
         # TEMP: allow audio-ai routes during development/testing without auth
         if request.url.path.startswith("/audio-ai/"):
             return await call_next(request)
