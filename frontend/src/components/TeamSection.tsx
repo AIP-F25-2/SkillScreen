@@ -68,18 +68,18 @@ export function TeamSection() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 justify-items-center">
                     {teamMembers.map((member) => (
-                        <Card key={member.name} className="bg-white/5 border-white/10 overflow-hidden hover:bg-white/10 transition-colors duration-300 group flex flex-col relative shrink-0">
-                            <CardHeader className="text-center p-6 h-full flex flex-col items-center justify-start pt-10">
-                                <div className="mb-6 w-32 h-32 rounded-full overflow-hidden ring-2 ring-indigo-500/30 ring-offset-2 ring-offset-transparent group-hover:ring-indigo-400 transition-all shrink-0">
+                        <Card key={member.name} className="bg-[#020617] border-white/10 overflow-hidden hover:border-indigo-500/50 transition-all duration-300 group flex flex-col relative shrink-0 shadow-lg shadow-black/50 w-[280px] h-[420px]">
+                            <CardHeader className="text-center p-8 h-full flex flex-col items-center justify-start pt-10">
+                                <div className="mb-6 w-32 h-32 rounded-full overflow-hidden ring-4 ring-indigo-500/20 group-hover:ring-indigo-500/50 transition-all shrink-0 shadow-[0_0_20px_rgba(99,102,241,0.3)] group-hover:shadow-[0_0_30px_rgba(99,102,241,0.5)]">
                                     <Avatar className="w-full h-full">
                                         <AvatarImage src={member.image} alt={member.name} className="object-cover w-full h-full" />
-                                        <AvatarFallback className="bg-indigo-900/50 text-indigo-200 text-xl">
+                                        <AvatarFallback className="bg-indigo-950 text-indigo-200 text-xl">
                                             {member.initials}
                                         </AvatarFallback>
                                     </Avatar>
                                 </div>
-                                <CardTitle className="text-xl font-semibold text-white group-hover:text-indigo-200 transition-colors min-h-[3.5rem] flex items-center justify-center leading-tight w-full">{member.name}</CardTitle>
-                                <CardDescription className="text-indigo-300/80 font-medium mt-2 h-[5rem] flex items-start justify-center leading-tight w-full overflow-hidden">{member.role}</CardDescription>
+                                <CardTitle className="text-xl font-bold text-white group-hover:text-indigo-200 transition-colors min-h-[3.5rem] flex items-center justify-center leading-tight w-full">{member.name}</CardTitle>
+                                <CardDescription className="text-slate-400 font-medium mt-2 h-[5rem] flex items-start justify-center leading-tight w-full overflow-hidden text-sm">{member.role}</CardDescription>
                             </CardHeader>
                         </Card>
                     ))}

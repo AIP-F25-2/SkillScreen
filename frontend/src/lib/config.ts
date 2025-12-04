@@ -21,11 +21,11 @@ export const API_ENDPOINTS = {
   // Auth
   AUTH_LOGIN: '/auth/login',
   AUTH_HEALTH: '/auth/health',
-  
+
   // User
   USER_USERS: '/user/users',
   USER_HEALTH: '/user/health',
-  
+
   // Media
   MEDIA_RESET_CHUNKS: '/media/reset_chunks',
   MEDIA_UPLOAD_CHUNK: '/media/upload_chunk',
@@ -34,7 +34,7 @@ export const API_ENDPOINTS = {
   MEDIA_INTERVIEWS: '/media/api/interviews',
   MEDIA_CANDIDATES: '/media/api/candidates',
   MEDIA_RESUMES_UPLOAD: '/media/api/resumes/upload',
-  
+
   // Interview
   INTERVIEW_SESSION_CREATE: '/interview/api/session/create',
   INTERVIEW_SESSION: '/interview/api/session',
@@ -42,23 +42,23 @@ export const API_ENDPOINTS = {
   INTERVIEW_TOKEN_STORE: '/interview/api/token/store',
   INTERVIEW_EMAIL_SEND_INVITATION: '/interview/api/email/send-invitation',
   INTERVIEW_EMAIL_SEND_COMPLETION: '/interview/api/email/send-completion-notification',
-  
+
   // Audio AI
   AUDIO_AI_PROCESS: '/audio-ai/api/v1/audio/process',
   AUDIO_AI_TRANSCRIBE: '/audio-ai/api/audio/transcribe',
   AUDIO_AI_RESULTS: '/audio-ai/api/v1/audio/results',
-  
+
   // AI Logic
   TEXT_SERVICE_RESUMES_PARSE: '/text-service/resumes/parse',
   TEXT_SERVICE_CANDIDATES: '/text-service/candidates',
   TEXT_SERVICE_JOBS: '/text-service/jobs',
   TEXT_SERVICE_INTERVIEWS_START: '/text-service/interviews/start',
   TEXT_SERVICE_INTERVIEWS_QUESTIONS: '/text-service/interviews',
-  
+
   // Assessment
   ASSESSMENT_QUESTIONS: '/assessment/questions',
   ASSESSMENT_SUBMIT: '/assessment/submit',
-  
+
   // Coding
   CODING_PROBLEMS: '/coding/problems',
   CODING_SUBMIT: '/coding/submit',

@@ -85,24 +85,27 @@ export default function InterviewSummaryPage() {
       }
 
       try {
-        const response = await apiClient.getInterviewDetails(interviewId);
+        // Use the new summary endpoint
+        const response = await apiClient.getInterviewSummary(interviewId);
         if (response.success) {
-          // Merge with mock analysis if real analysis is missing (for demo purposes)
-          const data = {
-            ...response.data,
-            analysis: response.data.analysis || MOCK_ANALYSIS
-          };
+          const data = response.data;
+          // If the backend returns a summary structure, use it directly.
+          // Fallback to mock if specific fields are missing (optional, based on backend readiness)
+          if (!data.analysis && !data.summary) {
+            data.analysis = MOCK_ANALYSIS;
+          }
+
           setInterview(data);
 
-          if (data.status === 'completed' || data.transcript) {
+          if (data.status === 'completed' || data.summary) {
             setShowInitialProcessing(false);
           }
         } else {
-          setError('Failed to load interview');
+          setError('Failed to load interview summary');
         }
       } catch (err) {
-        console.error('Error fetching interview:', err);
-        setError('Failed to load interview');
+        console.error('Error fetching interview summary:', err);
+        setError('Failed to load interview summary');
       } finally {
         setLoading(false);
       }
@@ -117,15 +120,15 @@ export default function InterviewSummaryPage() {
       if (!interviewId) return;
 
       try {
-        const response = await apiClient.getInterviewDetails(interviewId);
+        const response = await apiClient.getInterviewSummary(interviewId);
         if (response.success) {
-          const data = {
-            ...response.data,
-            analysis: response.data.analysis || MOCK_ANALYSIS
-          };
+          const data = response.data;
+          if (!data.analysis && !data.summary) {
+            data.analysis = MOCK_ANALYSIS;
+          }
           setInterview(data);
 
-          if (data.status === 'completed') {
+          if (data.status === 'completed' || data.summary) {
             clearInterval(pollInterval);
             setShowInitialProcessing(false);
           }
@@ -260,8 +263,8 @@ export default function InterviewSummaryPage() {
 
           <div className="flex items-center gap-3">
             <span className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium border ${interview.status === 'completed'
-                ? 'bg-green-500/10 text-green-400 border-green-500/20'
-                : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
+              ? 'bg-green-500/10 text-green-400 border-green-500/20'
+              : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
               }`}>
               {interview.status === 'completed' ? <CheckCircle className="w-4 h-4" /> : <Clock className="w-4 h-4 animate-spin" />}
               {interview.status === 'completed' ? 'Analysis Complete' : 'Processing...'}
@@ -338,7 +341,7 @@ export default function InterviewSummaryPage() {
                         animate={{ width: `${cat.score}%` }}
                         transition={{ duration: 1, delay: 0.2 + (idx * 0.1) }}
                         className={`h-full rounded-full ${cat.score >= 80 ? 'bg-green-500' :
-                            cat.score >= 60 ? 'bg-yellow-500' : 'bg-red-500'
+                          cat.score >= 60 ? 'bg-yellow-500' : 'bg-red-500'
                           }`}
                       />
                     </div>
@@ -408,7 +411,7 @@ export default function InterviewSummaryPage() {
                     <div className="flex items-center justify-between mb-2">
                       <h4 className="font-medium text-white">{cat.name}</h4>
                       <span className={`px-2 py-1 rounded text-xs font-bold ${cat.score >= 80 ? 'bg-green-500/20 text-green-300' :
-                          cat.score >= 60 ? 'bg-yellow-500/20 text-yellow-300' : 'bg-red-500/20 text-red-300'
+                        cat.score >= 60 ? 'bg-yellow-500/20 text-yellow-300' : 'bg-red-500/20 text-red-300'
                         }`}>
                         {cat.score}/100
                       </span>

@@ -30,8 +30,63 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
   const [sessionId, setSessionId] = useState<string>('');
   const [interviewId, setInterviewId] = useState<string>('');  // Add interview ID state
   const [showProcessingModal, setShowProcessingModal] = useState(false);
-  const [interviewQuestions, setInterviewQuestions] = useState<any[]>([]);
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [currentQuestion, setCurrentQuestion] = useState<string>('');
+  const [questionNumber, setQuestionNumber] = useState(1);
+  const [isQuestionLoading, setIsQuestionLoading] = useState(false);
+  const [isInterviewComplete, setIsInterviewComplete] = useState(false);
+  const [transcript, setTranscript] = useState('');
+  const recognitionRef = useRef<any>(null);
+
+  // Initialize Speech Recognition
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+
+        recognition.onresult = (event: any) => {
+          let interimTranscript = '';
+          let finalTranscript = '';
+
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+              finalTranscript += event.results[i][0].transcript;
+            } else {
+              interimTranscript += event.results[i][0].transcript;
+            }
+          }
+
+          if (finalTranscript) {
+            setTranscript(prev => {
+              const newTranscript = (prev + ' ' + finalTranscript).trim();
+              console.log('📝 STT Update:', newTranscript);
+              return newTranscript;
+            });
+          }
+        };
+
+        recognitionRef.current = recognition;
+      }
+    }
+  }, []);
+
+  // Manage Speech Recognition based on recording state
+  useEffect(() => {
+    if (isRecording && recognitionRef.current) {
+      try {
+        recognitionRef.current.start();
+        console.log('🎙️ Speech Recognition started');
+      } catch (e) {
+        console.log('Speech recognition already active');
+      }
+    } else if (!isRecording && recognitionRef.current) {
+      recognitionRef.current.stop();
+      console.log('Example: Speech Recognition stopped');
+    }
+  }, [isRecording]);
 
   // Media recording refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -44,76 +99,22 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
   const toggleVideo = () => setIsVideoOn(!isVideoOn);
   const toggleScreenShare = () => setIsScreenSharing(!isScreenSharing);
 
-  // Test MediaRecorder functionality
-  const testRecording = async () => {
-    try {
-      console.log('Testing MediaRecorder...');
+  const speakQuestion = (text: string) => {
+    if ('speechSynthesis' in window) {
+      // Cancel any ongoing speech
+      window.speechSynthesis.cancel();
 
-      // Check MediaRecorder support
-      if (!window.MediaRecorder) {
-        throw new Error('MediaRecorder not supported');
-      }
+      const utterance = new SpeechSynthesisUtterance(text);
+      // Optional: Select a specific voice if desired, or let browser pick default
+      // const voices = window.speechSynthesis.getVoices();
+      // utterance.voice = voices.find(v => v.lang === 'en-US') || null;
 
-      // Get user media
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true
-      });
-
-      console.log('Got media stream:', stream);
-
-      // Check supported mimeTypes
-      const supportedTypes = [
-        'video/webm; codecs=vp8,opus',
-        'video/webm',
-        'video/mp4',
-        'video/webm; codecs=vp9,opus'
-      ];
-
-      const supportedType = supportedTypes.find(type => MediaRecorder.isTypeSupported(type));
-      console.log('Supported mimeType:', supportedType);
-
-      if (!supportedType) {
-        throw new Error('No supported video format found');
-      }
-
-      // Create MediaRecorder
-      const recorder = new MediaRecorder(stream, { mimeType: supportedType });
-      const testChunks: Blob[] = [];
-
-      recorder.ondataavailable = (event) => {
-        console.log('Test ondataavailable:', event.data.size);
-        if (event.data.size > 0) {
-          testChunks.push(event.data);
-        }
-      };
-
-      recorder.onstop = () => {
-        console.log('Test recording stopped, chunks:', testChunks.length);
-        const result = testChunks.length > 0 ? 'SUCCESS' : 'FAILED - No chunks';
-        console.log('Test result:', result);
-        alert(`Recording test: ${result}`);
-
-        // Cleanup
-        stream.getTracks().forEach(track => track.stop());
-      };
-
-      recorder.onerror = (event) => {
-        console.error('Test recorder error:', event);
-        alert('Recording test FAILED - Error occurred');
-      };
-
-      // Start recording for 3 seconds
-      recorder.start(1000); // 1 second chunks
-      setTimeout(() => {
-        recorder.stop();
-      }, 3000);
-
-    } catch (error) {
-      console.error('Recording test failed:', error);
-      alert(`Recording test FAILED: ${error instanceof Error ? error.message : String(error)}`);
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      window.speechSynthesis.speak(utterance);
     }
   };
+
   const toggleChat = () => setIsChatOpen(!isChatOpen);
   const toggleQuestionModal = () => setIsQuestionModalOpen(!isQuestionModalOpen);
 
@@ -143,104 +144,102 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
     };
   }, [isRecording]);
 
-  // Load interview questions on mount
-  useEffect(() => {
-    const loadQuestions = async () => {
-      try {
-        // For demo purposes, use local demo questions
-        // In production, this would fetch from AI service
-        const demoQuestions = getDemoInterviewQuestions();
-        setInterviewQuestions(demoQuestions);
-        console.log('Demo interview questions loaded:', demoQuestions.length);
-      } catch (error) {
-        console.error('Failed to load interview questions:', error);
-        // Fallback to demo questions
-        setInterviewQuestions(getDemoInterviewQuestions());
-      }
-    };
-
-    loadQuestions();
-  }, []);
-
-  // Create interview session on mount and auto-start recording
+  // Start Interview on Mount
   useEffect(() => {
     let isActive = true;
 
-    const createSessionAndStart = async () => {
-      // Handle token-based interviews
-      if (fromToken) {
+    const initInterview = async () => {
+      // 1. Get Interview ID
+      let currentInterviewId = interviewId;
+
+      if (!currentInterviewId && fromToken) {
         const tokenData = getInterviewToken();
-        console.log('🔍 DEBUG: Token-based interview detected');
-        console.log('🔍 DEBUG: Token data retrieved:', tokenData);
-        console.log('🔍 DEBUG: Session storage contents:', sessionStorage.getItem('interview_token_data'));
-
-        if (tokenData && isActive) {
-          console.log('✅ Using token-based session:', tokenData.sessionId, 'interview:', tokenData.interviewId);
-          setSessionId(tokenData.sessionId);
-          setInterviewId(tokenData.interviewId);
-
-          // Auto-start recording after session is set
-          setTimeout(() => {
-            if (isActive) {
-              console.log('🎬 Starting recording for token-based interview...');
-              startRecording();
-            }
-          }, 500);
-        } else {
-          console.error('❌ No valid token data found for token-based interview');
-          console.error('❌ Token data:', tokenData);
-          console.error('❌ Is active:', isActive);
+        if (tokenData?.interviewId) {
+          currentInterviewId = tokenData.interviewId;
+          setInterviewId(currentInterviewId);
+          setSessionId(tokenData.sessionId || currentInterviewId);
         }
-        return;
       }
 
-      // Handle regular authenticated interviews
-      if (!user || !isActive) return;
-
-      // Don't create a new session if we already have one
-      if (sessionId) {
-        console.log('Session already exists:', sessionId);
+      // If we still don't have an ID (and not from token), we might need to create one or handle error
+      // For now, assume ID is passed or retrieved from token for this flow
+      if (!currentInterviewId) {
+        console.error('No interview ID found');
         return;
       }
 
       try {
-        console.log('Creating interview session for user:', user.id, 'participant:', participantName);
-        const response = await apiClient.createInterviewSession(
-          user.id,
-          participantName
-        );
+        // 2. Start Interview (Fetch first question)
+        console.log('Starting interview:', currentInterviewId);
+        const response = await apiClient.startInterview(currentInterviewId);
 
-        console.log('Session creation response:', response);
+        if (response.success && response.data && isActive) {
+          const { first_question, question_number, session_id } = response.data;
 
-        if (response.success && isActive) {
-          const newSessionId = response.data?.session_id || response.data?.interview_id;
-          console.log('Setting session ID to:', newSessionId);
-          setSessionId(newSessionId);
-          console.log('Interview session created:', newSessionId);
+          setCurrentQuestion(first_question);
+          setQuestionNumber(question_number || 1);
+          if (session_id) setSessionId(session_id);
 
-          // Auto-start recording after session is created
+          // Open question modal and speak
+          setIsQuestionModalOpen(true);
+          speakQuestion(first_question);
+
+          // 3. Start Recording
           setTimeout(() => {
             if (isActive) {
               startRecording();
             }
-          }, 500);
+          }, 1000);
+
         } else {
-          console.error('Session creation failed or component unmounted:', response);
+          console.error('Failed to start interview:', response);
+          alert('Failed to start interview session. Please try again.');
         }
       } catch (error) {
-        console.error('Failed to create interview session:', error);
+        console.error('Error starting interview:', error);
+        alert('Error connecting to interview service.');
       }
     };
 
-    createSessionAndStart();
+    initInterview();
 
-    // Cleanup on unmount
     return () => {
       isActive = false;
-      console.log('Component unmounting, cleaning up recording...');
       cleanupRecording();
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
     };
-  }, [user, participantName, fromToken]);
+  }, [fromToken]); // Run once on mount (dependency on fromToken is stable)
+
+
+  const handleNextQuestion = async (previousResponseText: string) => {
+    if (!interviewId) return;
+
+    setIsQuestionLoading(true);
+    try {
+      const response = await apiClient.getNextQuestion(interviewId, previousResponseText, questionNumber);
+
+      if (response.success && response.data) {
+        if (response.data.status === 'completed' || response.data.message === 'Interview completed') {
+          setIsInterviewComplete(true);
+          stopRecording();
+        } else {
+          const { next_question, question_number } = response.data;
+          setCurrentQuestion(next_question);
+          setQuestionNumber(question_number);
+
+          // Speak new question
+          speakQuestion(next_question);
+        }
+      }
+    } catch (error) {
+      console.error('Error getting next question:', error);
+      alert('Failed to get next question. Please try again.');
+    } finally {
+      setIsQuestionLoading(false);
+    }
+  };
 
   const startRecording = async () => {
     // Prevent starting if already recording
@@ -267,48 +266,6 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
         console.log('📺 Stream attached to video element');
-      }
-
-      // Reset chunks on server and wait for confirmation
-      // const userId = user?.id || sessionId; // Use sessionId for token-based interviews
-
-      // Get interview_id and session_id for reset_chunks (from state or token)
-      let resetInterviewId = interviewId;
-      let resetSessionId = sessionId;
-
-      if (fromToken) {
-        const tokenData = getInterviewToken();
-        if (tokenData) {
-          resetInterviewId = resetInterviewId || tokenData.interviewId || '';
-          resetSessionId = resetSessionId || tokenData.sessionId || '';
-        }
-      }
-
-      console.log('🔄 Resetting chunks for interview:', resetInterviewId, 'session:', resetSessionId);
-
-      if (resetInterviewId && resetSessionId) {
-        try {
-          const resetResponse = await fetch(`${API_BASE_URL}/media/reset_chunks`, {
-            method: 'POST',
-            headers: user ? getAuthHeaders() : { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              interview_id: resetInterviewId,
-              session_id: resetSessionId
-            })
-          });
-
-          if (!resetResponse.ok) {
-            const errorText = await resetResponse.text();
-            console.warn('⚠️ Failed to reset chunks, continuing anyway:', resetResponse.status, errorText);
-          } else {
-            console.log('✅ Chunks reset successfully');
-          }
-
-          // Wait a bit to ensure filesystem is synced
-          await new Promise(resolve => setTimeout(resolve, 100));
-        } catch (resetError) {
-          console.warn('⚠️ Chunk reset failed, continuing anyway:', resetError);
-        }
       }
 
       // Check MediaRecorder support and find best mimeType
@@ -855,11 +812,6 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
             title="View Interview Questions"
           >
             <FileText className="w-6 h-6 text-white" />
-            {interviewQuestions.length > 0 && (
-              <span className="absolute -top-1 -right-1 bg-purple-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                {interviewQuestions.length}
-              </span>
-            )}
           </button>
         </motion.div>
       </div>
@@ -886,6 +838,24 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
         )}
       </AnimatePresence>
 
+      {/* Question Modal */}
+      <QuestionModal
+        isOpen={isQuestionModalOpen}
+        question={currentQuestion}
+        questionNumber={questionNumber}
+        onNext={async () => {
+          // Use the captured client-side transcript
+          const responseText = transcript || "Audio response provided (STT unavailable).";
+          console.log('📤 Sending response:', responseText);
+
+          await handleNextQuestion(responseText);
+
+          // Clear transcript for the next question
+          setTranscript('');
+        }}
+        isLoading={isQuestionLoading}
+      />
+
       {/* Processing Modal */}
       <AnimatePresence>
         {showProcessingModal && (
@@ -893,35 +863,18 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100]"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
           >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="glass-dark p-8 rounded-2xl max-w-md text-center"
-            >
-              <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-              <h3 className="text-white text-xl font-semibold mb-2">Processing Your Interview</h3>
-              <p className="text-white/70 mb-4">
-                Your interview is being transcribed and analyzed. This may take 5-10 minutes.
+            <div className="bg-gray-900 rounded-2xl p-8 max-w-md w-full text-center border border-white/10">
+              <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-6" />
+              <h3 className="text-xl font-bold text-white mb-2">Processing Interview</h3>
+              <p className="text-gray-400">
+                Please wait while we analyze your interview session and generate the summary...
               </p>
-              <p className="text-white/60 text-sm">
-                Check your dashboard for results. Redirecting...
-              </p>
-            </motion.div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Question Modal */}
-      <QuestionModal
-        isOpen={isQuestionModalOpen}
-        onClose={() => setIsQuestionModalOpen(false)}
-        questions={interviewQuestions}
-        currentQuestionIndex={currentQuestionIndex}
-        onQuestionChange={setCurrentQuestionIndex}
-      />
     </div>
   );
 }

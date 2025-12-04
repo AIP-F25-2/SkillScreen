@@ -329,6 +329,28 @@ class ApiClient {
   }
 
   // =========================================
+  // Interview Flow Methods (New)
+  // =========================================
+
+  async startInterview(interviewId: string): Promise<ApiResponse<any>> {
+    return this.request<any>(`/orchestration/interviews/start/${interviewId}`);
+  }
+
+  async getNextQuestion(interviewId: string, previousResponse: string, questionNumber: number): Promise<ApiResponse<any>> {
+    return this.request<any>(`/orchestration/interviews/${interviewId}/next-question`, {
+      method: 'POST',
+      body: JSON.stringify({
+        previous_response: previousResponse,
+        question_number: questionNumber
+      }),
+    });
+  }
+
+  async getInterviewSummary(interviewId: string): Promise<ApiResponse<any>> {
+    return this.request<any>(`/orchestration/interviews/${interviewId}/summary`);
+  }
+
+  // =========================================
   // AI Logic Service Methods (Question Generation, Resume Parsing)
   // =========================================
 

@@ -119,7 +119,7 @@ services:
       - ENABLE_SEQ=false
       - SEQ_URL=http://seq:5341
       - JUDGE0_BASE_URL=https://judge0-ce.p.rapidapi.com
-      - JUDGE0_RAPIDAPI_KEY=
+      - JUDGE0_RAPIDAPI_KEY=e6334e0abcmshcb21a98ad960c8ep1594b5jsnb67cbdc3dfef
       - JUDGE0_RAPIDAPI_HOST=judge0-ce.p.rapidapi.com
     volumes:
       - ./backend/coding-service:/app
@@ -328,6 +328,7 @@ services:
       - LOG_FILE=orchestration-service.log
       - ENABLE_SEQ=false
       - SEQ_URL=http://seq:5341
+      - JUDGE0_RAPIDAPI_KEY=e6334e0abcmshcb21a98ad960c8ep1594b5jsnb67cbdc3dfef
     volumes:
       - ./backend/orchestration-service:/app
       - ./backend/common-service:/common-service
