@@ -10,7 +10,15 @@ class LLMService:
     
     def __init__(self):
         """Initialize Groq client"""
-        self.client = Groq(api_key=settings.groq_api_key)
+        # Only initialize client if API key is provided
+        if settings.groq_api_key:
+            try:
+                self.client = Groq(api_key=settings.groq_api_key)
+            except Exception as e:
+                logger.warning(f"Failed to initialize Groq client: {e}")
+                self.client = None
+        else:
+            self.client = None
         self.model = settings.groq_model
         self.max_tokens = settings.llm_max_tokens
         self.temperature = settings.llm_temperature
@@ -94,6 +102,10 @@ Return ONLY valid JSON in this exact format:
 
 Ensure weights sum to exactly 1.0.
 """
+        
+        if not self.client:
+            logger.warning("llm_client_not_initialized_using_defaults")
+            return self._get_default_weights(has_coding)
         
         try:
             response = self.client.chat.completions.create(
@@ -345,7 +357,11 @@ Return ONLY valid JSON in this exact format:
 
 DO NOT include the recommendation field - it has already been determined as "{rule_based_recommendation}".
 """
-        
+
+        if not self.client:
+            logger.warning("llm_client_not_initialized_using_empty_explanation")
+            return {}
+
         try:
             response = self.client.chat.completions.create(
                 model=self.model,

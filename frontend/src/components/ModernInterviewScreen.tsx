@@ -596,6 +596,11 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
           console.error('Transcription failed:', err);
         });
 
+        await fetch(
+          `${API_BASE_URL}/orchestration/interviews/trigger-analyses/${finalInterviewId}`,
+          { method: 'POST', headers: getAuthHeaders() }
+        );
+
         // Clear recorded chunks to free memory
         recordedChunksRef.current = [];
 

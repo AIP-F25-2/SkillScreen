@@ -230,9 +230,189 @@ def finalize_upload():
     with UnitOfWork() as uow:
         repo = MediaRepository(uow)
         status = repo.get_latest_active_record(interview_id, session_id)
-
-    if not status:
-        return jsonify({"error": "No active upload found"}), 400
+        
+        current_app.logger.info(
+            f"finalize_upload: Looking for active upload. interview_id={interview_id}, session_id={session_id}, found={status is not None}"
+        )
+        
+        # If not found, try to find any record (even if not 'uploading') for better error message
+        if not status:
+            # Try to find the most recent record for this interview (any status)
+            from sqlalchemy import text
+            current_app.logger.info(f"finalize_upload: No active upload found, checking for any record with interview_id={interview_id}")
+            
+            # First try to find with the exact session_id (even if status is not 'uploading')
+            any_record = None
+            if session_id:
+                any_record = uow.session.execute(
+                    text("""
+                        SELECT id, status, session_id::text, created_at
+                        FROM media_files
+                        WHERE interview_id = CAST(:iid AS uuid)
+                        AND session_id = CAST(:sid AS uuid)
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                    """),
+                    {"iid": interview_id, "sid": session_id}
+                ).fetchone()
+                
+                current_app.logger.info(
+                    f"finalize_upload: Query with session_id result: any_record={'found' if any_record else 'not found'}, "
+                    f"record_status={any_record[1] if any_record else 'N/A'}, "
+                    f"record_id={any_record[0] if any_record else 'N/A'}"
+                )
+            
+            # If not found with session_id, try without session_id filter
+            if not any_record:
+                any_record = uow.session.execute(
+                    text("""
+                        SELECT id, status, session_id::text, created_at
+                        FROM media_files
+                        WHERE interview_id = CAST(:iid AS uuid)
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                    """),
+                    {"iid": interview_id}
+                ).fetchone()
+                
+                current_app.logger.info(
+                    f"finalize_upload: Query without session_id result: any_record={'found' if any_record else 'not found'}, "
+                    f"record_status={any_record[1] if any_record else 'N/A'}, "
+                    f"record_id={any_record[0] if any_record else 'N/A'}"
+                )
+            
+            if any_record:
+                record_status = any_record[1]
+                record_id = any_record[0]
+                
+                # If the record is already completed, return success with the existing record info
+                if record_status == 'completed':
+                    current_app.logger.info(
+                        f"Upload already completed for interview {interview_id}. "
+                        f"Record ID: {record_id}, session_id: {any_record[2]}"
+                    )
+                    # Get the full record to return storage_uri and other details
+                    completed_record = uow.session.execute(
+                        text("""
+                            SELECT id, storage_uri, file_size, checksum, blob_name, status
+                            FROM media_files
+                            WHERE id = CAST(:rid AS uuid)
+                        """),
+                        {"rid": record_id}
+                    ).fetchone()
+                    
+                    if completed_record:
+                        storage_uri = completed_record[1]
+                        blob_name = completed_record[4]
+                        
+                        # Extract relative path from storage_uri for frontend compatibility
+                        # storage_uri format: https://...blob.core.windows.net/video-recordings/videos/{interview_id}/{filename}...
+                        # or: /app/temp/uploads/{interview_id}/{filename}
+                        # Frontend expects: /videos/{interview_id}/{filename} or similar path
+                        file_path = None
+                        if storage_uri:
+                            # If it's an Azure URL, extract the path portion after /videos/
+                            if 'blob.core.windows.net' in storage_uri or 'videos/' in storage_uri:
+                                try:
+                                    # Find the videos/ part and extract everything after it
+                                    videos_idx = storage_uri.find('/videos/')
+                                    if videos_idx >= 0:
+                                        path_after_videos = storage_uri[videos_idx + 7:]  # Include '/videos' but skip the '/'
+                                        # Remove query parameters
+                                        if '?' in path_after_videos:
+                                            path_after_videos = path_after_videos.split('?')[0]
+                                        file_path = f"/{path_after_videos}"  # /videos/{interview_id}/{filename}
+                                except Exception as e:
+                                    current_app.logger.warning(f"Error extracting path from storage_uri: {e}")
+                                    pass
+                            
+                            # For local paths starting with /app/temp/uploads
+                            elif storage_uri.startswith('/app/temp/uploads'):
+                                # Extract path after /app/temp/uploads
+                                try:
+                                    path_part = storage_uri.replace('/app/temp/uploads', '')
+                                    file_path = f"/videos{path_part}"  # Convert to /videos/{interview_id}/{filename}
+                                except Exception:
+                                    pass
+                            
+                            elif storage_uri.startswith('/'):
+                                # Other local path - use as is
+                                file_path = storage_uri
+                            
+                            # Fallback: construct from blob_name if available
+                            if not file_path and blob_name:
+                                file_path = f"/videos/{interview_id}/{blob_name}"
+                        
+                        current_app.logger.info(
+                            f"Returning already-completed upload info for interview {interview_id}. "
+                            f"File path: {file_path}"
+                        )
+                        
+                        return jsonify({
+                            "status": "done",  # Frontend expects 'done'
+                            "already_finalized": True,
+                            "file": file_path or storage_uri,  # Frontend expects 'file' field
+                            "storage_uri": storage_uri,
+                            "file_size": completed_record[2],
+                            "checksum": completed_record[3],
+                            "blob_name": blob_name,
+                            "interview_id": interview_id,  # Include for frontend
+                            "message": "Upload was already finalized"
+                        }), 200
+                
+                # For other statuses (aborted, etc.), return an error
+                current_app.logger.warning(
+                    f"Found media_file record for interview {interview_id} but status is '{record_status}', not 'uploading'. "
+                    f"Record ID: {record_id}, session_id: {any_record[2]}"
+                )
+                return jsonify({
+                    "error": f"No active upload found. Found a record with status '{record_status}' instead of 'uploading'.",
+                    "interview_id": interview_id,
+                    "session_id": session_id,
+                    "found_record_status": record_status,
+                    "hint": "The upload may have already been finalized or aborted."
+                }), 400
+            else:
+                # Check if there are ANY records for this interview_id at all (for debugging)
+                record_count = uow.session.execute(
+                    text("""
+                        SELECT COUNT(*) as count
+                        FROM media_files
+                        WHERE interview_id = CAST(:iid AS uuid)
+                    """),
+                    {"iid": interview_id}
+                ).scalar()
+                
+                current_app.logger.warning(
+                    f"No media_file records found for interview {interview_id} matching criteria. "
+                    f"Total records for this interview_id: {record_count}, session_id: {session_id}"
+                )
+                
+                # If there are records but they don't match, provide more info
+                if record_count > 0:
+                    all_records = uow.session.execute(
+                        text("""
+                            SELECT id, status, session_id::text, created_at
+                            FROM media_files
+                            WHERE interview_id = CAST(:iid AS uuid)
+                            ORDER BY created_at DESC
+                            LIMIT 5
+                        """),
+                        {"iid": interview_id}
+                    ).fetchall()
+                    
+                    current_app.logger.warning(
+                        f"Found {len(all_records)} records for interview_id {interview_id}, "
+                        f"but none match the criteria. Records: {[dict(r._mapping) for r in all_records]}"
+                    )
+                
+                return jsonify({
+                    "error": "No active upload found",
+                    "interview_id": interview_id,
+                    "session_id": session_id,
+                    "total_records_for_interview": record_count,
+                    "hint": f"No media file records exist for this interview matching the criteria. Total records: {record_count}"
+                }), 400
 
     received = set(status.get("received_indices") or [])
     expected_total = status.get("expected_total") or len(received)

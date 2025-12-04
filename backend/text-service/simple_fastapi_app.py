@@ -39,7 +39,7 @@ os.environ.setdefault('SERPAPI_KEY', get_config('SERPAPI_KEY', ''))
 
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), 'utils'))
-from resume_parser import resume_parser
+from utils.resume_parser import resume_parser
 
 # Simple models for testing
 class CandidateCreate(BaseModel):
@@ -1021,6 +1021,21 @@ Interview Assessment Team
 """
     
     return summary.strip()
+
+@app.post("/resumes/parse")
+async def parse_resume(file: UploadFile = File(...)):
+    """Parse resume file and extract candidate information"""
+    try:
+        # Parse resume using resume_parser
+        parsed_data = resume_parser.parse_resume_from_pdf(file.file)
+        
+        return {
+            "success": True,
+            "data": parsed_data,
+            "message": "Resume parsed successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error parsing resume: {str(e)}")
 
 @app.get("/stats")
 async def get_stats():
