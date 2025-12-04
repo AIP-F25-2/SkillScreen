@@ -1,5 +1,6 @@
 # app/config.py
 import os
+import json
 
 def _get_bool(name: str, default: str = "0") -> bool:
     return os.getenv(name, default).strip() in ("1", "true", "TRUE", "yes", "YES")
@@ -13,6 +14,9 @@ def _get_json(name: str, default: str):
 class Settings:
     SERVER_PORT: int = int(os.getenv("SERVER_PORT", "8000"))
     APP_NAME: str = os.getenv("APP_NAME", "anti_cheat_service")
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
+    if not DATABASE_URL:
+        raise ValueError("DATABASE_URL environment variable is required but missing.")
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     LOG_JSON: bool = _get_bool("LOG_JSON", "1")
 
@@ -34,6 +38,16 @@ class Settings:
 
     UPLOADS_DIR: str = os.getenv("UPLOADS_DIR", "/app/uploads")
     PROCESSED_DIR: str = os.getenv("PROCESSED_DIR", "/app/processed")
+
+    AZURE_STORAGE_ENABLED: bool = _get_bool("AZURE_STORAGE_ENABLED", "1")
+    AZURE_BLOB_CONTAINER_URL: str = os.getenv("AZURE_BLOB_CONTAINER_URL", "https://skillscreenstorage.blob.core.windows.net/video-recordings?sp=racwdl&st=2025-11-04T14:56:17Z&se=2025-12-31T23:11:17Z&spr=https&sv=2024-11-04&sr=c&sig=7nu5Z5vcJrIuL0ivanRi3BHfHv%2FAPtHycpnhvubw0is%3D")
+    AZURE_BLOB_ACCOUNT_URL: str = os.getenv("AZURE_BLOB_ACCOUNT_URL", "https://skillscreenstorage.blob.core.windows.net")
+    AZURE_BLOB_CONTAINER: str = os.getenv("AZURE_BLOB_CONTAINER", "video-recordings")
+    AZURE_BLOB_SAS_TOKEN: str = os.getenv("AZURE_BLOB_SAS_TOKEN", "?sp=racwdl&st=2025-11-04T14:56:17Z&se=2025-12-31T23:11:17Z&spr=https&sv=2024-11-04&sr=c&sig=7nu5Z5vcJrIuL0ivanRi3BHfHv%2FAPtHycpnhvubw0is%3D")
+    AZURE_VIDEOS_CONTAINER: str = os.getenv("AZURE_VIDEOS_CONTAINER", "video-recordings")
+    AZURE_VIDEOS_PREFIX: str = os.getenv("AZURE_VIDEOS_PREFIX", "videos")
+    AZURE_PROCESSED_CONTAINER: str = os.getenv("AZURE_PROCESSED_CONTAINER", "video-recordings")
+    AZURE_PROCESSED_PREFIX: str = os.getenv("AZURE_PROCESSED_PREFIX", "processed")
 
     MAX_FACES: int = int(os.getenv("MAX_FACES", "3"))
     INITIAL_FRAME_SKIP: int = int(os.getenv("INITIAL_FRAME_SKIP", "1"))
@@ -82,6 +96,7 @@ class Settings:
     HEAD_PITCH_AWAY_DEG: float = float(os.getenv("HEAD_PITCH_AWAY_DEG", "20"))
     GAZE_CENTER_TOL: float = float(os.getenv("GAZE_CENTER_TOL", "0.20"))
 
+    ANALYZE_FULL_FPS: bool = _get_bool("ANALYZE_FULL_FPS", "0")
     TARGET_FPS: float = float(os.getenv("TARGET_FPS", "5"))
     MIN_SEGMENT_SEC: float = float(os.getenv("MIN_SEGMENT_SEC", "1.0"))
     JOIN_GAP_SEC: float = float(os.getenv("JOIN_GAP_SEC", "0.5"))
@@ -136,7 +151,7 @@ class Settings:
     # app/config.py (inside Settings)
     POSE_ENABLED = True                     # turn on pose-based features
     AUDIO_ENABLED = False                   # off by default; turns on if deps available
-    EMIT_THUMBNAILS = False                  # save snapshots for flagged events
+    EMIT_THUMBNAILS = True                  # save snapshots for flagged events
 
     # thresholds (tune later)
     HEAD_YAW_DEG_THRESH = 25.0              # left/right look

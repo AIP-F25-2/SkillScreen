@@ -5,7 +5,7 @@ from typing import Dict, Any, List
 import numpy as np
 
 from app.core.logging import get_logger
-from app.config import settings
+from app.utils.config import settings
 from app.helpers.segment_rules import flags_to_segments, SegmenterConfig
 from app.services.models_loader import load_yolo, warmup
 from app.services.detectors import detect_faces, detect_persons, detect_objects

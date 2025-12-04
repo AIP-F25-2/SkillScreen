@@ -2,15 +2,20 @@ version: "3.8"
 
 services:
   anti-cheat:
-    command: uvicorn app.video-service:app --host 0.0.0.0 --port ${SERVER_PORT}
+    command: uvicorn app.video_service:app --host 0.0.0.0 --port ${SERVER_PORT}
     build: .
-    container_name: anti-cheat-1
+    container_name: video-ai-service
     env_file:
       - .env
     environment:
-      # Persist Ultralytics settings to a mounted folder
+      # service config
+      PORT: ${SERVER_PORT:-8080}
+      HOST: 0.0.0.0
+      DATABASE_URL: ${DATABASE_URL:?Must provide DATABASE_URL}
+      # Ultralytics config
       YOLO_CONFIG_DIR: /app/.ultra_cfg
       YOLOv8_DIR: /app/.ultra_cfg
+      PYTHONPATH: /app:/app/common
     ports:
       - "${SERVER_PORT}:${SERVER_PORT}"
     volumes:
