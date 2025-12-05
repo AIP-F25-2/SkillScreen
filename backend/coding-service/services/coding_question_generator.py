@@ -354,26 +354,10 @@ class CodingQuestionGenerator:
         job_skills = job_description.get("required_skills", [])
         job_title = job_description.get("job_title", "Software Engineer")
 
-        inspiration = {}
-        if self.web_scraper:
-            try:
-                log_info(f"[SCRAPER] Attempting to scrape questions from LeetCode/StackOverflow for difficulty={difficulty}, topics={skills[:3] if skills else []}")
-                inspiration = await self.web_scraper.get_question_inspiration(
-                    difficulty=difficulty, topics=skills[:3] if skills else [], skills=skills
-                )
-                # Log what was actually scraped
-                leetcode_count = len(inspiration.get("leetcode", []))
-                stackoverflow_count = len(inspiration.get("stackoverflow", []))
-                geeksforgeeks_count = len(inspiration.get("geeksforgeeks", []))
-                log_info(f"[SCRAPER] Scraped results: LeetCode={leetcode_count}, StackOverflow={stackoverflow_count}, GeeksforGeeks={geeksforgeeks_count}")
-                if leetcode_count == 0 and stackoverflow_count == 0 and geeksforgeeks_count == 0:
-                    log_warning(f"[SCRAPER] No questions scraped from any source. This may indicate API failures or network issues.")
-            except Exception as e:
-                log_error(f"[SCRAPER] Exception during scraping: {type(e).__name__}: {str(e)}")
-                inspiration = {}
-        else:
-            log_warning(f"[SCRAPER] WebScraperService is not initialized. Check if web_scraper_service.py exists and imports correctly.")
+        # 1. Scrape inspiration
+        inspiration = await self._scrape_inspiration(difficulty, skills)
 
+        # 2. Build context
         context = self._build_context(
             skills=skills,
             experience_years=experience_years,
@@ -385,63 +369,78 @@ class CodingQuestionGenerator:
             inspiration=inspiration,
         )
 
-        # Try LLMs if available - use inspiration as context, not as direct source
-        llm_response = None
-        llm_error = None
-        llm_provider_used = None
-        question_prompt = self._create_question_prompt(context)
+        # 3. Try LLM generation
+        question = await self._attempt_llm_generation(context, difficulty, skills)
         
-        if self.llm_service:
-            log_info(f"[LLM] Attempting to generate question using LLM service. LLM service initialized: {self.llm_service is not None}")
-            try:
-                log_info(f"[LLM] Trying Gemini API...")
-                llm_response = await self.llm_service._generate_with_gemini(question_prompt)
-                if llm_response and len(llm_response.strip()) >= 50:
-                    llm_provider_used = "gemini"
-                    log_info(f"[LLM] SUCCESS: Gemini generated question (response length: {len(llm_response)} chars)")
-                else:
-                    llm_response = None
-                    log_warning(f"[LLM] Gemini response too short or empty (length: {len(llm_response.strip()) if llm_response else 0} chars)")
-            except Exception as e:
-                llm_error = str(e)
-                log_warning(f"[LLM] Gemini generation failed: {type(e).__name__}: {llm_error}")
+        if question:
+            return question
 
-        if not llm_response and self.llm_service:
-            try:
-                log_info(f"[LLM] Trying Groq API as fallback...")
-                llm_response = await self.llm_service._generate_with_groq(question_prompt)
-                if llm_response and len(llm_response.strip()) >= 50:
-                    llm_provider_used = "groq"
-                    log_info(f"[LLM] SUCCESS: Groq generated question (response length: {len(llm_response)} chars)")
-                else:
-                    llm_response = None
-                    log_warning(f"[LLM] Groq response too short or empty (length: {len(llm_response.strip()) if llm_response else 0} chars)")
-            except Exception as e:
-                llm_error = str(e)
-                log_warning(f"[LLM] Groq generation failed: {type(e).__name__}: {llm_error}")
-        
+        # 4. Fallback if LLM fails
+        return self._handle_fallback(
+            difficulty, skills, resume_data, job_description, 
+            question_number, previous_questions, interview_id, candidate_id
+        )
+
+    async def _scrape_inspiration(self, difficulty: str, skills: List[str]) -> Dict[str, Any]:
+        if not self.web_scraper:
+            log_warning(f"[SCRAPER] WebScraperService is not initialized.")
+            return {}
+
+        try:
+            log_info(f"[SCRAPER] Attempting to scrape questions for difficulty={difficulty}, topics={skills[:3] if skills else []}")
+            inspiration = await self.web_scraper.get_question_inspiration(
+                difficulty=difficulty, topics=skills[:3] if skills else [], skills=skills
+            )
+            
+            leetcode_count = len(inspiration.get("leetcode", []))
+            stackoverflow_count = len(inspiration.get("stackoverflow", []))
+            geeksforgeeks_count = len(inspiration.get("geeksforgeeks", []))
+            
+            log_info(f"[SCRAPER] Scraped results: LeetCode={leetcode_count}, StackOverflow={stackoverflow_count}, GeeksforGeeks={geeksforgeeks_count}")
+            
+            if leetcode_count == 0 and stackoverflow_count == 0 and geeksforgeeks_count == 0:
+                log_warning(f"[SCRAPER] No questions scraped from any source.")
+                
+            return inspiration
+        except Exception as e:
+            log_error(f"[SCRAPER] Exception during scraping: {type(e).__name__}: {str(e)}")
+            return {}
+
+    async def _attempt_llm_generation(self, context: Dict[str, Any], difficulty: str, skills: List[str]) -> Optional[Dict[str, Any]]:
         if not self.llm_service:
-            log_warning(f"[LLM] LLM service is not initialized/available. Will use fallback question.")
+            log_warning(f"[LLM] LLM service is not initialized/available.")
+            return None
 
-        # If LLM fails, use fallback - DO NOT use scraped data directly
-        # Scraped data is only for inspiration in the LLM prompt
+        question_prompt = self._create_question_prompt(context)
+        llm_response = None
+        llm_provider_used = None
+        llm_error = None
+
+        # Try LLM providers in order
+        providers = [
+            ("gemini", self.llm_service._generate_with_gemini),
+            ("groq", self.llm_service._generate_with_groq)
+        ]
+
+        for provider_name, provider_func in providers:
+            try:
+                log_info(f"[LLM] Trying {provider_name.capitalize()} API...")
+                llm_response = await provider_func(question_prompt)
+                if llm_response and len(llm_response.strip()) >= 50:
+                    llm_provider_used = provider_name
+                    log_info(f"[LLM] SUCCESS: {provider_name.capitalize()} generated question ({len(llm_response)} chars)")
+                    break
+                else:
+                    llm_response = None
+                    log_warning(f"[LLM] {provider_name.capitalize()} response too short or empty")
+            except Exception as e:
+                llm_error = str(e)
+                log_warning(f"[LLM] {provider_name.capitalize()} generation failed: {type(e).__name__}: {llm_error}")
+
         if not llm_response:
-            log_warning(f"[FALLBACK] LLM unavailable or failed. Using personalized fallback question.")
-            log_warning(f"[FALLBACK] Details - LLM service available: {self.llm_service is not None}, Error: {llm_error}")
-            fallback_question = self._get_fallback_question(difficulty, skills, resume_data, job_description, question_number, previous_questions, interview_id, candidate_id)
-            # Ensure fallback question has code templates
-            if not fallback_question.get("code_templates"):
-                fallback_question["code_templates"] = self._generate_code_templates(fallback_question, skills)
-            # Safety check: Never return questions with "source": "geeksforgeeks" from fallback
-            if fallback_question.get("source") == "geeksforgeeks":
-                log_error(f"[ERROR] Fallback question has invalid source 'geeksforgeeks'. This should not happen!")
-                fallback_question.pop("source", None)
-            # Add metadata to indicate this is a fallback
-            fallback_question["_generated_by"] = "fallback"
-            log_info(f"[FALLBACK] Generated fallback question: {fallback_question.get('title', 'Unknown')}")
-            return fallback_question
+            return None
 
-        # LLM succeeded - parse and return
+        # Parse response
         log_info(f"[LLM] Parsing LLM response from {llm_provider_used}...")
         question = self._parse_llm_response(llm_response, difficulty, skills)
 
@@ -450,16 +449,38 @@ class CodingQuestionGenerator:
 
         question["code_templates"] = self._generate_code_templates(question, skills)
         
-        # Safety check: Remove any "source" field that might indicate scraped data
+        # Remove source field if present
         if question.get("source") in ["geeksforgeeks", "leetcode", "stackoverflow"]:
-            log_warning(f"[WARN] LLM-generated question has source field, removing it: {question.get('source')}")
             question.pop("source", None)
         
-        # Add metadata to indicate this was generated by LLM
         question["_generated_by"] = f"llm_{llm_provider_used}"
-        log_info(f"[LLM] Successfully generated and parsed question: {question.get('title', 'Unknown')} (Provider: {llm_provider_used})")
+        log_info(f"[LLM] Successfully generated and parsed question: {question.get('title', 'Unknown')}")
 
         return question
+
+    def _handle_fallback(
+        self, difficulty: str, skills: List[str], resume_data: Dict[str, Any], 
+        job_description: Dict[str, Any], question_number: int, 
+        previous_questions: List[str], interview_id: Optional[str], 
+        candidate_id: Optional[str]
+    ) -> Dict[str, Any]:
+        log_warning(f"[FALLBACK] Using personalized fallback question.")
+        
+        fallback_question = self._get_fallback_question(
+            difficulty, skills, resume_data, job_description, 
+            question_number, previous_questions, interview_id, candidate_id
+        )
+        
+        if not fallback_question.get("code_templates"):
+            fallback_question["code_templates"] = self._generate_code_templates(fallback_question, skills)
+            
+        if fallback_question.get("source") == "geeksforgeeks":
+            fallback_question.pop("source", None)
+            
+        fallback_question["_generated_by"] = "fallback"
+        log_info(f"[FALLBACK] Generated fallback question: {fallback_question.get('title', 'Unknown')}")
+        
+        return fallback_question
 
     def _build_context(self, **kwargs) -> Dict[str, Any]:
         return kwargs
@@ -665,47 +686,37 @@ Return ONLY valid JSON, no additional text or markdown formatting."""
         except Exception:
             question_data = {"title": f"Coding Challenge ({difficulty})", "description": llm_response, "difficulty": difficulty}
 
-        examples = question_data.get("examples", [])
-        processed_examples = []
-        for ex in examples:
-            if isinstance(ex, dict):
-                input_val = ex.get("input", "")
-                output_val = ex.get("output", "")
-                if isinstance(input_val, (dict, list)):
-                    input_val = json.dumps(input_val)
-                if isinstance(output_val, (dict, list)):
-                    output_val = json.dumps(output_val)
-                processed_examples.append({"input": input_val, "output": output_val, "explanation": ex.get("explanation", "")})
-            else:
-                processed_examples.append(ex)
-
-        test_cases = question_data.get("test_cases", [])
-        processed_test_cases = []
-        for tc in test_cases:
-            if isinstance(tc, dict):
-                input_val = tc.get("input", "")
-                expected_output = tc.get("expected_output", "")
-                if isinstance(input_val, (dict, list)):
-                    input_val = json.dumps(input_val)
-                if isinstance(expected_output, (dict, list)):
-                    expected_output = json.dumps(expected_output)
-                processed_test_cases.append({"input": input_val, "expected_output": expected_output})
-            else:
-                processed_test_cases.append(tc)
+        examples = self._serialize_json_fields(question_data.get("examples", []), ["input", "output"])
+        test_cases = self._serialize_json_fields(question_data.get("test_cases", []), ["input", "expected_output"])
 
         question = {
             "title": question_data.get("title", f"Coding Question ({difficulty})"),
             "description": question_data.get("description", llm_response),
             "difficulty": question_data.get("difficulty", difficulty),
-            "examples": processed_examples,
+            "examples": examples,
             "constraints": question_data.get("constraints", []),
-            "test_cases": processed_test_cases,
+            "test_cases": test_cases,
             "hints": question_data.get("hints", []),
             "topics": question_data.get("topics", skills[:3] if skills else []),
             "time_limit_minutes": question_data.get("time_limit_minutes", self._get_time_limit(difficulty)),
         }
 
         return question
+
+    def _serialize_json_fields(self, items: List[Any], keys: List[str]) -> List[Any]:
+        """Helper to serialize dict/list fields in a list of dictionaries"""
+        processed_items = []
+        for item in items:
+            if isinstance(item, dict):
+                processed_item = item.copy()
+                for key in keys:
+                    val = processed_item.get(key, "")
+                    if isinstance(val, (dict, list)):
+                        processed_item[key] = json.dumps(val)
+                processed_items.append(processed_item)
+            else:
+                processed_items.append(item)
+        return processed_items
 
     def _extract_title(self, text: str) -> str:
         lines = text.split("\n")
@@ -782,7 +793,6 @@ Return ONLY valid JSON, no additional text or markdown formatting."""
         # Extract additional context
         experience_years = resume_data.get("experience_years", 0)
         job_skills = job_description.get("required_skills", [])
-        job_title = job_description.get("job_title") or job_description.get("title") or "Software Engineer"
         
         # Determine primary skill/topic
         primary_skill = None
@@ -792,22 +802,26 @@ Return ONLY valid JSON, no additional text or markdown formatting."""
             primary_skill = job_skills[0]
         
         # Get a concrete problem based on difficulty, with variation based on interview/candidate
-        problem_template = self._get_problem_template(difficulty, primary_skill, experience_years, question_number, previous_questions, interview_id, candidate_id, resume_data)
+        problem_template = self._get_problem_template(
+            difficulty, primary_skill, experience_years, question_number, 
+            previous_questions, interview_id, candidate_id, resume_data
+        )
         
-        # Generate personalized title and description
-        if primary_skill:
-            title = problem_template["title"]
-        else:
-            title = problem_template["title"]
-        
+        return self._enrich_problem_template(
+            problem_template, difficulty, skills, job_skills, experience_years
+        )
+
+    def _enrich_problem_template(
+        self, problem_template: Dict[str, Any], difficulty: str, 
+        skills: List[str], job_skills: List[str], experience_years: float
+    ) -> Dict[str, Any]:
+        title = problem_template["title"]
         description = problem_template["description"]
-        
-        # Generate more realistic test cases based on the problem
         test_cases = problem_template["test_cases"]
         
         # Add relevant constraints
         constraints = problem_template.get("constraints", [])
-        if difficulty == "medium" or difficulty == "hard":
+        if difficulty in ["medium", "hard"]:
             if "Time complexity should be optimal" not in constraints:
                 constraints.append("Time complexity should be optimal")
         if experience_years >= 5:
@@ -845,42 +859,54 @@ Return ONLY valid JSON, no additional text or markdown formatting."""
         
         return question_dict
     
+    CONSTRAINT_NUMBER_RANGE = "-10^9 <= each number <= 10^9"
+
     def _get_problem_template(self, difficulty: str, primary_skill: str = None, experience_years: float = 0, question_number: int = 1, previous_questions: List[str] = None, interview_id: Optional[str] = None, candidate_id: Optional[str] = None, resume_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Get a concrete coding problem template based on difficulty and context.
-        Returns actual problem statements, not generic descriptions.
-        Uses interview_id/candidate_id for variation to ensure different interviews get different problems.
         """
         previous_questions = previous_questions or []
         resume_data = resume_data or {}
         
         # Normalize primary skill for problem selection
-        skill_category = None
-        if primary_skill:
-            skill_lower = primary_skill.lower()
-            if any(lang in skill_lower for lang in ["python", "java", "javascript", "go", "c#", "c++"]):
-                skill_category = "general"
-            elif any(term in skill_lower for term in ["data", "sql", "database"]):
-                skill_category = "data"
-            elif any(term in skill_lower for term in ["api", "rest", "web", "flask", "spring"]):
-                skill_category = "api"
-            elif any(term in skill_lower for term in ["machine", "ai", "ml"]):
-                skill_category = "algorithm"
+        skill_category = self._determine_skill_category(primary_skill)
         
-        # Use interview_id or candidate_id as primary source of variation
-        # This ensures each interview gets a unique problem
-        import hashlib
+        # Calculate variation seed
+        variation_seed = self._calculate_variation_seed(
+            interview_id, candidate_id, resume_data, question_number, 
+            primary_skill, experience_years, previous_questions
+        )
         
-        # Create a variation seed based on interview/candidate identifier
-        # Priority: interview_id > candidate_id > resume data hash
-        if interview_id:
-            # Use interview_id as primary seed - each interview gets unique problem
-            variation_seed = abs(hash(interview_id)) % 10000
-        elif candidate_id:
-            # Use candidate_id if interview_id not available
-            variation_seed = abs(hash(f"{candidate_id}_{question_number}")) % 10000
+        if difficulty == "easy":
+            return self._get_easy_problem(variation_seed)
+        elif difficulty == "medium":
+            return self._get_medium_problem(variation_seed, skill_category, experience_years)
         else:
-            # Fallback: use resume data hash
+            return self._get_hard_problem(variation_seed)
+
+    def _determine_skill_category(self, primary_skill: Optional[str]) -> Optional[str]:
+        if not primary_skill:
+            return None
+        skill_lower = primary_skill.lower()
+        if any(lang in skill_lower for lang in ["python", "java", "javascript", "go", "c#", "c++"]):
+            return "general"
+        elif any(term in skill_lower for term in ["data", "sql", "database"]):
+            return "data"
+        elif any(term in skill_lower for term in ["api", "rest", "web", "flask", "spring"]):
+            return "api"
+        elif any(term in skill_lower for term in ["machine", "ai", "ml"]):
+            return "algorithm"
+        return None
+
+    def _calculate_variation_seed(
+        self, interview_id, candidate_id, resume_data, question_number, 
+        primary_skill, experience_years, previous_questions
+    ) -> int:
+        if interview_id:
+            return abs(hash(interview_id)) % 10000
+        elif candidate_id:
+            return abs(hash(f"{candidate_id}_{question_number}")) % 10000
+        else:
             resume_name = resume_data.get("name", "")
             resume_email = resume_data.get("email", "")
             all_skills_str = ",".join(sorted(resume_data.get("skills", [])[:5])) if resume_data.get("skills") else "general"
@@ -896,14 +922,13 @@ Return ONLY valid JSON, no additional text or markdown formatting."""
             ]
             
             seed_string = "_".join(filter(None, seed_components))
-            variation_seed = abs(hash(seed_string)) % 10000
-        
-        if difficulty == "easy":
-            # Multiple easy problems - select based on variation seed
-            easy_problems = [
-                {
-                    "title": "Array Sum Problem",
-                    "description": """Given an array of integers, write a function that returns the sum of all elements in the array.
+            return abs(hash(seed_string)) % 10000
+
+    def _get_easy_problem(self, variation_seed: int) -> Dict[str, Any]:
+        easy_problems = [
+            {
+                "title": "Array Sum Problem",
+                "description": """Given an array of integers, write a function that returns the sum of all elements in the array.
 
 Example:
 - Input: [1, 2, 3, 4, 5]
@@ -913,32 +938,32 @@ Edge Cases:
 - Empty array should return 0
 - Array with negative numbers should handle them correctly
 - Array with a single element should return that element""",
-                    "test_cases": [
-                        {"input": "[1, 2, 3, 4, 5]", "expected_output": "15"},
-                        {"input": "[]", "expected_output": "0"},
-                        {"input": "[10, 20, 30]", "expected_output": "60"},
-                        {"input": "[-5, 0, 5]", "expected_output": "0"}
-                    ],
-                    "constraints": [
-                        "Array can contain positive and negative integers",
-                        "Array can be empty",
-                        "Array can have up to 10^5 elements"
-                    ],
-                    "hints": [
-                        "Iterate through the array and accumulate the sum",
-                        "Handle the empty array case explicitly"
-                    ],
-                    "examples": [
-                        {
-                            "input": "[1, 2, 3]",
-                            "output": "6",
-                            "explanation": "Sum of all elements: 1 + 2 + 3 = 6"
-                        }
-                    ]
-                },
-                {
-                    "title": "Find Maximum in Array",
-                    "description": """Given an array of integers, write a function that returns the maximum value in the array.
+                "test_cases": [
+                    {"input": "[1, 2, 3, 4, 5]", "expected_output": "15"},
+                    {"input": "[]", "expected_output": "0"},
+                    {"input": "[10, 20, 30]", "expected_output": "60"},
+                    {"input": "[-5, 0, 5]", "expected_output": "0"}
+                ],
+                "constraints": [
+                    "Array can contain positive and negative integers",
+                    "Array can be empty",
+                    "Array can have up to 10^5 elements"
+                ],
+                "hints": [
+                    "Iterate through the array and accumulate the sum",
+                    "Handle the empty array case explicitly"
+                ],
+                "examples": [
+                    {
+                        "input": "[1, 2, 3]",
+                        "output": "6",
+                        "explanation": "Sum of all elements: 1 + 2 + 3 = 6"
+                    }
+                ]
+            },
+            {
+                "title": "Find Maximum in Array",
+                "description": """Given an array of integers, write a function that returns the maximum value in the array.
 
 Example:
 - Input: [3, 7, 2, 9, 1]
@@ -948,32 +973,32 @@ Edge Cases:
 - Array with negative numbers should work correctly
 - Array with a single element should return that element
 - All elements being the same should return that value""",
-                    "test_cases": [
-                        {"input": "[3, 7, 2, 9, 1]", "expected_output": "9"},
-                        {"input": "[-5, -2, -8, -1]", "expected_output": "-1"},
-                        {"input": "[5]", "expected_output": "5"},
-                        {"input": "[10, 10, 10]", "expected_output": "10"}
-                    ],
-                    "constraints": [
-                        "Array can contain positive and negative integers",
-                        "Array is not empty",
-                        "Array can have up to 10^5 elements"
-                    ],
-                    "hints": [
-                        "Iterate through the array and keep track of the maximum seen so far",
-                        "Initialize with the first element"
-                    ],
-                    "examples": [
-                        {
-                            "input": "[3, 7, 2, 9, 1]",
-                            "output": "9",
-                            "explanation": "The maximum value in the array is 9"
-                        }
-                    ]
-                },
-                {
-                    "title": "Count Even Numbers",
-                    "description": """Given an array of integers, write a function that returns the count of even numbers in the array.
+                "test_cases": [
+                    {"input": "[3, 7, 2, 9, 1]", "expected_output": "9"},
+                    {"input": "[-5, -2, -8, -1]", "expected_output": "-1"},
+                    {"input": "[5]", "expected_output": "5"},
+                    {"input": "[10, 10, 10]", "expected_output": "10"}
+                ],
+                "constraints": [
+                    "Array can contain positive and negative integers",
+                    "Array is not empty",
+                    "Array can have up to 10^5 elements"
+                ],
+                "hints": [
+                    "Iterate through the array and keep track of the maximum seen so far",
+                    "Initialize with the first element"
+                ],
+                "examples": [
+                    {
+                        "input": "[3, 7, 2, 9, 1]",
+                        "output": "9",
+                        "explanation": "The maximum value in the array is 9"
+                    }
+                ]
+            },
+            {
+                "title": "Count Even Numbers",
+                "description": """Given an array of integers, write a function that returns the count of even numbers in the array.
 
 Example:
 - Input: [1, 2, 3, 4, 5, 6]
@@ -983,40 +1008,35 @@ Edge Cases:
 - Array with no even numbers should return 0
 - Array with all even numbers should return the array length
 - Empty array should return 0""",
-                    "test_cases": [
-                        {"input": "[1, 2, 3, 4, 5, 6]", "expected_output": "3"},
-                        {"input": "[1, 3, 5, 7]", "expected_output": "0"},
-                        {"input": "[2, 4, 6, 8]", "expected_output": "4"},
-                        {"input": "[]", "expected_output": "0"}
-                    ],
-                    "constraints": [
-                        "Array can contain positive and negative integers",
-                        "Array can be empty",
-                        "Array can have up to 10^5 elements"
-                    ],
-                    "hints": [
-                        "Use modulo operator (%) to check if a number is even",
-                        "Increment a counter for each even number found"
-                    ],
-                    "examples": [
-                        {
-                            "input": "[1, 2, 3, 4, 5, 6]",
-                            "output": "3",
-                            "explanation": "There are 3 even numbers: 2, 4, and 6"
-                        }
-                    ]
-                }
-            ]
-            # Select problem based on variation seed to get different problems
-            selected_index = variation_seed % len(easy_problems)
-            return easy_problems[selected_index]
-        
-        elif difficulty == "medium":
-            # Multiple medium problems - select based on variation
-            medium_problems = []
-            
-            # Problem 1: Two Sum (classic)
-            medium_problems.append({
+                "test_cases": [
+                    {"input": "[1, 2, 3, 4, 5, 6]", "expected_output": "3"},
+                    {"input": "[1, 3, 5, 7]", "expected_output": "0"},
+                    {"input": "[2, 4, 6, 8]", "expected_output": "4"},
+                    {"input": "[]", "expected_output": "0"}
+                ],
+                "constraints": [
+                    "Array can contain positive and negative integers",
+                    "Array can be empty",
+                    "Array can have up to 10^5 elements"
+                ],
+                "hints": [
+                    "Use modulo operator (%) to check if a number is even",
+                    "Increment a counter for each even number found"
+                ],
+                "examples": [
+                    {
+                        "input": "[1, 2, 3, 4, 5, 6]",
+                        "output": "3",
+                        "explanation": "There are 3 even numbers: 2, 4, and 6"
+                    }
+                ]
+            }
+        ]
+        return easy_problems[variation_seed % len(easy_problems)]
+
+    def _get_medium_problem(self, variation_seed: int, skill_category: Optional[str], experience_years: float) -> Dict[str, Any]:
+        medium_problems = [
+            {
                 "title": "Find Two Numbers Sum to Target",
                 "description": """Given an array of integers and a target sum, find the indices of two numbers that add up to the target.
 
@@ -1026,40 +1046,38 @@ Example:
 - Input: nums = [2, 7, 11, 15], target = 9
 - Output: [0, 1]
 - Explanation: nums[0] + nums[1] = 2 + 7 = 9""",
-                    "test_cases": [
-                        {"input": "[2, 7, 11, 15], 9", "expected_output": "[0, 1]"},
-                        {"input": "[3, 2, 4], 6", "expected_output": "[1, 2]"},
-                        {"input": "[3, 3], 6", "expected_output": "[0, 1]"},
-                        {"input": "[1, 5, 3, 2], 4", "expected_output": "[0, 3]"}
-                    ],
-                    "constraints": [
-                        "2 <= array length <= 10^4",
-                        "-10^9 <= each number <= 10^9",
-                        "-10^9 <= target <= 10^9",
-                        "Only one valid answer exists",
-                        "Time complexity should be optimal"
-                    ],
-                    "hints": [
-                        "Consider using a hash map to store seen numbers",
-                        "For each number, check if its complement (target - number) exists in the map",
-                        "This allows O(n) time complexity instead of O(n²)"
-                    ],
-                    "examples": [
-                        {
-                            "input": "nums = [2, 7, 11, 15], target = 9",
-                            "output": "[0, 1]",
-                            "explanation": "Because nums[0] + nums[1] == 9, we return [0, 1]"
-                        },
-                        {
-                            "input": "nums = [3, 2, 4], target = 6",
-                            "output": "[1, 2]",
-                            "explanation": "nums[1] + nums[2] = 2 + 4 = 6"
-                        }
-                    ]
-                })
-            
-            # Problem 2: Valid Parentheses
-            medium_problems.append({
+                "test_cases": [
+                    {"input": "[2, 7, 11, 15], 9", "expected_output": "[0, 1]"},
+                    {"input": "[3, 2, 4], 6", "expected_output": "[1, 2]"},
+                    {"input": "[3, 3], 6", "expected_output": "[0, 1]"},
+                    {"input": "[1, 5, 3, 2], 4", "expected_output": "[0, 3]"}
+                ],
+                "constraints": [
+                    "2 <= array length <= 10^4",
+                    self.CONSTRAINT_NUMBER_RANGE,
+                    "-10^9 <= target <= 10^9",
+                    "Only one valid answer exists",
+                    "Time complexity should be optimal"
+                ],
+                "hints": [
+                    "Consider using a hash map to store seen numbers",
+                    "For each number, check if its complement (target - number) exists in the map",
+                    "This allows O(n) time complexity instead of O(n²)"
+                ],
+                "examples": [
+                    {
+                        "input": "nums = [2, 7, 11, 15], target = 9",
+                        "output": "[0, 1]",
+                        "explanation": "Because nums[0] + nums[1] == 9, we return [0, 1]"
+                    },
+                    {
+                        "input": "nums = [3, 2, 4], target = 6",
+                        "output": "[1, 2]",
+                        "explanation": "nums[1] + nums[2] = 2 + 4 = 6"
+                    }
+                ]
+            },
+            {
                 "title": "Valid Parentheses",
                 "description": """Given a string containing just the characters '(', ')', '{', '}', '[' and ']', determine if the input string is valid.
 
@@ -1074,38 +1092,36 @@ Example:
 
 - Input: "(]"
 - Output: false""",
-                    "test_cases": [
-                        {"input": '"()"', "expected_output": "true"},
-                        {"input": '"()[]{}"', "expected_output": "true"},
-                        {"input": '"(]"', "expected_output": "false"},
-                        {"input": '"([)]"', "expected_output": "false"},
-                        {"input": '"{[]}"', "expected_output": "true"}
-                    ],
-                    "constraints": [
-                        "1 <= string length <= 10^4",
-                        "String consists of parentheses only: '()[]{}'"
-                    ],
-                    "hints": [
-                        "Use a stack data structure",
-                        "Push opening brackets, pop when encountering matching closing brackets",
-                        "Check if stack is empty at the end"
-                    ],
-                    "examples": [
-                        {
-                            "input": '"()"',
-                            "output": "true",
-                            "explanation": "Open bracket '(' is closed by ')' in correct order"
-                        },
-                        {
-                            "input": '"(]"',
-                            "output": "false",
-                            "explanation": "Open bracket '(' is closed by ']' which is incorrect"
-                        }
-                    ]
-                })
-            
-            # Problem 3: Reverse Linked List (if applicable)
-            medium_problems.append({
+                "test_cases": [
+                    {"input": '"()"', "expected_output": "true"},
+                    {"input": '"()[]{}"', "expected_output": "true"},
+                    {"input": '"(]"', "expected_output": "false"},
+                    {"input": '"([)]"', "expected_output": "false"},
+                    {"input": '"{[]}"', "expected_output": "true"}
+                ],
+                "constraints": [
+                    "1 <= string length <= 10^4",
+                    "String consists of parentheses only: '()[]{}'"
+                ],
+                "hints": [
+                    "Use a stack data structure",
+                    "Push opening brackets, pop when encountering matching closing brackets",
+                    "Check if stack is empty at the end"
+                ],
+                "examples": [
+                    {
+                        "input": '"()"',
+                        "output": "true",
+                        "explanation": "Open bracket '(' is closed by ')' in correct order"
+                    },
+                    {
+                        "input": '"(]"',
+                        "output": "false",
+                        "explanation": "Open bracket '(' is closed by ']' which is incorrect"
+                    }
+                ]
+            },
+            {
                 "title": "Reverse String",
                 "description": """Given a string, write a function that returns the string reversed.
 
@@ -1139,10 +1155,8 @@ Requirements:
                         "explanation": "Characters reversed: h-e-l-l-o becomes o-l-l-e-h"
                     }
                 ]
-            })
-            
-            # Problem 4: Contains Duplicate
-            medium_problems.append({
+            },
+            {
                 "title": "Contains Duplicate",
                 "description": """Given an array of integers, determine if any value appears at least twice in the array.
 
@@ -1162,7 +1176,7 @@ Example:
                 ],
                 "constraints": [
                     "1 <= array length <= 10^5",
-                    "-10^9 <= each number <= 10^9"
+                    self.CONSTRAINT_NUMBER_RANGE
                 ],
                 "hints": [
                     "Use a hash set to track seen numbers",
@@ -1176,28 +1190,21 @@ Example:
                         "explanation": "The number 1 appears twice in the array"
                     }
                 ]
-            })
-            
-            # Select problem based on variation seed and skill category
-            # Prioritize certain problems for data/senior candidates
-            if skill_category == "data" or experience_years >= 5:
-                # For data/senior: prefer problems 0 (Two Sum) or 3 (Contains Duplicate)
-                preferred_problems = [0, 3]
-                if variation_seed % 2 == 0:
-                    selected_index = preferred_problems[0]
-                else:
-                    selected_index = preferred_problems[1]
-            else:
-                # For general: cycle through all problems
-                selected_index = variation_seed % len(medium_problems)
-            
-            return medium_problems[selected_index]
+            }
+        ]
         
-        else:  # hard
-            # Multiple hard problems
-            hard_problems = [
-                {
-                    "title": "Longest Substring Without Repeating Characters",
+        if skill_category == "data" or experience_years >= 5:
+            preferred_problems = [0, 3]
+            selected_index = preferred_problems[variation_seed % 2]
+        else:
+            selected_index = variation_seed % len(medium_problems)
+        
+        return medium_problems[selected_index]
+
+    def _get_hard_problem(self, variation_seed: int) -> Dict[str, Any]:
+        hard_problems = [
+            {
+                "title": "Longest Substring Without Repeating Characters",
                 "description": """Given a string, find the length of the longest substring without repeating characters.
 
 Example:
@@ -1237,10 +1244,10 @@ Example:
                         "explanation": "The answer is 'wke', not 'pwke' because 'w' repeats"
                     }
                 ]
-                },
-                {
-                    "title": "Two Sum - All Pairs",
-                    "description": """Given an array of integers and a target sum, find ALL unique pairs of numbers that add up to the target.
+            },
+            {
+                "title": "Two Sum - All Pairs",
+                "description": """Given an array of integers and a target sum, find ALL unique pairs of numbers that add up to the target.
 
 Note: This is different from the classic Two Sum problem. You need to find all pairs, not just one.
 
@@ -1253,67 +1260,65 @@ Requirements:
 - Each pair should be sorted [smaller, larger]
 - No duplicate pairs
 - Pairs should be sorted lexicographically""",
-                    "test_cases": [
-                        {"input": "[2, 7, 11, 15, 3, 6], 9", "expected_output": "[[2, 7], [3, 6]]"},
-                        {"input": "[1, 4, 2, 3, 0, 5], 7", "expected_output": "[[2, 5], [3, 4]]"},
-                        {"input": "[1, 1, 1], 2", "expected_output": "[[1, 1]]"},
-                        {"input": "[1, 2, 3], 10", "expected_output": "[]"}
-                    ],
-                    "constraints": [
-                        "1 <= array length <= 10^4",
-                        "-10^9 <= each number <= 10^9",
-                        "-10^9 <= target <= 10^9"
-                    ],
-                    "hints": [
-                        "Use a hash map to store complements",
-                        "Be careful about duplicate pairs",
-                        "Sort the result to ensure consistency"
-                    ],
-                    "examples": [
-                        {
-                            "input": "nums = [2, 7, 11, 15, 3, 6], target = 9",
-                            "output": "[[2, 7], [3, 6]]",
-                            "explanation": "Pairs that sum to 9: (2,7) and (3,6)"
-                        }
-                    ]
-                },
-                {
-                    "title": "Group Anagrams",
-                    "description": """Given an array of strings, group the anagrams together. An anagram is a word formed by rearranging the letters of another word.
+                "test_cases": [
+                    {"input": "[2, 7, 11, 15, 3, 6], 9", "expected_output": "[[2, 7], [3, 6]]"},
+                    {"input": "[1, 4, 2, 3, 0, 5], 7", "expected_output": "[[2, 5], [3, 4]]"},
+                    {"input": "[1, 1, 1], 2", "expected_output": "[[1, 1]]"},
+                    {"input": "[1, 2, 3], 10", "expected_output": "[]"}
+                ],
+                "constraints": [
+                    "1 <= array length <= 10^4",
+                    self.CONSTRAINT_NUMBER_RANGE,
+                    "-10^9 <= target <= 10^9"
+                ],
+                "hints": [
+                    "Use a hash map to store complements",
+                    "Be careful about duplicate pairs",
+                    "Sort the result to ensure consistency"
+                ],
+                "examples": [
+                    {
+                        "input": "nums = [2, 7, 11, 15, 3, 6], target = 9",
+                        "output": "[[2, 7], [3, 6]]",
+                        "explanation": "Pairs that sum to 9: (2,7) and (3,6)"
+                    }
+                ]
+            },
+            {
+                "title": "Group Anagrams",
+                "description": """Given an array of strings, group the anagrams together. An anagram is a word formed by rearranging the letters of another word.
 
 Example:
 - Input: ["eat", "tea", "tan", "ate", "nat", "bat"]
 - Output: [["eat", "tea", "ate"], ["tan", "nat"], ["bat"]]
 
 Note: All inputs are lowercase. The order of output does not matter.""",
-                    "test_cases": [
-                        {"input": '["eat", "tea", "tan", "ate", "nat", "bat"]', "expected_output": '[["eat", "tea", "ate"], ["tan", "nat"], ["bat"]]'},
-                        {"input": '[""]', "expected_output": '[[""]]'},
-                        {"input": '["a"]', "expected_output": '[["a"]]'}
-                    ],
-                    "constraints": [
-                        "1 <= array length <= 10^4",
-                        "0 <= string length <= 100",
-                        "Strings contain only lowercase English letters"
-                    ],
-                    "hints": [
-                        "Use sorted string as key for grouping",
-                        "Use a hash map where key is sorted string, value is list of anagrams",
-                        "Time complexity O(n*k*log(k)) where k is average string length"
-                    ],
-                    "examples": [
-                        {
-                            "input": '["eat", "tea", "tan"]',
-                            "output": '[["eat", "tea"], ["tan"]]',
-                            "explanation": "eat and tea are anagrams, tan is separate"
-                        }
-                    ]
-                }
-            ]
-            
-            # Select problem based on variation seed
-            selected_index = variation_seed % len(hard_problems)
-            return hard_problems[selected_index]
+                "test_cases": [
+                    {"input": '["eat", "tea", "tan", "ate", "nat", "bat"]', "expected_output": '[["eat", "tea", "ate"], ["tan", "nat"], ["bat"]]'},
+                    {"input": '[""]', "expected_output": '[[""]]'},
+                    {"input": '["a"]', "expected_output": '[["a"]]'}
+                ],
+                "constraints": [
+                    "1 <= array length <= 10^4",
+                    "0 <= string length <= 100",
+                    "Strings contain only lowercase English letters"
+                ],
+                "hints": [
+                    "Use sorted string as key for grouping",
+                    "Use a hash map where key is sorted string, value is list of anagrams",
+                    "Time complexity O(n*k*log(k)) where k is average string length"
+                ],
+                "examples": [
+                    {
+                        "input": '["eat", "tea", "tan"]',
+                        "output": '[["eat", "tea"], ["tan"]]',
+                        "explanation": "eat and tea are anagrams, tan is separate"
+                    }
+                ]
+            }
+        ]
+        
+        return hard_problems[variation_seed % len(hard_problems)]
     
     def _generate_personalized_test_cases(self, difficulty: str, primary_skill: str = None, experience_years: float = 0) -> List[Dict[str, Any]]:
         """

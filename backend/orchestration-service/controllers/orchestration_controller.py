@@ -203,16 +203,6 @@ async def start_interview(interview_id: UUID):
 async def get_next_question(interview_id: str, request: NextQuestionRequest):
     """
     Generate next interview question based on candidate's previous response
-    
-    Flow:
-    1. Get interview session data
-    2. Submit previous response to text-service
-    3. Get next question from text-service
-    4. Return next question or completion status
-    
-    Args:
-        interview_id: Interview ID
-        request: Previous response and question number
     """
     try:
         log.info(f"Generating next question for interview {interview_id}, question #{request.question_number}")
@@ -231,19 +221,7 @@ async def get_next_question(interview_id: str, request: NextQuestionRequest):
         session_id = text_service_session_id or interview_id
         
         # Update previous interview_session with candidate response
-        try:
-            previous_session = orchestrator_repo.get_latest_interview_session(interview_id)
-            if previous_session:
-                previous_session_id = previous_session.get("id")
-                if previous_session_id:
-                    orchestrator_repo.update_interview_session_response(
-                        session_id=str(previous_session_id),
-                        candidate_response=request.previous_response,
-                        response_duration=None  # TODO: Calculate if available
-                    )
-                    log.info(f"Updated interview_session {previous_session_id} with candidate response")
-        except Exception as e:
-            log.warning(f"Failed to update previous interview_session: {str(e)}")
+        _update_previous_session(interview_id, request.previous_response)
         
         # Generate next question
         next_question = await orchestration_service.generate_next_question(
@@ -255,44 +233,11 @@ async def get_next_question(interview_id: str, request: NextQuestionRequest):
         )
         
         if next_question is None:
-            # Interview completed - previous session was already updated above
-            try:
-                orchestrator_repo.update_interview_status(interview_id, "completed")
-            except Exception as e:
-                log.warning(f"Failed to update interview status: {str(e)}")
-            
-            return create_response({
-                "status": "completed",
-                "message": "Interview completed",
-                "interview_id": interview_id
-            })
+            return _handle_interview_completion(interview_id)
         
         # Create new interview_session record for the next question
         next_question_number = request.question_number + 1
-        try:
-            # Determine question type based on question number
-            # Typically: q1 = general, q2-4 = technical, q5+ = theoretical/mixed
-            if next_question_number <= 1:
-                question_type = "general"
-            elif next_question_number <= 4:
-                question_type = "technical"
-            else:
-                question_type = "theoretical"
-            
-            orchestrator_repo.create_interview_session(
-                interview_id=interview_id,
-                question_id=f"q{next_question_number}",
-                question_text=next_question,
-                question_type=question_type,
-                metadata={
-                    "previous_question_number": request.question_number,
-                    "text_service_session_id": text_service_session_id
-                }
-            )
-            log.info(f"Created interview_session record for interview {interview_id}, question q{next_question_number}")
-        except Exception as e:
-            log.warning(f"Failed to create interview_session record: {str(e)}")
-            # Continue even if session record creation fails
+        _create_next_session_record(interview_id, next_question, next_question_number, text_service_session_id)
         
         return create_response({
             "interview_id": interview_id,
@@ -307,6 +252,59 @@ async def get_next_question(interview_id: str, request: NextQuestionRequest):
     except Exception as e:
         log.error(f"Error generating next question: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to generate next question: {str(e)}")
+
+
+def _update_previous_session(interview_id: str, response: str):
+    try:
+        previous_session = orchestrator_repo.get_latest_interview_session(interview_id)
+        if previous_session:
+            previous_session_id = previous_session.get("id")
+            if previous_session_id:
+                orchestrator_repo.update_interview_session_response(
+                    session_id=str(previous_session_id),
+                    candidate_response=response,
+                    response_duration=None
+                )
+                log.info("Updated interview_session %s with candidate response", previous_session_id)
+    except Exception as e:
+        log.warning("Failed to update previous interview_session: %s", str(e))
+
+
+def _handle_interview_completion(interview_id: str):
+    try:
+        orchestrator_repo.update_interview_status(interview_id, "completed")
+    except Exception as e:
+        log.warning("Failed to update interview status: %s", str(e))
+    
+    return create_response({
+        "status": "completed",
+        "message": "Interview completed",
+        "interview_id": interview_id
+    })
+
+
+def _create_next_session_record(interview_id: str, next_question: str, question_number: int, text_service_session_id: Optional[str]):
+    try:
+        if question_number <= 1:
+            question_type = "general"
+        elif question_number <= 4:
+            question_type = "technical"
+        else:
+            question_type = "theoretical"
+        
+        orchestrator_repo.create_interview_session(
+            interview_id=interview_id,
+            question_id=f"q{question_number}",
+            question_text=next_question,
+            question_type=question_type,
+            metadata={
+                "previous_question_number": question_number - 1,
+                "text_service_session_id": text_service_session_id
+            }
+        )
+        log.info("Created interview_session record for interview %s, question q%d", interview_id, question_number)
+    except Exception as e:
+        log.warning("Failed to create interview_session record: %s", str(e))
 
 
 class SubmitCodeRequest(BaseModel):

@@ -4,7 +4,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 metadata = MetaData()
 
@@ -20,8 +20,8 @@ users_table = Table(
     Column("role", String, nullable=False),
     Column("is_active", Boolean, default=True),
     Column("profile_data", String),
-    Column("created_at", DateTime, default=datetime.utcnow),
-    Column("updated_at", DateTime, default=datetime.utcnow),
+    Column("created_at", DateTime, default=lambda: datetime.now(timezone.utc)),
+    Column("updated_at", DateTime, default=lambda: datetime.now(timezone.utc)),
     Column("deleted_at", DateTime),
 )
 
@@ -70,7 +70,7 @@ class UserRepository(BaseRepository):
 
     # UPDATE
     def update_user(self, user_id, updates: dict):
-        updates["updated_at"] = datetime.utcnow()
+        updates["updated_at"] = datetime.now(timezone.utc)
 
         query = (
             users_table.update()
@@ -94,8 +94,8 @@ class UserRepository(BaseRepository):
             )
             .values(
                 is_active=False,
-                deleted_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
+                deleted_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
             )
             .returning(users_table.c.id)
         )

@@ -110,126 +110,23 @@ class InterviewOrchestrationService:
             Session data with session_id and first question
         """
         try:
-            # Create candidate in text-service (in-memory)
-            candidate_name = candidate_data.get("candidate_name") or resume_data.get("name", "Candidate")
-            candidate_payload = {
-                "name": candidate_name,
-                "email": candidate_data.get("candidateEmail", ""),
-                "resume_text": resume_data.get("raw_text", ""),
-                "experience_years": resume_data.get("experience_years", 0),
-                "skills": resume_data.get("skills", [])
-            }
+            # Create candidate in text-service
+            text_service_candidate_id = await self._create_text_service_candidate(candidate_data, resume_data)
             
-            candidate_response = await self.client.post(
-                f"{self.text_service_url}/candidates",
-                json=candidate_payload
-            )
-            candidate_response.raise_for_status()
-            candidate_result = candidate_response.json()
-            text_service_candidate_id = candidate_result.get("data", {}).get("candidate_id") or candidate_result.get("candidate_id")
-            
-            # Create job in text-service (in-memory) if not provided
-            if not job_data:
-                job_payload = {
-                    "title": "Software Engineer",  # Default job title
-                    "company": "Company",
-                    "description": "",
-                    "required_skills": resume_data.get("skills", [])[:5],  # Use top 5 skills from resume
-                    "experience_level": "mid"
-                }
-            else:
-                job_payload = {
-                    "title": job_data.get("title", "Position"),
-                    "company": job_data.get("company", "Company"),
-                    "description": job_data.get("description", ""),
-                    "required_skills": job_data.get("required_skills", []),
-                    "experience_level": job_data.get("experience_level", "mid")
-                }
-            
-            job_response = await self.client.post(
-                f"{self.text_service_url}/jobs",
-                json=job_payload
-            )
-            job_response.raise_for_status()
-            job_result = job_response.json()
-            text_service_job_id = job_result.get("data", {}).get("job_id") or job_result.get("job_id")
+            # Create job in text-service
+            text_service_job_id = await self._create_text_service_job(job_data, resume_data)
             
             # Start interview session in text-service
-            interview_response = await self.client.post(
-                f"{self.text_service_url}/interviews/start",
-                json={
-                    "candidate_id": text_service_candidate_id,
-                    "job_id": text_service_job_id
-                }
-            )
-            interview_response.raise_for_status()
-            interview_result = interview_response.json()
-            
-            session_id = interview_result.get("session_id")
-            first_question = interview_result.get("first_question", "Tell me about yourself and your experience with this role.")
+            session_info = await self._start_text_service_session(text_service_candidate_id, text_service_job_id)
+            session_id = session_info.get("session_id")
+            first_question = session_info.get("first_question", "Tell me about yourself and your experience with this role.")
 
             # Optionally generate a coding question
-            coding_question = None
-            try:
-                # Decide whether to include a coding question: base on job_data or skills
-                include_coding = False
-                coding_skills = ["python", "java", "javascript", "typescript", "c++", "c#", "cpp", "go", "rust", "swift", "kotlin", "scala", "ruby", "php", "r", "matlab"]
-                
-                if job_data and job_data.get("requires_coding"):
-                    include_coding = True
-                    logger.info(f"Coding question requested via job_data for interview {interview_id}")
-                elif resume_data.get("skills"):
-                    skills_list = [s.lower().strip() for s in resume_data.get("skills", [])]
-                    matched_skills = [s for s in skills_list if any(cs in s or s in cs for cs in coding_skills)]
-                    if matched_skills:
-                        include_coding = True
-                        logger.info(f"Coding question requested based on skills: {matched_skills} for interview {interview_id}")
-                    else:
-                        logger.info(f"No matching coding skills found. Candidate skills: {skills_list[:10]}")
-
-                if include_coding:
-                    logger.info(f"Generating coding question for interview {interview_id}...")
-                    # Ask coding-service to assess difficulty, then generate a coding question
-                    assess_payload = {"resumeData": resume_data, "jobDescription": job_data or {}}
-                    logger.debug(f"Calling coding service for difficulty assessment: {CODING_SERVICE_URL}/difficulty/assess")
-                    resp = await self.client.post(f"{CODING_SERVICE_URL}/difficulty/assess", json=assess_payload)
-                    resp.raise_for_status()
-                    assess_result = resp.json()
-                    difficulty = assess_result.get("data", {}).get("difficulty") or assess_result.get("difficulty") or "medium"
-                    logger.info(f"Assessed difficulty: {difficulty} for interview {interview_id}")
-
-                    # Convert UUIDs to strings for JSON serialization
-                    candidate_id_str = str(candidate_data.get("candidateId")) if candidate_data.get("candidateId") else None
-                    interview_id_str = str(interview_id) if interview_id else None
-                    
-                    generate_payload = {
-                        "resumeData": resume_data,
-                        "jobDescription": job_data or {},
-                        "difficulty": difficulty,
-                        "questionNumber": 1,
-                        "previousQuestions": [],
-                        # Add interview/candidate context for better variation between different interviews
-                        "candidateId": candidate_id_str,
-                        "interviewId": interview_id_str
-                    }
-                    logger.debug(f"Calling coding service to generate question: {CODING_SERVICE_URL}/questions/generate")
-                    qresp = await self.client.post(f"{CODING_SERVICE_URL}/questions/generate", json=generate_payload)
-                    qresp.raise_for_status()
-                    qresp_json = qresp.json()
-                    coding_question = qresp_json.get("data") or qresp_json
-                    if coding_question:
-                        logger.info(f"Successfully generated coding question for interview {interview_id}")
-                    else:
-                        logger.warning(f"Coding question response is empty for interview {interview_id}. Response: {qresp_json}")
-                else:
-                    logger.info(f"Skipping coding question generation for interview {interview_id} - not required")
-            except httpx.HTTPStatusError as e:
-                logger.error(f"HTTP error creating coding question for interview {interview_id}: {e.response.status_code} - {e.response.text}")
-            except httpx.RequestError as e:
-                logger.error(f"Request error creating coding question for interview {interview_id}: {str(e)}. Service URL: {CODING_SERVICE_URL}")
-            except Exception as e:
-                logger.error(f"Error creating coding question for interview {interview_id}: {type(e).__name__}: {str(e)}", exc_info=True)
+            coding_question = await self._generate_coding_question_if_needed(
+                candidate_data, resume_data, job_data, interview_id
+            )
             
+            candidate_name = candidate_data.get("candidate_name") or resume_data.get("name", "Candidate")
             logger.info(f"Created interview session {session_id} for candidate {candidate_name}")
             
             result = {
@@ -246,22 +143,141 @@ class InterviewOrchestrationService:
             
         except httpx.HTTPStatusError as e:
             logger.error(f"Session creation HTTP error: {e.response.text}")
-            # Fallback: generate question directly
-            return {
-                "session_id": None,
-                "first_question": self._generate_fallback_question(resume_data),
-                "text_service_candidate_id": None,
-                "text_service_job_id": None
-            }
+            return self._get_fallback_session_result(resume_data)
         except Exception as e:
             logger.error(f"Session creation error: {str(e)}")
-            # Fallback: generate question directly
-            return {
-                "session_id": None,
-                "first_question": self._generate_fallback_question(resume_data),
-                "text_service_candidate_id": None,
-                "text_service_job_id": None
+            return self._get_fallback_session_result(resume_data)
+
+    async def _create_text_service_candidate(self, candidate_data: Dict[str, Any], resume_data: Dict[str, Any]) -> str:
+        candidate_name = candidate_data.get("candidate_name") or resume_data.get("name", "Candidate")
+        candidate_payload = {
+            "name": candidate_name,
+            "email": candidate_data.get("candidateEmail", ""),
+            "resume_text": resume_data.get("raw_text", ""),
+            "experience_years": resume_data.get("experience_years", 0),
+            "skills": resume_data.get("skills", [])
+        }
+        
+        candidate_response = await self.client.post(
+            f"{self.text_service_url}/candidates",
+            json=candidate_payload
+        )
+        candidate_response.raise_for_status()
+        candidate_result = candidate_response.json()
+        return candidate_result.get("data", {}).get("candidate_id") or candidate_result.get("candidate_id")
+
+    async def _create_text_service_job(self, job_data: Optional[Dict[str, Any]], resume_data: Dict[str, Any]) -> str:
+        if not job_data:
+            job_payload = {
+                "title": "Software Engineer",
+                "company": "Company",
+                "description": "",
+                "required_skills": resume_data.get("skills", [])[:5],
+                "experience_level": "mid"
             }
+        else:
+            job_payload = {
+                "title": job_data.get("title", "Position"),
+                "company": job_data.get("company", "Company"),
+                "description": job_data.get("description", ""),
+                "required_skills": job_data.get("required_skills", []),
+                "experience_level": job_data.get("experience_level", "mid")
+            }
+        
+        job_response = await self.client.post(
+            f"{self.text_service_url}/jobs",
+            json=job_payload
+        )
+        job_response.raise_for_status()
+        job_result = job_response.json()
+        return job_result.get("data", {}).get("job_id") or job_result.get("job_id")
+
+    async def _start_text_service_session(self, candidate_id: str, job_id: str) -> Dict[str, Any]:
+        interview_response = await self.client.post(
+            f"{self.text_service_url}/interviews/start",
+            json={
+                "candidate_id": candidate_id,
+                "job_id": job_id
+            }
+        )
+        interview_response.raise_for_status()
+        return interview_response.json()
+
+    async def _generate_coding_question_if_needed(
+        self,
+        candidate_data: Dict[str, Any],
+        resume_data: Dict[str, Any],
+        job_data: Optional[Dict[str, Any]],
+        interview_id: Optional[str]
+    ) -> Optional[Dict[str, Any]]:
+        try:
+            include_coding = False
+            coding_skills = ["python", "java", "javascript", "typescript", "c++", "c#", "cpp", "go", "rust", "swift", "kotlin", "scala", "ruby", "php", "r", "matlab"]
+            
+            if job_data and job_data.get("requires_coding"):
+                include_coding = True
+                logger.info(f"Coding question requested via job_data for interview {interview_id}")
+            elif resume_data.get("skills"):
+                skills_list = [s.lower().strip() for s in resume_data.get("skills", [])]
+                matched_skills = [s for s in skills_list if any(cs in s or s in cs for cs in coding_skills)]
+                if matched_skills:
+                    include_coding = True
+                    logger.info(f"Coding question requested based on skills: {matched_skills} for interview {interview_id}")
+                else:
+                    logger.info(f"No matching coding skills found. Candidate skills: {skills_list[:10]}")
+
+            if not include_coding:
+                logger.info(f"Skipping coding question generation for interview {interview_id} - not required")
+                return None
+
+            logger.info(f"Generating coding question for interview {interview_id}...")
+            
+            # Assess difficulty
+            assess_payload = {"resumeData": resume_data, "jobDescription": job_data or {}}
+            logger.debug(f"Calling coding service for difficulty assessment: {CODING_SERVICE_URL}/difficulty/assess")
+            resp = await self.client.post(f"{CODING_SERVICE_URL}/difficulty/assess", json=assess_payload)
+            resp.raise_for_status()
+            assess_result = resp.json()
+            difficulty = assess_result.get("data", {}).get("difficulty") or assess_result.get("difficulty") or "medium"
+            logger.info(f"Assessed difficulty: {difficulty} for interview {interview_id}")
+
+            # Generate question
+            candidate_id_str = str(candidate_data.get("candidateId")) if candidate_data.get("candidateId") else None
+            interview_id_str = str(interview_id) if interview_id else None
+            
+            generate_payload = {
+                "resumeData": resume_data,
+                "jobDescription": job_data or {},
+                "difficulty": difficulty,
+                "questionNumber": 1,
+                "previousQuestions": [],
+                "candidateId": candidate_id_str,
+                "interviewId": interview_id_str
+            }
+            logger.debug(f"Calling coding service to generate question: {CODING_SERVICE_URL}/questions/generate")
+            qresp = await self.client.post(f"{CODING_SERVICE_URL}/questions/generate", json=generate_payload)
+            qresp.raise_for_status()
+            qresp_json = qresp.json()
+            coding_question = qresp_json.get("data") or qresp_json
+            
+            if coding_question:
+                logger.info(f"Successfully generated coding question for interview {interview_id}")
+                return coding_question
+            else:
+                logger.warning(f"Coding question response is empty for interview {interview_id}. Response: {qresp_json}")
+                return None
+
+        except Exception as e:
+            logger.error(f"Error creating coding question for interview {interview_id}: {type(e).__name__}: {str(e)}", exc_info=True)
+            return None
+
+    def _get_fallback_session_result(self, resume_data: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "session_id": None,
+            "first_question": self._generate_fallback_question(resume_data),
+            "text_service_candidate_id": None,
+            "text_service_job_id": None
+        }
     
     def _generate_fallback_question(self, resume_data: Dict[str, Any]) -> str:
         """Generate fallback question when text-service is unavailable"""

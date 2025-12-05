@@ -18,6 +18,11 @@ from utils.logger import log_info, log_error, log_warning
 class EnhancedLLMService:
     """Enhanced service for LLM-powered question generation using multiple APIs with fallback and bias mitigation"""
     
+    # LLM Provider Constants
+    LLM_GEMINI = 'gemini'
+    LLM_GROQ = 'groq'
+    LLM_MISTRAL = 'mistral'
+
     def __init__(self):
         # Primary LLM: Gemini
         self.gemini_model = None
@@ -33,7 +38,7 @@ class EnhancedLLMService:
         self.serpapi_key = None
         
         # LLM Priority Order: Gemini (primary) -> Groq -> Mistral
-        self.llm_priority = ['gemini', 'groq', 'mistral']
+        self.llm_priority = [self.LLM_GEMINI, self.LLM_GROQ, self.LLM_MISTRAL]
         self.available_llms = []
         
         self.is_initialized = False
@@ -105,7 +110,7 @@ class EnhancedLLMService:
                         log_info(f"[INIT] Attempting to initialize Gemini model: {model}")
                         self.gemini_model = genai.GenerativeModel(model)
                         log_info(f"[OK] Google Gemini initialized successfully as PRIMARY LLM with model: {model}")
-                        self.available_llms.append('gemini')
+                        self.available_llms.append(self.LLM_GEMINI)
                         break
                     except Exception as e:
                         error_msg = str(e)
@@ -122,7 +127,7 @@ class EnhancedLLMService:
             self.groq_api_key = groq_key
             if self.groq_api_key:
                 log_info("[OK] Groq API (Llama 3) configured as FALLBACK LLM")
-                self.available_llms.append('groq')
+                self.available_llms.append(self.LLM_GROQ)
             else:
                 log_warning("[WARNING] GROQ_API_KEY not found - Groq will not be available")
             
@@ -130,7 +135,7 @@ class EnhancedLLMService:
             self.mistral_api_key = mistral_key
             if self.mistral_api_key:
                 log_info("[OK] Mistral API configured as FALLBACK LLM")
-                self.available_llms.append('mistral')
+                self.available_llms.append(self.LLM_MISTRAL)
             else:
                 log_warning("[WARNING] MISTRAL_API_KEY not found - Mistral will not be available")
             
@@ -169,86 +174,96 @@ class EnhancedLLMService:
             )
             
             # Try LLMs in priority order with fallback
-            responses = []
-            used_llms = []
+            response = await self._try_llm_generation(context_prompt, question_number, question_type, previous_questions, previous_responses)
+            if response:
+                return response
             
-            for llm_name in self.llm_priority:
-                if llm_name not in self.available_llms:
-                    log_warning(f"[LLM] {llm_name.upper()} not available, skipping...")
-                    continue
-                
-                try:
-                    log_info(f"[LLM API CALL] Question #{question_number} - Attempting {llm_name.upper()} API call...")
-                    log_info(f"[LLM CONTEXT] Previous questions: {len(previous_questions or [])}, Previous responses: {len(previous_responses or [])}")
-                    response = await self._generate_with_llm(llm_name, context_prompt)
-                    
-                    if response and len(response.strip()) > 10:
-                        responses.append((llm_name, response.strip()))
-                        used_llms.append(llm_name)
-                        log_info(f"[LLM API SUCCESS] {llm_name.upper()} successfully generated question #{question_number} (length: {len(response.strip())} chars)")
-                        log_info(f"[LLM RESPONSE] {llm_name.upper()} response preview: {response.strip()[:100]}...")
-                        
-                        # If primary LLM (Gemini) succeeds, use it directly
-                        if llm_name == 'gemini' and len(response.strip()) > 20:
-                            # Validate response quality and check for bias/hallucination
-                            validated_response = await self._validate_response(response.strip(), responses, question_type)
-                            log_info(f"[LLM FINAL] Using {llm_name.upper()} response for question #{question_number}")
-                            return validated_response
-                        
-                        # If we have at least one good response, continue to bias mitigation
-                        if len(response.strip()) > 20:
-                            break
-                            
-                except Exception as e:
-                    log_error(f"[LLM API ERROR] {llm_name.upper()} failed for question #{question_number}: {str(e)}")
-                    log_warning(f"[LLM FALLBACK] Trying next LLM in priority order...")
-                    continue
-            
-            # Bias and hallucination mitigation: compare responses from multiple LLMs
-            if len(responses) > 1:
-                log_info(f"[BIAS_MITIGATION] Comparing {len(responses)} responses from {', '.join(used_llms)}")
-                final_response = await self._mitigate_bias_and_hallucination(responses, question_type)
-                if final_response:
-                    log_info(f"[OK] Selected consensus response after bias mitigation")
-                    return final_response
-            
-            # Use best available response
-            if responses:
-                best_response = max(responses, key=lambda x: len(x[1]))
-                log_info(f"[OK] Using best response from {best_response[0]}")
-                return best_response[1]
-            
-            # Fallback to enhanced mock with real-time data
-            log_warning(f"[LLM FALLBACK] All LLM APIs failed. Using rule-based fallback for question #{question_number} (type: {question_type})")
-            log_warning(f"[LLM FALLBACK] This should NOT happen if APIs are configured correctly!")
-            enhanced_question = await self._generate_enhanced_mock_question(
+            # Fallback to enhanced mock or rule-based
+            return await self._handle_generation_fallback(
                 question_type, candidate_context, job_context, question_number, previous_questions, previous_responses
             )
-            if enhanced_question:
-                if previous_questions and enhanced_question in previous_questions:
-                    log_warning(f"[LLM FALLBACK] Generated duplicate question, regenerating...")
-                    enhanced_question = await self._generate_enhanced_mock_question(
-                        question_type, candidate_context, job_context, question_number + 1, previous_questions, previous_responses
-                    )
-                log_warning(f"[LLM FALLBACK] Using rule-based question #{question_number}")
-                return enhanced_question
-            
-            # Final fallback
-            log_error(f"[LLM ERROR] All question generation methods failed for question #{question_number}")
-            return self._get_fallback_question(question_type, question_number)
                 
         except Exception as e:
             log_error(f"[ERROR] Error generating question: {e}")
             return self._get_fallback_question(question_type, question_number)
+
+    async def _try_llm_generation(
+        self, prompt: str, question_number: int, question_type: str,
+        previous_questions: List[str], previous_responses: List[str]
+    ) -> Optional[str]:
+        responses = []
+        used_llms = []
+        
+        for llm_name in self.llm_priority:
+            if llm_name not in self.available_llms:
+                continue
+            
+            try:
+                log_info(f"[LLM API CALL] Question #{question_number} - Attempting {llm_name.upper()} API call...")
+                response = await self._generate_with_llm(llm_name, prompt)
+                
+                if response and len(response.strip()) > 10:
+                    responses.append((llm_name, response.strip()))
+                    used_llms.append(llm_name)
+                    
+                    # If primary LLM (Gemini) succeeds, use it directly
+                    if llm_name == self.LLM_GEMINI and len(response.strip()) > 20:
+                        validated_response = await self._validate_response(response.strip(), responses, question_type)
+                        log_info(f"[LLM FINAL] Using {llm_name.upper()} response for question #{question_number}")
+                        return validated_response
+                    
+                    # If we have at least one good response, continue to bias mitigation
+                    if len(response.strip()) > 20:
+                        break
+                        
+            except Exception as e:
+                log_error(f"[LLM API ERROR] {llm_name.upper()} failed for question #{question_number}: {str(e)}")
+                continue
+        
+        # Bias and hallucination mitigation
+        if len(responses) > 1:
+            log_info(f"[BIAS_MITIGATION] Comparing {len(responses)} responses from {', '.join(used_llms)}")
+            final_response = await self._mitigate_bias_and_hallucination(responses, question_type)
+            if final_response:
+                return final_response
+        
+        # Use best available response
+        if responses:
+            best_response = max(responses, key=lambda x: len(x[1]))
+            return best_response[1]
+            
+        return None
+
+    async def _handle_generation_fallback(
+        self, question_type: str, candidate_context: Dict[str, Any],
+        job_context: Dict[str, Any], question_number: int,
+        previous_questions: List[str], previous_responses: List[str]
+    ) -> str:
+        log_warning(f"[LLM FALLBACK] All LLM APIs failed. Using rule-based fallback for question #{question_number}")
+        
+        enhanced_question = await self._generate_enhanced_mock_question(
+            question_type, candidate_context, job_context, question_number, previous_questions, previous_responses
+        )
+        
+        if enhanced_question:
+            if previous_questions and enhanced_question in previous_questions:
+                log_warning(f"[LLM FALLBACK] Generated duplicate question, regenerating...")
+                enhanced_question = await self._generate_enhanced_mock_question(
+                    question_type, candidate_context, job_context, question_number + 1, previous_questions, previous_responses
+                )
+            return enhanced_question
+        
+        log_error(f"[LLM ERROR] All question generation methods failed for question #{question_number}")
+        return self._get_fallback_question(question_type, question_number)
     
     async def _generate_with_llm(self, llm_name: str, prompt: str) -> Optional[str]:
         """Generate response using specified LLM"""
         try:
-            if llm_name == 'groq':
+            if llm_name == self.LLM_GROQ:
                 return await self._generate_with_groq(prompt)
-            elif llm_name == 'mistral':
+            elif llm_name == self.LLM_MISTRAL:
                 return await self._generate_with_mistral(prompt)
-            elif llm_name == 'gemini':
+            elif llm_name == self.LLM_GEMINI:
                 return await self._generate_with_gemini(prompt)
             else:
                 return None
@@ -258,67 +273,54 @@ class EnhancedLLMService:
     
     async def _generate_with_groq(self, prompt: str) -> Optional[str]:
         """Generate response using Groq API (Llama 3)"""
-        try:
-            if not self.groq_api_key:
-                return None
-            
-            log_info("[API CALL] Calling Groq API (Llama 3) for question generation...")
-            
-            url = f"{self.groq_base_url}/chat/completions"
-            headers = {
+        if not self.groq_api_key:
+            return None
+        
+        return await self._make_llm_request(
+            url=f"{self.groq_base_url}/chat/completions",
+            headers={
                 "Authorization": f"Bearer {self.groq_api_key}",
                 "Content-Type": "application/json"
-            }
-            data = {
-                "model": "llama-3.1-70b-versatile",  # or llama-3.1-8b-instant for faster responses
+            },
+            data={
+                "model": "llama-3.1-70b-versatile",
                 "messages": [
                     {"role": "system", "content": "You are a senior technical interviewer. Generate natural, conversational interview questions."},
                     {"role": "user", "content": prompt}
                 ],
                 "temperature": 0.7,
                 "max_tokens": 200
-            }
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, headers=headers, json=data, timeout=aiohttp.ClientTimeout(total=30)) as response:
-                    if response.status == 200:
-                        result = await response.json()
-                        if 'choices' in result and len(result['choices']) > 0:
-                            content = result['choices'][0].get('message', {}).get('content', '')
-                            if content:
-                                log_info(f"[API SUCCESS] Groq API returned response (length: {len(content)})")
-                                return content
-                    else:
-                        error_text = await response.text()
-                        log_warning(f"[WARNING] Groq API returned status {response.status}: {error_text}")
-            
-            return None
-        except Exception as e:
-            log_warning(f"[WARNING] Groq API call failed: {e}")
-            return None
+            },
+            provider_name="Groq"
+        )
     
     async def _generate_with_mistral(self, prompt: str) -> Optional[str]:
         """Generate response using Mistral API"""
-        try:
-            if not self.mistral_api_key:
-                return None
-            
-            log_info("[API CALL] Calling Mistral API for question generation...")
-            
-            url = f"{self.mistral_base_url}/chat/completions"
-            headers = {
+        if not self.mistral_api_key:
+            return None
+        
+        return await self._make_llm_request(
+            url=f"{self.mistral_base_url}/chat/completions",
+            headers={
                 "Authorization": f"Bearer {self.mistral_api_key}",
                 "Content-Type": "application/json"
-            }
-            data = {
-                "model": "mistral-medium",  # or mistral-small, mistral-large
+            },
+            data={
+                "model": "mistral-medium",
                 "messages": [
                     {"role": "system", "content": "You are a senior technical interviewer. Generate natural, conversational interview questions."},
                     {"role": "user", "content": prompt}
                 ],
                 "temperature": 0.7,
                 "max_tokens": 200
-            }
+            },
+            provider_name="Mistral"
+        )
+
+    async def _make_llm_request(self, url: str, headers: Dict, data: Dict, provider_name: str) -> Optional[str]:
+        """Generic helper for making LLM API requests"""
+        try:
+            log_info(f"[API CALL] Calling {provider_name} API for question generation...")
             
             async with aiohttp.ClientSession() as session:
                 async with session.post(url, headers=headers, json=data, timeout=aiohttp.ClientTimeout(total=30)) as response:
@@ -327,15 +329,15 @@ class EnhancedLLMService:
                         if 'choices' in result and len(result['choices']) > 0:
                             content = result['choices'][0].get('message', {}).get('content', '')
                             if content:
-                                log_info(f"[API SUCCESS] Mistral API returned response (length: {len(content)})")
+                                log_info(f"[API SUCCESS] {provider_name} API returned response (length: {len(content)})")
                                 return content
                     else:
                         error_text = await response.text()
-                        log_warning(f"[WARNING] Mistral API returned status {response.status}: {error_text}")
+                        log_warning(f"[WARNING] {provider_name} API returned status {response.status}: {error_text}")
             
             return None
         except Exception as e:
-            log_warning(f"[WARNING] Mistral API call failed: {e}")
+            log_warning(f"[WARNING] {provider_name} API call failed: {e}")
             return None
     
     async def _generate_with_gemini(self, prompt: str) -> Optional[str]:
@@ -383,7 +385,7 @@ class EnhancedLLMService:
                 # If we have other responses, use them
                 if len(all_responses) > 1:
                     for llm_name, alt_response in all_responses:
-                        if llm_name != 'groq' and len(alt_response) > 20:
+                        if llm_name != self.LLM_GROQ and len(alt_response) > 20:
                             return alt_response
         
         return response
@@ -405,7 +407,7 @@ class EnhancedLLMService:
         # In a production system, you'd use more sophisticated NLP techniques
         
         # Prefer responses from primary LLMs (Gemini, Groq)
-        primary_responses = [r for r in responses if r[0] in ['gemini', 'groq']]
+        primary_responses = [r for r in responses if r[0] in [self.LLM_GEMINI, self.LLM_GROQ]]
         if primary_responses:
             # Use the longest primary response
             best = max(primary_responses, key=lambda x: len(x[1]))
@@ -428,93 +430,36 @@ class EnhancedLLMService:
     ) -> str:
         """Build enhanced prompt with real-time data integration and SerpApi trends"""
         
-        # Extract key information
-        candidate_name = candidate_context.get('name', 'Candidate')
-        candidate_skills = candidate_context.get('skills', [])
-        candidate_experience = candidate_context.get('experience_years', 0)
-        candidate_projects = candidate_context.get('projects', [])
-        resume_text = candidate_context.get('resume_text', '')[:1000]
+        # Build context sections
+        candidate_section = self._build_candidate_section(candidate_context)
         
-        job_title = job_context.get('title', 'Position')
-        job_company = job_context.get('company', 'Company')
-        job_description = job_context.get('description', '')
-        job_skills = job_context.get('required_skills', [])
-        job_level = job_context.get('experience_level', 'mid')
-        
-        # Fetch industry trends from SerpApi for advanced questions
+        # Fetch industry trends if needed
         industry_trends = ""
         if question_type == 'advanced':
+            job_title = job_context.get('title', 'Position')
+            job_skills = job_context.get('required_skills', [])
             log_info(f"[SERPAPI] Fetching industry trends for {job_title} (question #{question_number})")
             industry_trends = await self._get_industry_trends(job_title, job_skills)
-            if industry_trends and industry_trends != "technology":
-                log_info(f"[OK] SerpApi returned trends: {industry_trends[:100]}...")
+            
+        job_section = self._build_job_section(job_context, industry_trends)
         
-        # Build previous questions context
-        prev_questions_text = ""
-        if previous_questions:
-            prev_questions_text = f"\nALL Previous questions asked (DO NOT REPEAT ANY OF THESE):\n" + "\n".join([f"{i+1}. {q}" for i, q in enumerate(previous_questions)])
+        interview_section = self._build_interview_section(
+            question_number, question_type, previous_questions, previous_responses
+        )
         
-        # Build previous responses context
-        prev_responses_text = ""
-        if previous_responses:
-            prev_responses_text = f"\nPrevious responses given (use these to build follow-up questions):\n" + "\n".join([f"Q{i+1}: {r[:150]}..." if len(r) > 150 else f"Q{i+1}: {r}" for i, r in enumerate(previous_responses)])
-        
-        # Build projects context
-        projects_text = ""
-        if candidate_projects:
-            projects_list = []
-            for i, project in enumerate(candidate_projects[:5], 1):
-                if isinstance(project, dict):
-                    project_name = project.get('name', project.get('title', f'Project {i}'))
-                    project_desc = project.get('description', project.get('details', ''))
-                    projects_list.append(f"- {project_name}: {project_desc[:100]}")
-                elif isinstance(project, str):
-                    projects_list.append(f"- {project}")
-            if projects_list:
-                projects_text = f"\nCANDIDATE PROJECTS (use these for technical questions):\n" + "\n".join(projects_list)
-        
-        # Question type-specific instructions
-        question_type_instructions = {
-            'general': "This is the FIRST question. Ask a simple, welcoming introductory question like 'Tell me about yourself and your professional background' or 'Can you introduce yourself?'. Keep it friendly and open-ended.",
-            'behavioral': "Focus on soft skills, teamwork, communication, problem-solving approaches, and past experiences. Ask about specific situations and how they handled them. Reference their resume and job requirements.",
-            'theoretical': "Focus on conceptual understanding, best practices, design patterns, system design principles, and theoretical knowledge. Ask about trade-offs, scalability, performance, and architectural decisions. Connect to job requirements.",
-            'personal': "Ask about their motivation, career goals, why they're interested in this role/company, what drives them, and how this position aligns with their aspirations. Make it personal and engaging.",
-            'practical': f"Focus on hands-on experience, real-world projects from their resume, practical applications of {', '.join(candidate_skills[:5]) if candidate_skills else 'their skills'}, and how they've solved actual problems. Reference specific technologies and tools.",
-            'advanced': f"Ask about NEW technologies, recent industry trends, latest developments in {job_title} field, emerging tools or frameworks, recent news or innovations. Use SerpApi trends if available. Make it challenging and forward-thinking.",
-            'coding': "This should be a coding challenge. Generate a problem statement relevant to the job requirements and candidate's skills."
-        }
-        
-        type_instruction = question_type_instructions.get(question_type, "Ask a relevant question based on the candidate's background and job requirements.")
-        
-        # Build industry trends context
-        trends_context = ""
-        if industry_trends and industry_trends != "technology":
-            trends_context = f"\nCURRENT INDUSTRY TRENDS (from SerpApi search):\n{industry_trends}\n\nUse these trends to ask about recent developments, emerging technologies, or current industry news."
+        type_instruction = self._get_type_instruction(
+            question_type, candidate_context, job_context, industry_trends
+        )
         
         # Create comprehensive prompt
         prompt = f"""
-You are a senior {job_title} professional conducting a natural, conversational interview. Generate a realistic question that a human interviewer would ask based on the candidate's previous responses.
+You are a senior {job_context.get('title', 'Position')} professional conducting a natural, conversational interview. Generate a realistic question that a human interviewer would ask based on the candidate's previous responses.
 
-CANDIDATE BACKGROUND:
-- Name: {candidate_name}
-- Experience: {candidate_experience} years in the field
-- Skills: {', '.join(candidate_skills[:8]) if candidate_skills else 'Various technical skills'}
-{projects_text}
-- Resume Summary: {resume_text[:800] if resume_text else 'Technical professional with relevant experience'}
-- Current Date: {datetime.now().strftime('%B %Y')}
+{candidate_section}
 
-POSITION DETAILS:
-- Role: {job_title} at {job_company}
-- Level: {job_level} level position
-- Key Requirements: {', '.join(job_skills[:8]) if job_skills else 'Technical expertise'}
-- Job Description: {job_description[:500] if job_description else 'Technical development role'}
-{trends_context}
+{job_section}
 
-INTERVIEW CONTEXT:
-- Question #{question_number} of the interview
-- Question Type: {question_type}
-{prev_questions_text if prev_questions_text else ''}
-{prev_responses_text if prev_responses_text else ''}
+{interview_section}
 
 QUESTION TYPE INSTRUCTIONS:
 {type_instruction}
@@ -526,28 +471,103 @@ CRITICAL INSTRUCTIONS:
 - If they gave brief answers, ask for elaboration with specific examples
 - Write as a natural, human interviewer would speak
 - Make it conversational and relatable
-- Reference their specific experience level ({candidate_experience} years)
-- Connect to their skills: {', '.join(candidate_skills[:4]) if candidate_skills else 'their background'}
+- Reference their specific experience level ({candidate_context.get('experience_years', 0)} years)
+- Connect to their skills: {', '.join(candidate_context.get('skills', [])[:4]) if candidate_context.get('skills') else 'their background'}
 - For technical questions, reference specific projects or technologies from their resume
 - Avoid overly formal or AI-sounding language
-- Focus on practical scenarios they would encounter in a {job_level} level {job_title} role
-- Keep it specific to the {job_title} role and job requirements
+- Focus on practical scenarios they would encounter in a {job_context.get('experience_level', 'mid')} level {job_context.get('title', 'Position')} role
+- Keep it specific to the {job_context.get('title', 'Position')} role and job requirements
 - Use information from their resume, projects, and previous responses to personalize the question
 
 Generate ONE natural interview question that:
 1. Is personalized to this candidate's experience, skills, and projects
-2. Relates to the specific job requirements: {', '.join(job_skills[:4]) if job_skills else 'role requirements'}
-3. Tests relevant competencies for a {job_level} level {job_title} position
+2. Relates to the specific job requirements: {', '.join(job_context.get('required_skills', [])[:4]) if job_context.get('required_skills') else 'role requirements'}
+3. Tests relevant competencies for a {job_context.get('experience_level', 'mid')} level {job_context.get('title', 'Position')} position
 4. Encourages detailed, specific responses with examples
 5. Is appropriate for question #{question_number} in the interview flow
 6. Builds on previous responses (if any) or explores new areas NOT yet covered
 7. Does NOT repeat ANY previous questions
-8. Incorporates current industry trends and best practices for {job_title} roles
+8. Incorporates current industry trends and best practices for {job_context.get('title', 'Position')} roles
 
 Return only the question text, no additional formatting or explanations.
 """
-        
         return prompt.strip()
+
+    def _build_candidate_section(self, context: Dict[str, Any]) -> str:
+        name = context.get('name', 'Candidate')
+        experience = context.get('experience_years', 0)
+        skills = context.get('skills', [])
+        resume_text = context.get('resume_text', '')[:1000]
+        projects = context.get('projects', [])
+        
+        projects_text = ""
+        if projects:
+            projects_list = []
+            for i, project in enumerate(projects[:5], 1):
+                if isinstance(project, dict):
+                    p_name = project.get('name', project.get('title', f'Project {i}'))
+                    p_desc = project.get('description', project.get('details', ''))
+                    projects_list.append(f"- {p_name}: {p_desc[:100]}")
+                elif isinstance(project, str):
+                    projects_list.append(f"- {project}")
+            if projects_list:
+                projects_text = f"\nCANDIDATE PROJECTS (use these for technical questions):\n" + "\n".join(projects_list)
+
+        return f"""CANDIDATE BACKGROUND:
+- Name: {name}
+- Experience: {experience} years in the field
+- Skills: {', '.join(skills[:8]) if skills else 'Various technical skills'}
+{projects_text}
+- Resume Summary: {resume_text[:800] if resume_text else 'Technical professional with relevant experience'}
+- Current Date: {datetime.now().strftime('%B %Y')}"""
+
+    def _build_job_section(self, context: Dict[str, Any], trends: str) -> str:
+        title = context.get('title', 'Position')
+        company = context.get('company', 'Company')
+        description = context.get('description', '')
+        skills = context.get('required_skills', [])
+        level = context.get('experience_level', 'mid')
+        
+        trends_context = ""
+        if trends and trends != "technology":
+            trends_context = f"\nCURRENT INDUSTRY TRENDS (from SerpApi search):\n{trends}\n\nUse these trends to ask about recent developments, emerging technologies, or current industry news."
+
+        return f"""POSITION DETAILS:
+- Role: {title} at {company}
+- Level: {level} level position
+- Key Requirements: {', '.join(skills[:8]) if skills else 'Technical expertise'}
+- Job Description: {description[:500] if description else 'Technical development role'}
+{trends_context}"""
+
+    def _build_interview_section(self, q_num: int, q_type: str, prev_qs: List[str], prev_resps: List[str]) -> str:
+        prev_questions_text = ""
+        if prev_qs:
+            prev_questions_text = f"\nALL Previous questions asked (DO NOT REPEAT ANY OF THESE):\n" + "\n".join([f"{i+1}. {q}" for i, q in enumerate(prev_qs)])
+        
+        prev_responses_text = ""
+        if prev_resps:
+            prev_responses_text = f"\nPrevious responses given (use these to build follow-up questions):\n" + "\n".join([f"Q{i+1}: {r[:150]}..." if len(r) > 150 else f"Q{i+1}: {r}" for i, r in enumerate(prev_resps)])
+
+        return f"""INTERVIEW CONTEXT:
+- Question #{q_num} of the interview
+- Question Type: {q_type}
+{prev_questions_text}
+{prev_responses_text}"""
+
+    def _get_type_instruction(self, q_type: str, candidate_ctx: Dict[str, Any], job_ctx: Dict[str, Any], trends: str) -> str:
+        skills = candidate_ctx.get('skills', [])
+        job_title = job_ctx.get('title', 'Position')
+        
+        instructions = {
+            'general': "This is the FIRST question. Ask a simple, welcoming introductory question like 'Tell me about yourself and your professional background' or 'Can you introduce yourself?'. Keep it friendly and open-ended.",
+            'behavioral': "Focus on soft skills, teamwork, communication, problem-solving approaches, and past experiences. Ask about specific situations and how they handled them. Reference their resume and job requirements.",
+            'theoretical': "Focus on conceptual understanding, best practices, design patterns, system design principles, and theoretical knowledge. Ask about trade-offs, scalability, performance, and architectural decisions. Connect to job requirements.",
+            'personal': "Ask about their motivation, career goals, why they're interested in this role/company, what drives them, and how this position aligns with their aspirations. Make it personal and engaging.",
+            'practical': f"Focus on hands-on experience, real-world projects from their resume, practical applications of {', '.join(skills[:5]) if skills else 'their skills'}, and how they've solved actual problems. Reference specific technologies and tools.",
+            'advanced': f"Ask about NEW technologies, recent industry trends, latest developments in {job_title} field, emerging tools or frameworks, recent news or innovations. Use SerpApi trends if available. Make it challenging and forward-thinking.",
+            'coding': "This should be a coding challenge. Generate a problem statement relevant to the job requirements and candidate's skills."
+        }
+        return instructions.get(q_type, "Ask a relevant question based on the candidate's background and job requirements.")
     
     async def _get_industry_trends(self, job_title: str, job_skills: List[str]) -> str:
         """Get current industry trends using SerpApi"""
@@ -612,82 +632,14 @@ Return only the question text, no additional formatting or explanations.
             previous_responses = previous_responses or []
             
             candidate_name = candidate_context.get('name', 'Candidate')
-            candidate_skills = candidate_context.get('skills', [])
-            candidate_experience = candidate_context.get('experience_years', 0)
-            
             job_title = job_context.get('title', 'Position')
             job_skills = job_context.get('required_skills', [])
-            job_level = job_context.get('experience_level', 'mid')
             
             industry_trends = await self._get_industry_trends(job_title, job_skills)
             
-            enhanced_questions = []
-            
-            if question_type == 'general':
-                enhanced_questions = [
-                    f"Hi {candidate_name}! Welcome to the interview. Let's start with a simple introduction - can you tell me about yourself and your professional background?",
-                    f"Hi {candidate_name}! Can you introduce yourself and tell me a bit about your experience?",
-                    f"Welcome, {candidate_name}! Let's begin - can you share a brief overview of your professional journey?",
-                    f"Hi {candidate_name}! To start, can you tell me about yourself and what brings you here today?"
-                ]
-            elif question_type == 'behavioral':
-                enhanced_questions = [
-                    f"Tell me about a time when you had to learn a new technology quickly for a {job_title} project.",
-                    f"Describe a situation where you had to work with a difficult team member on a technical project.",
-                    f"How do you approach mentoring junior developers in your {job_title} role?",
-                    f"Give me an example of a project where you had to meet a tight deadline while maintaining quality.",
-                    f"Tell me about a time when you had to explain a complex technical concept to non-technical stakeholders."
-                ]
-            elif question_type == 'theoretical':
-                enhanced_questions = [
-                    f"What are the key design principles you follow when architecting a {job_title} system?",
-                    f"How would you approach designing a scalable solution for {job_title}?",
-                    f"What trade-offs would you consider when choosing between different architectural patterns?",
-                    f"Explain your understanding of best practices in {job_title} development.",
-                    f"What are the most important factors to consider when designing a {job_title} solution?"
-                ]
-            elif question_type == 'personal':
-                enhanced_questions = [
-                    f"What interests you most about this {job_title} role at {job_context.get('company', 'our company')}?",
-                    f"What motivates you in your work, and how does that align with this {job_title} position?",
-                    f"Where do you see yourself in the next few years in your {job_title} career?",
-                    f"What attracted you to apply for this {job_title} position?",
-                    f"How do your career goals align with this {job_title} role?"
-                ]
-            elif question_type == 'practical':
-                enhanced_questions = [
-                    f"Can you walk me through a real project from your resume where you used {', '.join(candidate_skills[:2]) if candidate_skills else 'your technical skills'}?",
-                    f"Describe a challenging technical problem you solved recently and the approach you took.",
-                    f"Based on your {candidate_experience} years of experience, can you share an example of how you've applied {', '.join(job_skills[:2]) if job_skills else 'relevant skills'} in a project?",
-                    f"Tell me about a project where you had to make a critical technical decision. What was your thought process?",
-                    f"Can you describe a time when you had to optimize a system or process? What was the outcome?"
-                ]
-            elif question_type == 'advanced':
-                trends_context = f"Given the current trends in {industry_trends}" if industry_trends and industry_trends != "technology" else "Given recent developments"
-                enhanced_questions = [
-                    f"{trends_context}, what are your thoughts on the latest innovations in {job_title}?",
-                    f"What emerging technologies or frameworks in {job_title} are you most excited about?",
-                    f"How do you stay updated with the latest trends and news in {job_title}?",
-                    f"What do you think are the most significant recent developments in {job_title}?",
-                    f"Based on current industry trends, how do you see {job_title} evolving in the next 2-3 years?",
-                    f"What new tools or technologies have you been exploring recently in the {job_title} space?"
-                ]
-            elif question_type == 'technical':
-                enhanced_questions = [
-                    f"Hi {candidate_name}! With your {candidate_experience} years of experience, how would you approach architecting a scalable {job_title} solution?",
-                    f"I see you have experience with {', '.join(candidate_skills[:3]) if candidate_skills else 'various technologies'}. Can you walk me through how you'd implement a microservices architecture?",
-                    f"Given the current trends in {industry_trends}, how do you stay updated with the latest {job_title} technologies?",
-                    f"Describe a challenging technical problem you solved recently and the approach you took.",
-                    f"How would you ensure code quality and maintainability in a {job_level}-level {job_title} project?"
-                ]
-            else:
-                enhanced_questions = [
-                    f"Hi {candidate_name}! What interests you most about this {job_title} role?",
-                    f"Based on your {candidate_experience} years of experience, what do you think are the key challenges in {job_title}?",
-                    f"How do you see the future of {industry_trends} evolving in the next few years?",
-                    f"What motivates you most in your work, and how does that align with this {job_title} position?",
-                    f"If you were to start this {job_title} position tomorrow, what would be your first priorities?"
-                ]
+            enhanced_questions = self._get_mock_questions_for_type(
+                question_type, candidate_context, job_context, industry_trends
+            )
             
             # Filter out duplicates
             filtered_questions = []
@@ -730,6 +682,84 @@ Return only the question text, no additional formatting or explanations.
         except Exception as e:
             log_error(f"[ERROR] Enhanced mock question generation error: {e}")
             return self._get_fallback_question(question_type, question_number)
+
+    def _get_mock_questions_for_type(
+        self, question_type: str, candidate_context: Dict[str, Any], 
+        job_context: Dict[str, Any], industry_trends: str
+    ) -> List[str]:
+        candidate_name = candidate_context.get('name', 'Candidate')
+        candidate_skills = candidate_context.get('skills', [])
+        candidate_experience = candidate_context.get('experience_years', 0)
+        
+        job_title = job_context.get('title', 'Position')
+        job_skills = job_context.get('required_skills', [])
+        job_level = job_context.get('experience_level', 'mid')
+        
+        if question_type == 'general':
+            return [
+                f"Hi {candidate_name}! Welcome to the interview. Let's start with a simple introduction - can you tell me about yourself and your professional background?",
+                f"Hi {candidate_name}! Can you introduce yourself and tell me a bit about your experience?",
+                f"Welcome, {candidate_name}! Let's begin - can you share a brief overview of your professional journey?",
+                f"Hi {candidate_name}! To start, can you tell me about yourself and what brings you here today?"
+            ]
+        elif question_type == 'behavioral':
+            return [
+                f"Tell me about a time when you had to learn a new technology quickly for a {job_title} project.",
+                f"Describe a situation where you had to work with a difficult team member on a technical project.",
+                f"How do you approach mentoring junior developers in your {job_title} role?",
+                f"Give me an example of a project where you had to meet a tight deadline while maintaining quality.",
+                f"Tell me about a time when you had to explain a complex technical concept to non-technical stakeholders."
+            ]
+        elif question_type == 'theoretical':
+            return [
+                f"What are the key design principles you follow when architecting a {job_title} system?",
+                f"How would you approach designing a scalable solution for {job_title}?",
+                f"What trade-offs would you consider when choosing between different architectural patterns?",
+                f"Explain your understanding of best practices in {job_title} development.",
+                f"What are the most important factors to consider when designing a {job_title} solution?"
+            ]
+        elif question_type == 'personal':
+            return [
+                f"What interests you most about this {job_title} role at {job_context.get('company', 'our company')}?",
+                f"What motivates you in your work, and how does that align with this {job_title} position?",
+                f"Where do you see yourself in the next few years in your {job_title} career?",
+                f"What attracted you to apply for this {job_title} position?",
+                f"How do your career goals align with this {job_title} role?"
+            ]
+        elif question_type == 'practical':
+            return [
+                f"Can you walk me through a real project from your resume where you used {', '.join(candidate_skills[:2]) if candidate_skills else 'your technical skills'}?",
+                f"Describe a challenging technical problem you solved recently and the approach you took.",
+                f"Based on your {candidate_experience} years of experience, can you share an example of how you've applied {', '.join(job_skills[:2]) if job_skills else 'relevant skills'} in a project?",
+                f"Tell me about a project where you had to make a critical technical decision. What was your thought process?",
+                f"Can you describe a time when you had to optimize a system or process? What was the outcome?"
+            ]
+        elif question_type == 'advanced':
+            trends_context = f"Given the current trends in {industry_trends}" if industry_trends and industry_trends != "technology" else "Given recent developments"
+            return [
+                f"{trends_context}, what are your thoughts on the latest innovations in {job_title}?",
+                f"What emerging technologies or frameworks in {job_title} are you most excited about?",
+                f"How do you stay updated with the latest trends and news in {job_title}?",
+                f"What do you think are the most significant recent developments in {job_title}?",
+                f"Based on current industry trends, how do you see {job_title} evolving in the next 2-3 years?",
+                f"What new tools or technologies have you been exploring recently in the {job_title} space?"
+            ]
+        elif question_type == 'technical':
+            return [
+                f"Hi {candidate_name}! With your {candidate_experience} years of experience, how would you approach architecting a scalable {job_title} solution?",
+                f"I see you have experience with {', '.join(candidate_skills[:3]) if candidate_skills else 'various technologies'}. Can you walk me through how you'd implement a microservices architecture?",
+                f"Given the current trends in {industry_trends}, how do you stay updated with the latest {job_title} technologies?",
+                f"Describe a challenging technical problem you solved recently and the approach you took.",
+                f"How would you ensure code quality and maintainability in a {job_level}-level {job_title} project?"
+            ]
+        else:
+            return [
+                f"Hi {candidate_name}! What interests you most about this {job_title} role?",
+                f"Based on your {candidate_experience} years of experience, what do you think are the key challenges in {job_title}?",
+                f"How do you see the future of {industry_trends} evolving in the next few years?",
+                f"What motivates you most in your work, and how does that align with this {job_title} position?",
+                f"If you were to start this {job_title} position tomorrow, what would be your first priorities?"
+            ]
     
     def _get_fallback_question(self, question_type: str, question_number: int) -> str:
         """Fallback question when all APIs are unavailable"""

@@ -258,7 +258,7 @@ class LeetCodeService:
             # Get first paragraph (usually the description)
             paragraphs = text.split('\n\n')
             return paragraphs[0] if paragraphs else text[:500]
-        except:
+        except Exception:
             return content[:500] if content else ""
     
     def _extract_examples(self, content: str) -> List[Dict[str, Any]]:
@@ -302,7 +302,7 @@ class LeetCodeService:
             constraint_pattern = r'<li>([^<]+)</li>'
             matches = re.findall(constraint_pattern, content)
             constraints = [m.strip() for m in matches[:10]]  # Limit to 10
-        except:
+        except Exception:
             pass
         
         return constraints if constraints else [

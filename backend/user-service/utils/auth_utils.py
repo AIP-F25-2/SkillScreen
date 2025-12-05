@@ -24,19 +24,10 @@ def normalize_password(password: str) -> str:
     return password.encode("utf-8", "ignore").decode("utf-8", "ignore")
 
 
-# def hash_password(password: str) -> str:
-#     """
-#     Hash the password using bcrypt after normalization.
-#     """
-#     password = normalize_password(password)
-#     return pwd_context.hash(password)
-
 def hash_password(password: str) -> str:
-    # Debug — this will reveal the TRUE value passed to bcrypt
-    print("🔍 DEBUG PASSWORD TYPE:", type(password))
-    print("🔍 DEBUG PASSWORD LENGTH:", len(str(password)))
-    print("🔍 DEBUG PASSWORD VALUE:", password)
-
+    """
+    Hash the password using bcrypt after normalization.
+    """
     password = normalize_password(password)
     return pwd_context.hash(password)
 

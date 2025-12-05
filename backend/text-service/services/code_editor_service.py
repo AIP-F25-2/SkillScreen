@@ -212,68 +212,89 @@ class CodeEditorService:
             
             log_info(f"[CODE EDITOR] Running {len(test_cases)} test cases for session {editor_session_id}")
             
-            # Execute code for each test case
             test_results = []
             passed = 0
             failed = 0
             
             for i, test_case in enumerate(test_cases):
-                # Modify code to include test case input
-                test_code = self._prepare_test_code(code_to_test, test_case, language)
-                
-                # Execute test
-                execution_result = await code_execution_service.execute_code(
-                    code=test_code,
-                    language=language
+                expected_output = expected_outputs[i] if i < len(expected_outputs) else ''
+                result = await self._execute_single_test_case(
+                    i, test_case, expected_output, code_to_test, language
                 )
                 
-                # Compare output with expected
-                actual_output = execution_result.get('output', '').strip()
-                expected_output = expected_outputs[i] if i < len(expected_outputs) else ''
-                expected_output = str(expected_output).strip()
-                
-                is_passed = actual_output == expected_output
-                
-                if is_passed:
+                test_results.append(result)
+                if result['passed']:
                     passed += 1
                 else:
                     failed += 1
-                
-                test_results.append({
-                    'test_case_number': i + 1,
-                    'input': test_case,
-                    'expected_output': expected_output,
-                    'actual_output': actual_output,
-                    'passed': is_passed,
-                    'error': execution_result.get('error', ''),
-                    'execution_time': execution_result.get('execution_time', 0)
-                })
             
-            # Calculate overall score
-            total_tests = len(test_cases)
-            score = (passed / total_tests * 100) if total_tests > 0 else 0
-            
-            result = {
-                'status': 'success',
-                'editor_session_id': editor_session_id,
-                'total_tests': total_tests,
-                'passed': passed,
-                'failed': failed,
-                'score': round(score, 2),
-                'test_results': test_results
-            }
+            result = self._calculate_test_results(
+                editor_session_id, test_results, passed, failed, len(test_cases)
+            )
             
             # Store test results in session
             session['last_test_results'] = result
             session['last_modified'] = datetime.now(timezone.utc).isoformat()
             
-            log_info(f"[CODE EDITOR] Test results: {passed}/{total_tests} passed (score: {score:.1f}%)")
+            log_info(f"[CODE EDITOR] Test results: {passed}/{len(test_cases)} passed (score: {result['score']:.1f}%)")
             
             return result
             
         except Exception as e:
             log_error(f"Error running tests: {e}")
             raise
+
+    async def _execute_single_test_case(
+        self, 
+        index: int, 
+        test_case: Any, 
+        expected_output: Any, 
+        code: str, 
+        language: str
+    ) -> Dict[str, Any]:
+        # Modify code to include test case input
+        test_code = self._prepare_test_code(code, test_case, language)
+        
+        # Execute test
+        execution_result = await code_execution_service.execute_code(
+            code=test_code,
+            language=language
+        )
+        
+        # Compare output with expected
+        actual_output = execution_result.get('output', '').strip()
+        expected_output_str = str(expected_output).strip()
+        
+        is_passed = actual_output == expected_output_str
+        
+        return {
+            'test_case_number': index + 1,
+            'input': test_case,
+            'expected_output': expected_output_str,
+            'actual_output': actual_output,
+            'passed': is_passed,
+            'error': execution_result.get('error', ''),
+            'execution_time': execution_result.get('execution_time', 0)
+        }
+
+    def _calculate_test_results(
+        self, 
+        session_id: str, 
+        test_results: List[Dict[str, Any]], 
+        passed: int, 
+        failed: int, 
+        total: int
+    ) -> Dict[str, Any]:
+        score = (passed / total * 100) if total > 0 else 0
+        return {
+            'status': 'success',
+            'editor_session_id': session_id,
+            'total_tests': total,
+            'passed': passed,
+            'failed': failed,
+            'score': round(score, 2),
+            'test_results': test_results
+        }
     
     def _prepare_test_code(self, code: str, test_input: Any, language: str) -> str:
         """Prepare code with test input for execution"""

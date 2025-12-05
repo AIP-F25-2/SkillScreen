@@ -1,7 +1,7 @@
 from repository.base_repository import BaseRepository
 from sqlalchemy import Table, Column, Integer, String, MetaData, select, Text, DateTime, JSON, update, insert
 from sqlalchemy.dialects.postgresql import UUID, JSONB
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict
 import uuid
 
@@ -114,7 +114,7 @@ class OrchestrationRepository(BaseRepository):
         stmt = (
             update(interviews_table)
             .where(interviews_table.c.id == interview_id)
-            .values(status=status, updated_at=datetime.utcnow())
+            .values(status=status, updated_at=datetime.now(timezone.utc))
         )
         self.session.execute(stmt)
         self.session.commit()
@@ -129,7 +129,7 @@ class OrchestrationRepository(BaseRepository):
     ) -> str:
         """Create a new interview session record"""
         session_id = str(uuid.uuid4())
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         
         stmt = insert(interview_sessions_table).values(
             id=session_id,
@@ -155,7 +155,7 @@ class OrchestrationRepository(BaseRepository):
         response_duration: Optional[int] = None
     ):
         """Update interview session with candidate response"""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         
         stmt = (
             update(interview_sessions_table)

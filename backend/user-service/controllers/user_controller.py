@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from datetime import datetime
+from datetime import datetime, timezone
 from db import UnitOfWork
 from services.user_service import UserService
 from repositories.user_repository import UserRepository
@@ -25,7 +25,7 @@ def health():
     return create_response({
         "service": "user-service",
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     })
 
 
