@@ -117,7 +117,9 @@ class MediaRepository:
         *,
         media_type: str,
         interview_id: Optional[str] = None,
+        session_id: Optional[str] = None,
         blob_name: Optional[str] = None,
+        storage_uri: Optional[str] = None,
         mime_type: Optional[str] = None,
         status: Optional[str] = None,
         metadata: Optional[dict] = None,
@@ -127,16 +129,18 @@ class MediaRepository:
         meta_json = json.dumps(metadata or {})
         q = text("""
             INSERT INTO media_files (
-                interview_id, file_type, storage_uri, mime_type
+                interview_id, session_id, file_type, blob_name, storage_uri, mime_type,
                 status, metadata, duration, created_at, updated_at
             )
-            VALUES (:iid, :ftype, :blob, :mime, :status, CAST(:meta AS jsonb), :duration,NOW(), NOW())
+            VALUES (:iid, CAST(:sid AS uuid), :ftype, :blob, :uri, :mime, :status, CAST(:meta AS jsonb), :duration, NOW(), NOW())
             RETURNING id;
         """)
         res = self.session.execute(q, {
             "iid": interview_id,
+            "sid": session_id,
             "ftype": media_type,
             "blob": blob_name,
+            "uri": storage_uri,
             "mime": mime_type,
             "status": status or "uploaded",
             "meta": meta_json,

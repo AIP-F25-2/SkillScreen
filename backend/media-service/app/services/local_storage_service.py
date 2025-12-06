@@ -34,7 +34,8 @@ class LocalStorageService:
     def merge_chunks(interview_id: str, blob_name: str, total_chunks: int) -> Tuple[str, str]:
         folder = LocalStorageService.interview_folder(interview_id)
         chunks_dir = os.path.join(folder, "chunks")
-        final_local = os.path.join(folder, os.path.basename(blob_name).replace(".webm", "_merged.mp4"))
+        final_filename = os.path.basename(blob_name).replace(".webm", "_merged.mp4")
+        final_local = os.path.join(folder, final_filename)
         with open(final_local, "wb") as merged:
             for i in range(total_chunks):
                 chunk_path = os.path.join(chunks_dir, f"chunk_{i:05d}.webm")
@@ -42,7 +43,8 @@ class LocalStorageService:
                     merged.write(c.read())
         # cleanup
         shutil.rmtree(chunks_dir, ignore_errors=True)
-        return final_local, final_local  # local path = uri for local
+        # Return (local_path, uri) - uri can be accessed via /video/<interview_id>/<filename>
+        return final_local, f"/video/{interview_id}/{final_filename}"
 
     # ----------------------------------------------------------
     # Deletion / listing
@@ -99,4 +101,5 @@ class LocalStorageService:
     def upload_from_path(interview_id: str, local_path: str, dest_filename: str, content_type: str) -> str:
         dest = os.path.join(LocalStorageService.interview_folder(interview_id), dest_filename)
         shutil.copy2(local_path, dest)
-        return dest
+        # Return a URL that can be accessed via /video/<interview_id>/<filename>
+        return f"/video/{interview_id}/{dest_filename}"

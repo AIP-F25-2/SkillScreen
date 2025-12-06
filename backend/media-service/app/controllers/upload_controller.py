@@ -1,4 +1,5 @@
 import os, tempfile, hashlib, time
+from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, send_file, current_app
 from sqlalchemy import text, select
 from app.services.storage_service import StorageService
@@ -286,6 +287,42 @@ def finalize_upload():
 # ---------------------------------------------------------------------------
 #  Serve & status endpoints
 # ---------------------------------------------------------------------------
+@upload_bp.route("/video/<interview_id>/<session_id>", methods=["GET"])
+def serve_video_by_session(interview_id, session_id):
+    """Retrieve video response for a specific question (session) in an interview."""
+    interview_id = secure_part(interview_id)
+    try:
+        session_id = require_uuid_str(str(session_id), "session_id")
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    try:
+        with UnitOfWork() as uow:
+            result = uow.session.execute(
+                text("""
+                    SELECT blob_name FROM media_files
+                    WHERE interview_id = :iid
+                    AND session_id = CAST(:sid AS uuid)
+                    AND file_type = 'video_response'
+                    LIMIT 1
+                """),
+                {"iid": interview_id, "sid": session_id}
+            ).mappings().first()
+
+        if not result:
+            return jsonify({"error": "video not found"}), 404
+
+        blob_name = result.get("blob_name")
+        tmp_path = storage_service.download_to_temp(interview_id, blob_name)
+    except Exception as e:
+        current_app.logger.exception("serve_video_by_session failed")
+        return jsonify({"error": "file not found"}), 404
+
+    ext = os.path.splitext(blob_name)[1].lower()
+    mimetype = "video/mp4" if ext == ".mp4" else CONSTANTS.VIDEO_WEBM_FORMAT
+    return send_file(tmp_path, mimetype=mimetype, as_attachment=False, download_name=blob_name, conditional=True)
+
+
 @upload_bp.route("/video/<interview_id>/<filename>")
 def serve_video(interview_id, filename):
     interview_id = secure_part(interview_id)
@@ -337,3 +374,118 @@ def chunks_status():
             "missing": missing,
             "status": status.get("status", "uploading")
         }), 200
+
+
+# ---------------------------------------------------------------------------
+#  /upload/video  → Direct video upload (single file, no chunking)
+# ---------------------------------------------------------------------------
+@upload_bp.route("/upload/video", methods=["POST"])
+def upload_video():
+    """
+    Direct upload of candidate video response.
+
+    Request:
+    - interview_id (form): UUID of interview
+    - session_id (form): UUID of session/question
+    - file (file): Video file (webm, mp4, etc.)
+
+    Returns:
+    - storage_uri: URL to access video
+    - file_id: ID in media_files table
+    - file_size: Size in bytes
+    """
+    interview_id = request.form.get("interview_id")
+    raw_session = request.form.get("session_id")
+    file = request.files.get("file")
+
+    # Validate inputs
+    if not interview_id:
+        return jsonify({"error": "Missing interview_id"}), 400
+    if not raw_session:
+        return jsonify({"error": "Missing session_id"}), 400
+    if not file or not file.filename:
+        return jsonify({"error": "Missing video file"}), 400
+
+    # Validate session_id is UUID
+    try:
+        session_id = _get_session_id({"session_id": raw_session})
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    try:
+        # Read file data
+        file_data = file.read()
+        file_size = len(file_data)
+
+        # Calculate checksum
+        checksum = hashlib.sha256(file_data).hexdigest()
+
+        # Generate filename
+        timestamp = time.time()
+        data_for_hash = f"{interview_id}{session_id}{timestamp}".encode()
+        short_hash = hashlib.sha256(data_for_hash).hexdigest()[:8]
+
+        # Get original extension
+        orig_name = secure_part(file.filename)
+        ext = os.path.splitext(orig_name)[1] or ".webm"
+        blob_name = f"{interview_id}_{short_hash}_response{ext}"
+
+        # Save to temporary file first
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+            tmp.write(file_data)
+            tmp_path = tmp.name
+
+        try:
+            # Save to storage
+            current_app.logger.info(f"Uploading video: {blob_name} (size: {file_size} bytes)")
+            storage_uri = storage_service.upload_from_path(
+                interview_id=interview_id,
+                local_path=tmp_path,
+                dest_filename=blob_name,
+                content_type=file.content_type or "video/webm"
+            )
+        finally:
+            # Clean up temp file
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+
+        # Save metadata to database
+        with UnitOfWork() as uow:
+            repo = MediaRepository(uow)
+            # Store session-based URI for easier retrieval
+            session_uri = f"/video/{interview_id}/{session_id}"
+            media_id = repo.insert_file(
+                media_type="video_response",
+                interview_id=interview_id,
+                session_id=session_id,
+                blob_name=blob_name,
+                storage_uri=session_uri,
+                mime_type=file.content_type or "video/webm",
+                status="completed",
+                metadata={
+                    "uploaded_at": datetime.now(timezone.utc).isoformat(),
+                    "filename": blob_name,
+                    "checksum": checksum
+                }
+            )
+            row = uow.session.execute(
+                select(media).where(media.c.id == media_id)
+            ).mappings().one()
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "file_id": str(row["id"]),
+                "interview_id": interview_id,
+                "session_id": session_id,
+                "storage_uri": session_uri,
+                "file_size": file_size,
+                "checksum": checksum,
+                "blob_name": blob_name,
+                "status": "completed"
+            }
+        }), 200
+
+    except Exception as e:
+        current_app.logger.exception("Video upload failed")
+        return jsonify({"error": f"Upload failed: {str(e)}"}), 500

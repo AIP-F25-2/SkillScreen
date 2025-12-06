@@ -233,12 +233,15 @@ services:
       context: ./backend/media-service
       dockerfile: Dockerfile
     container_name: media-service
+    ports:
+      - "8004:8080"
     environment:
       PORT: 8080
       HOST: 0.0.0.0
       DATABASE_URL: postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
       CORS_ORIGINS: http://localhost:3000
       PYTHONPATH: /app:/common-service
+      USE_AZURE_STORAGE: 'false'
     volumes:
       - ./backend/media-service:/app
       - ./backend/common-service:/common-service

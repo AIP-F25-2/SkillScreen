@@ -4,8 +4,10 @@ from ..repositories.media_repository import MediaRepository
 from db import UnitOfWork
 import json
 
+
 uow = UnitOfWork()
 repos= MediaRepository(uow)
+
 
 @health_bp.route("/")
 def index():
