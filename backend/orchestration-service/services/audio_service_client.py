@@ -64,3 +64,94 @@ class AudioServiceClient:
                 "success": False,
                 "message": f"TTS generation failed: {str(e)}"
             }
+
+    async def get_live_transcription(self, session_id: str) -> Dict:
+        """Get live transcription from audio-ai service
+
+        Args:
+            session_id: Session ID to get transcription for
+
+        Returns:
+            { transcript: "what candidate said..." }
+        """
+        url = f"{self.base_url}/api/transcription/live/{session_id}"
+
+        try:
+            logger.info(f"🎤 Getting live transcription for session {session_id}")
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(url)
+                response.raise_for_status()
+
+                data = response.json()
+
+                # Handle standardized response format
+                if data.get("success"):
+                    return {
+                        "transcript": data.get("data", {}).get("transcript", "")
+                    }
+                else:
+                    # Legacy response format
+                    return {
+                        "transcript": data.get("transcript", "")
+                    }
+        except Exception as e:
+            logger.error(f"❌ Transcription failed: {str(e)}")
+            raise
+
+    async def analyze_audio(self, interview_id: str, session_id: str, media_file_id: str) -> Dict:
+        """Trigger audio analysis (async, fire-and-forget)
+
+        Args:
+            interview_id: Interview ID
+            session_id: Session ID
+            media_file_id: Media file ID to analyze
+
+        Returns:
+            { success: true/false }
+        """
+        url = f"{self.base_url}/api/analysis/audio"
+
+        payload = {
+            "interview_id": interview_id,
+            "session_id": session_id,
+            "media_file_id": media_file_id
+        }
+
+        try:
+            logger.info(f"🎵 Triggering audio analysis for media {media_file_id}")
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(url, json=payload)
+                response.raise_for_status()
+                return response.json()
+        except Exception as e:
+            logger.error(f"❌ Audio analysis trigger failed: {str(e)}")
+            raise
+
+    async def analyze_video(self, interview_id: str, session_id: str, media_file_id: str) -> Dict:
+        """Trigger video analysis (async, fire-and-forget)
+
+        Args:
+            interview_id: Interview ID
+            session_id: Session ID
+            media_file_id: Media file ID to analyze
+
+        Returns:
+            { success: true/false }
+        """
+        url = f"{self.base_url}/api/analysis/video"
+
+        payload = {
+            "interview_id": interview_id,
+            "session_id": session_id,
+            "media_file_id": media_file_id
+        }
+
+        try:
+            logger.info(f"📹 Triggering video analysis for media {media_file_id}")
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(url, json=payload)
+                response.raise_for_status()
+                return response.json()
+        except Exception as e:
+            logger.error(f"❌ Video analysis trigger failed: {str(e)}")
+            raise

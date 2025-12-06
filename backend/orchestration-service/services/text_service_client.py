@@ -1,99 +1,151 @@
 import httpx
 from config.settings import settings
 from config.logger import logger
-from typing import Dict
+from typing import Dict, Optional
 
 class TextServiceClient:
     def __init__(self):
         self.base_url = settings.TEXT_SERVICE_URL
         self.timeout = settings.TEXT_SERVICE_TIMEOUT
-    
+
     async def start_interview(
         self,
-        candidate_id: str,
-        job_id: str,
-        interview_type: str,
-        difficulty: str,
-        max_questions: int
+        interview_id: str,
+        candidate_id: str
     ) -> Dict:
-        """Start interview - get first question"""
+        """Start interview and get first question"""
         url = f"{self.base_url}/api/interviews/start"
 
         payload = {
-            "candidate_id": candidate_id,
-            "job_id": job_id,
-            "interview_type": interview_type,
-            "difficulty": difficulty,
-            "max_questions": max_questions
+            "interview_id": interview_id,
+            "candidate_id": candidate_id
         }
 
         try:
-            logger.info("📝 Starting interview via text-service")
+            logger.info(f"📝 Starting interview {interview_id} via text-service")
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(url, json=payload)
                 response.raise_for_status()
-                return response.json()
+                result = response.json()
+                logger.info(f"✅ Interview started, first question retrieved")
+                return result
         except Exception as e:
             logger.error(f"❌ Start interview failed: {str(e)}")
             raise
 
-    async def get_first_question(self, interview_id: str) -> Dict:
-        """Get first question for an interview"""
-        url = f"{self.base_url}/api/interviews/{interview_id}/first-question"
+    async def submit_response(
+        self,
+        interview_id: str,
+        session_id: str,
+        response_text: str,
+        expected_answer_points: Optional[list] = None
+    ) -> Dict:
+        """Submit candidate response and get evaluation"""
+        url = f"{self.base_url}/api/interviews/{interview_id}/respond"
+
+        payload = {
+            "interview_id": interview_id,
+            "session_id": session_id,
+            "response_text": response_text
+        }
+
+        if expected_answer_points:
+            payload["expected_answer_points"] = expected_answer_points
 
         try:
-            logger.info(f"📝 Fetching first question for interview {interview_id}")
+            logger.info(f"📝 Submitting response for session {session_id}")
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(url, json=payload)
+                response.raise_for_status()
+                result = response.json()
+                logger.info(f"✅ Response evaluated")
+                return result
+        except Exception as e:
+            logger.error(f"❌ Submit response failed: {str(e)}")
+            raise
+
+    async def get_next_question(
+        self,
+        interview_id: str,
+        candidate_id: str,
+        job_position_id: str
+    ) -> Dict:
+        """Get dynamically generated next question"""
+        url = f"{self.base_url}/api/interviews/{interview_id}/next-question"
+
+        payload = {
+            "candidate_id": candidate_id,
+            "job_position_id": job_position_id
+        }
+
+        try:
+            logger.info(f"📝 Generating next question for interview {interview_id}")
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(url, json=payload)
+                response.raise_for_status()
+                result = response.json()
+                logger.info(f"✅ Next question generated")
+                return result
+        except Exception as e:
+            logger.error(f"❌ Get next question failed: {str(e)}")
+            raise
+
+    async def evaluate_interview(self, interview_id: str) -> Dict:
+        """Get overall interview evaluation and scores"""
+        url = f"{self.base_url}/api/interviews/{interview_id}/evaluate"
+
+        try:
+            logger.info(f"📊 Evaluating interview {interview_id}")
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(url)
+                response.raise_for_status()
+                result = response.json()
+                logger.info(f"✅ Interview evaluation complete")
+                return result
+        except Exception as e:
+            logger.error(f"❌ Evaluate interview failed: {str(e)}")
+            raise
+
+    async def generate_questions(
+        self,
+        interview_id: str,
+        candidate_id: str,
+        job_position_id: str,
+        num_questions: int = 5
+    ) -> Dict:
+        """Generate initial interview questions"""
+        url = f"{self.base_url}/api/questions/generate"
+
+        payload = {
+            "interview_id": interview_id,
+            "candidate_id": candidate_id,
+            "job_position_id": job_position_id,
+            "num_questions": num_questions
+        }
+
+        try:
+            logger.info(f"🔄 Generating {num_questions} questions for interview {interview_id}")
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(url, json=payload)
+                response.raise_for_status()
+                result = response.json()
+                logger.info(f"✅ Questions generated")
+                return result
+        except Exception as e:
+            logger.error(f"❌ Generate questions failed: {str(e)}")
+            raise
+
+    async def get_session(self, session_id: str) -> Dict:
+        """Get session (question) details by ID"""
+        url = f"{self.base_url}/api/sessions/{session_id}"
+
+        try:
+            logger.info(f"📋 Getting session {session_id}")
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.get(url)
                 response.raise_for_status()
                 result = response.json()
-                logger.info(f"✅ First question retrieved")
-                return result
+                return result.get("data", {})
         except Exception as e:
-            logger.error(f"❌ Get first question failed: {str(e)}")
-            raise
-    
-    async def evaluate_and_generate_next_question(
-        self,
-        session_id: str,
-        question_id: str,
-        candidate_response: str,
-        response_time_seconds: float
-    ) -> Dict:
-        """Evaluate response + generate next question"""
-        url = f"{self.base_url}/api/interviews/{session_id}/respond"
-        
-        payload = {
-            "response_text": candidate_response,
-            "question_id": question_id,
-            "response_time_seconds": response_time_seconds
-        }
-        
-        try:
-            logger.info("📝 Calling text-service for evaluation + next question")
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(url, json=payload)
-                response.raise_for_status()
-                
-                data = response.json()
-                
-                if data.get("status") == "continue":
-                    return {
-                        "status": "continue",
-                        "next_question": data["next_question"]["question_text"],
-                        "next_question_id": data["next_question"]["id"],
-                        "evaluation_score": data.get("current_score", 0.0),
-                        "feedback": "Response evaluated",
-                        "anti_cheating_flags": data.get("anti_cheating_flags", {})
-                    }
-                elif data.get("status") == "completed":
-                    return {
-                        "status": "completed",
-                        "summary": data.get("summary", {}),
-                        "termination_reason": data.get("termination_reason", "completed")
-                    }
-                else:
-                    raise Exception(f"Unexpected status: {data.get('status')}")
-        except Exception as e:
-            logger.error(f"❌ Text service failed: {str(e)}")
+            logger.error(f"❌ Get session failed: {str(e)}")
             raise

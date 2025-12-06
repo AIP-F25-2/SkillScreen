@@ -79,35 +79,58 @@ async def validate_token_query(token: str):
 @router.post("/start/{interview_id}")
 async def start_interview_step2(interview_id: str):
     """
-    STEP 2.2: Start interview and get first question + TTS
+    STEP 2.2: Get first question + TTS
 
     Flow:
     1. Candidate clicks "Start Interview" button
     2. Frontend calls POST /api/interviews/start/{interview_id}
     3. Orchestration:
        - Interview status is already "in_progress" (set during STEP 2.1 token validation)
-       - Calls Text Service to get first question
+       - Gets first unanswered question from Text Service
        - Calls Audio Service to generate TTS
     4. Returns question + audio URL
 
     Response: { interview_id, question_number, question_text, audio_url }
     """
-    logger.info(f"🎬 STEP 2.2 - Starting interview {interview_id}")
+    logger.info(f"🎬 STEP 2.2 - Getting first question for interview {interview_id}")
 
     try:
         # Note: Interview status was already updated to in_progress during token validation (STEP 2.1)
+        # Do NOT call text_client.start_interview() - it will fail because status is already in_progress
 
-        # Step 1: Get first question from Text Service
-        logger.info(f"   Fetching first question from Text Service...")
-        question_result = await text_client.get_first_question(interview_id)
+        # Step 1: Get interview details
+        logger.info(f"   Fetching interview details...")
+        interview_info = await interview_client.get_interview(interview_id)
+        if not interview_info.get("success"):
+            raise HTTPException(status_code=404, detail="Interview not found")
+
+        interview_data = interview_info.get("data", {})
+        candidate_id = interview_data.get("candidate_id")
+        job_position_id = interview_data.get("job_position_id")
+
+        # Step 2: Generate initial questions from Text Service
+        logger.info(f"   Generating initial questions for interview...")
+        question_result = await text_client.generate_questions(
+            interview_id=interview_id,
+            candidate_id=candidate_id,
+            job_position_id=job_position_id,
+            num_questions=5
+        )
 
         if not question_result.get("success"):
-            logger.error(f"❌ Failed to get question: {question_result.get('message')}")
-            raise HTTPException(status_code=500, detail="Failed to retrieve question")
+            logger.error(f"❌ Failed to generate questions: {question_result.get('error')}")
+            raise HTTPException(status_code=500, detail="Failed to generate questions")
 
-        question_data = question_result.get("data", {})
+        # Response has "sessions" not "questions"
+        sessions_data = question_result.get("data", {}).get("sessions", [])
+        if not sessions_data:
+            raise HTTPException(status_code=500, detail="No questions generated")
+
+        # Get the first question
+        question_data = sessions_data[0]
         question_text = question_data.get("question_text", "")
-        question_number = question_data.get("question_number", 1)
+        session_id = question_data.get("id", "")
+        question_number = 1  # First question is always 1
 
         # Step 3: Generate TTS for question
         logger.info(f"   Generating TTS audio for question...")
@@ -125,13 +148,14 @@ async def start_interview_step2(interview_id: str):
         # Step 4: Build response
         response_data = {
             "interview_id": interview_id,
+            "session_id": session_id,
             "question_number": question_number,
             "question_text": question_text,
             "audio_url": audio_url,
             "estimated_answer_time": question_data.get("estimated_answer_time", 60)
         }
 
-        logger.info(f"✅ STEP 2.2 - Interview started, first question ready")
+        logger.info(f"✅ STEP 2.2 - First question ready")
 
         return create_response(
             data=response_data,

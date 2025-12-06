@@ -23,6 +23,12 @@ class InterviewStartRequest(BaseModel):
     candidate_id: str
 
 
+class NextQuestionRequest(BaseModel):
+    """Next question request schema"""
+    candidate_id: Optional[str] = None
+    job_position_id: Optional[str] = None
+
+
 class InterviewResponseRequest(BaseModel):
     """Interview response submission schema"""
     interview_id: str

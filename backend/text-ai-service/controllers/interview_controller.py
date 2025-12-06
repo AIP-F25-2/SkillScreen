@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from config import logger
 from services import InterviewService
-from schemas import InterviewStartRequest, InterviewResponseRequest
+from schemas import InterviewStartRequest, InterviewResponseRequest, NextQuestionRequest
 
 router = APIRouter()
 interview_service = InterviewService()
@@ -79,15 +79,15 @@ async def start_interview(request: InterviewStartRequest):
 
 
 @router.post("/api/interviews/{interview_id}/next-question")
-async def get_next_question(interview_id: str, request: InterviewStartRequest = None):
+async def get_next_question(interview_id: str, request: NextQuestionRequest = None):
     """
     Get next question for interview - generates dynamically if needed
     STEP 3.1: Get next question (called after submitting response)
 
     Request body (optional):
     {
-        "candidate_id": "uuid",
-        "job_position_id": "uuid" (optional if already in context)
+        "candidate_id": "uuid" (optional if already in interview context),
+        "job_position_id": "uuid" (optional if already in interview context)
     }
     """
     try:
@@ -99,8 +99,8 @@ async def get_next_question(interview_id: str, request: InterviewStartRequest = 
         if not interview:
             raise HTTPException(status_code=404, detail=f"Interview not found: {interview_id}")
 
-        candidate_id = request.candidate_id if request else interview.get("candidate_id")
-        job_position_id = interview.get("job_position_id")
+        candidate_id = request.candidate_id if request and request.candidate_id else interview.get("candidate_id")
+        job_position_id = request.job_position_id if request and request.job_position_id else interview.get("job_position_id")
 
         result = interview_service.get_next_question(
             interview_id=interview_id,

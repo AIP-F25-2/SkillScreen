@@ -312,7 +312,7 @@ services:
       HOST: 0.0.0.0
       INTERVIEW_SERVICE_URL: http://interview-service:8080
       #TEXT_SERVICE_URL: http://text-service:8080
-      TEXT_AI_SERVICE_URL: http://text-ai-service:8080
+      TEXT_SERVICE_URL: http://text-ai-service:8080
       AUDIO_AI_SERVICE_URL: http://audio-ai-service:8080
       VIDEO_AI_SERVICE_URL: http://video-ai-service:8080
       MEDIA_SERVICE_URL: http://media-service:8080
@@ -326,6 +326,7 @@ services:
       - media-service
       - assessment-service
       - video-ai-service
+      - text-ai-service
     networks:
       - skill-screen-network 
 

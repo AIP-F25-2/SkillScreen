@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     
     INTERVIEW_SERVICE_URL: str = "http://interview-service:8080"
-    TEXT_SERVICE_URL: str = "http://text-service:8080"
+    TEXT_SERVICE_URL: str = "http://text-ai-service:8080"  # Note: text-ai-service, not text-service
     AUDIO_AI_SERVICE_URL: str = "http://audio-ai-service:8080"
     VIDEO_AI_SERVICE_URL: str = "http://video-ai-service:8080"
     MEDIA_SERVICE_URL: str = "http://media-service:8080"
