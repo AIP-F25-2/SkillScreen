@@ -87,7 +87,18 @@ async def verify_jwt(request: Request, call_next):
         # TEMP: allow text-service routes during development/testing without auth
         if request.url.path.startswith("/text-service/"):
             return await call_next(request)
-        
+
+        # TEMP: allow orchestration routes during development/testing without auth
+        if request.url.path.startswith("/orchestration/"):
+            return await call_next(request)
+
+        # TEMP: allow interview routes during development/testing without auth
+        if request.url.path.startswith("/interview/"):
+            return await call_next(request)
+
+        # TEMP: allow text-ai routes during development/testing without auth
+        if request.url.path.startswith("/text-ai/"):
+            return await call_next(request)
 
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):

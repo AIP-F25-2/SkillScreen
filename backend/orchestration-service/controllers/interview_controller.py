@@ -132,6 +132,10 @@ async def start_interview_step2(interview_id: str):
         session_id = question_data.get("id", "")
         question_number = 1  # First question is always 1
 
+        logger.info(f"✅ First question retrieved")
+        logger.info(f"   Session ID: {session_id}")
+        logger.info(f"   Question: {question_text[:80]}...")
+
         # Step 3: Generate TTS for question
         logger.info(f"   Generating TTS audio for question...")
         audio_result = await audio_client.generate_speech(

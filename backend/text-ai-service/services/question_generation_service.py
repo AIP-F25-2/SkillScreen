@@ -91,10 +91,21 @@ class QuestionGenerationService:
                 }
             }
 
-            self.question_repo.create_session(first_session_data)
+            # Save first session to database
+            session_id = self.question_repo.create_session(first_session_data)
+
+            # Update the session_id in the returned data to match DB
+            first_session_data["id"] = session_id
             saved_sessions = [first_session_data]
 
-            logger.info(f"✅ Generated first question (Tell me about yourself)")
+            # Verify session was saved
+            verify_session = self.question_repo.get_session_by_id(session_id)
+            if verify_session:
+                logger.info(f"✅ Generated and verified first question - Session ID: {session_id}")
+            else:
+                logger.warning(f"⚠️ First question created but verification failed - Session ID: {session_id}")
+                # Return the data anyway as it should be persisted
+                logger.info(f"✅ Generated first question (Tell me about yourself)")
 
             return {
                 "success": True,
@@ -313,6 +324,17 @@ class QuestionGenerationService:
             # Get total questions from settings
             total_questions = interview.get("settings", {}).get("num_questions", settings.QUESTIONS_PER_INTERVIEW)
             difficulty = interview.get("settings", {}).get("difficulty", "medium")
+
+            # CHECK: If we've already reached max questions, don't generate more
+            if next_index > total_questions:
+                logger.info(f"⛔ Interview completed - already asked {len(existing_sessions)} of {total_questions} questions")
+                return {
+                    "success": False,
+                    "error": f"Interview already completed - maximum {total_questions} questions reached",
+                    "completed": True,
+                    "questions_asked": len(existing_sessions),
+                    "max_questions": total_questions
+                }
 
             # Build prompt for dynamic question generation
             prompt = self._build_dynamic_question_prompt(

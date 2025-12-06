@@ -61,27 +61,13 @@ async def get_next_question(request: NextQuestionRequest):
 
         logger.info(f"✅ Response evaluated - Score: {evaluation_score}")
 
-        # STEP 3: Check if interview is completed
-        logger.info("📊 Step 3: Checking if interview is completed")
+        # STEP 3: Get interview details and check if completed
+        logger.info("📊 Step 3: Checking interview status")
         interview_status = await interview_client.get_interview(interview_id)
 
-        if interview_status.get("success"):
-            current_status = interview_status.get("data", {}).get("status")
-            if current_status == "completed":
-                logger.info("✅ Interview completed")
-                # Get final evaluation
-                final_eval = await text_client.evaluate_interview(interview_id)
-                return NextQuestionResponse(
-                    status="completed",
-                    summary=final_eval.get("data", {}),
-                    evaluation_score=evaluation_score,
-                    feedback=feedback
-                )
+        if not interview_status.get("success"):
+            raise HTTPException(status_code=404, detail="Interview not found")
 
-        # STEP 4: Get next question (dynamically generated)
-        logger.info("🎯 Step 4: Generating next question")
-
-        # Get candidate_id and job_position_id from interview
         interview_details = interview_status.get("data", {})
         candidate_id = interview_details.get("candidate_id")
         job_position_id = interview_details.get("job_position_id")
@@ -89,18 +75,51 @@ async def get_next_question(request: NextQuestionRequest):
         if not candidate_id or not job_position_id:
             raise HTTPException(
                 status_code=400,
-                detail="candidate_id and job_position_id required to generate next question"
+                detail="candidate_id and job_position_id required"
             )
 
+        # STEP 4: Try to generate next question
+        logger.info("🎯 Step 4: Generating next question")
         next_question_result = await text_client.get_next_question(
             interview_id=interview_id,
             candidate_id=candidate_id,
             job_position_id=job_position_id
         )
 
+        # Check if interview is completed (text service returns completed=True)
         if not next_question_result.get("success"):
-            logger.error(f"❌ Next question generation failed: {next_question_result.get('error')}")
-            raise HTTPException(status_code=500, detail="Failed to generate next question")
+            error_msg = next_question_result.get("error", "")
+            completed = next_question_result.get("completed", False)
+
+            if completed:
+                # Interview has reached max questions
+                logger.info(f"✅ Interview completed - Max questions reached")
+
+                # Update interview status to completed
+                try:
+                    await interview_client.update_interview_status(interview_id, "completed")
+                    logger.info("✅ Interview status updated to 'completed'")
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to update interview status: {str(e)}")
+
+                # Get final evaluation
+                try:
+                    final_eval = await text_client.evaluate_interview(interview_id)
+                    logger.info("✅ Final evaluation retrieved")
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to get final evaluation: {str(e)}")
+                    final_eval = {"data": {}}
+
+                return NextQuestionResponse(
+                    status="completed",
+                    summary=final_eval.get("data", {}),
+                    evaluation_score=evaluation_score,
+                    feedback=feedback
+                )
+            else:
+                # Some other error occurred
+                logger.error(f"❌ Next question generation failed: {error_msg}")
+                raise HTTPException(status_code=500, detail=f"Failed to generate next question: {error_msg}")
 
         next_question_data = next_question_result.get("data", {})
         next_question_text = next_question_data.get("question_text", "")

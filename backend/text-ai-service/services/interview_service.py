@@ -168,14 +168,14 @@ class InterviewService:
 
             if len(all_sessions) >= total_questions:
                 # Mark interview as completed
+                logger.info(f"⛔ All questions answered - interview complete ({len(all_sessions)}/{total_questions})")
                 self.interview_repo.update_interview_status(interview_id, "completed")
                 return {
-                    "success": True,
-                    "data": {
-                        "message": "Interview completed - no more questions",
-                        "interview_id": interview_id,
-                        "status": "completed"
-                    }
+                    "success": False,
+                    "error": f"Interview completed - all {total_questions} questions answered",
+                    "completed": True,  # Signal completion to the endpoint
+                    "questions_asked": len(all_sessions),
+                    "max_questions": total_questions
                 }
 
             # Extract previous response from the most recently answered session if not provided
@@ -201,6 +201,11 @@ class InterviewService:
                 job_position_id=job_position_id,
                 previous_response=previous_response
             )
+
+            # If generation indicates completion, pass it through
+            if not result.get("success") and result.get("completed"):
+                logger.info(f"⛔ Interview completion detected - passing through completion signal")
+                return result  # Pass through the completed flag
 
             if not result.get("success"):
                 return result

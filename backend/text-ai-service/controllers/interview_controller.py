@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 from config import logger
 from services import InterviewService
 from schemas import InterviewStartRequest, InterviewResponseRequest, NextQuestionRequest
@@ -108,8 +109,31 @@ async def get_next_question(interview_id: str, request: NextQuestionRequest = No
             job_position_id=job_position_id
         )
 
+        # Check if interview is completed (success=False but completed=True)
         if not result.get("success"):
-            raise HTTPException(status_code=400, detail=result.get("error"))
+            if result.get("completed"):
+                # Interview has reached max questions - this is expected behavior
+                logger.info(f"⛔ Interview completed - max questions reached")
+                logger.info(f"   Questions asked: {result.get('questions_asked')} / {result.get('max_questions')}")
+                # Return completion signal with 'completed' at root level for orchestration-service
+                return JSONResponse(
+                    status_code=200,
+                    content={
+                        "success": False,
+                        "error": result.get("error"),
+                        "completed": True,  # Root level for easy access by orchestration-service
+                        "questions_asked": result.get("questions_asked"),
+                        "max_questions": result.get("max_questions"),
+                        "data": None,
+                        "meta": {
+                            "interview_id": interview_id
+                        }
+                    }
+                )
+            else:
+                # Actual error occurred
+                logger.error(f"❌ Next question generation error: {result.get('error')}")
+                raise HTTPException(status_code=400, detail=result.get("error"))
 
         return create_response(
             success=True,
