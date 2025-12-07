@@ -155,3 +155,40 @@ class AudioServiceClient:
         except Exception as e:
             logger.error(f"❌ Video analysis trigger failed: {str(e)}")
             raise
+
+    async def transcribe_audio(self, media_url: str) -> Dict:
+        """Transcribe audio file from media URL
+
+        Args:
+            media_url: URL to audio/video file to transcribe
+
+        Returns:
+            { transcript: "transcribed text..." }
+        """
+        url = f"{self.base_url}/api/audio/transcribe"
+
+        payload = {
+            "media_url": media_url
+        }
+
+        try:
+            logger.info(f"🎤 Transcribing audio from {media_url}")
+            # Transcription takes much longer, use dedicated timeout (600s = 10 minutes)
+            transcription_timeout = settings.AUDIO_TRANSCRIPTION_TIMEOUT
+            async with httpx.AsyncClient(timeout=transcription_timeout) as client:
+                response = await client.post(url, json=payload)
+                response.raise_for_status()
+
+                data = response.json()
+
+                if data.get("success"):
+                    return {
+                        "transcript": data.get("data", {}).get("transcript", "")
+                    }
+                else:
+                    return {
+                        "transcript": data.get("transcript", "")
+                    }
+        except Exception as e:
+            logger.error(f"❌ Audio transcription failed: {str(e)}")
+            raise

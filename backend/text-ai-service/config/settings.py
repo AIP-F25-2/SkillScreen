@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     # LLM Configuration
     GEMINI_API_KEY: Optional[str] = None
     GEMINI_MODEL: str = "gemini-2.0-flash"
+    GROQ_API_KEY: Optional[str] = None
+    GROQ_MODEL: str = "llama-3.1-8b-instant"
     MAX_TOKENS_RESPONSE: int = 2000
     TEMPERATURE: float = 0.7
 

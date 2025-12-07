@@ -363,13 +363,17 @@ async def validate_token(request: Request):
 
         logger.info(f"Token validated and interview created: {token[:10]}... -> {interview_id} for {token_data['candidate_email']}")
 
+        # Return camelCase format that frontend expects (InterviewToken interface)
+        expires_at = token_data.get('expires_at', expires_at_str)
         return create_response(
             data={
-                "interview_id": interview_id,
-                "candidate_id": token_data['candidate_id'],
-                "candidate_name": token_data['candidate_name'],
-                "candidate_email": token_data['candidate_email'],
-                "status": "in_progress"
+                "token": token,
+                "candidateId": token_data['candidate_id'],
+                "candidateName": token_data['candidate_name'],
+                "candidateEmail": token_data['candidate_email'],
+                "sessionId": interview_id,
+                "interviewId": interview_id,
+                "expiresAt": expires_at
             },
             success=True
         )

@@ -1,6 +1,7 @@
 import json
 from typing import Dict, Optional, List
 import google.generativeai as genai
+from groq import Groq
 from config import logger, settings
 from repositories import InterviewRepository, QuestionRepository
 import uuid
@@ -19,8 +20,15 @@ class QuestionGenerationService:
             genai.configure(api_key=settings.GEMINI_API_KEY)
             self.model = genai.GenerativeModel(settings.GEMINI_MODEL)
         else:
-            logger.warning("⚠️ GEMINI_API_KEY not set - question generation will be limited")
+            logger.warning("⚠️ GEMINI_API_KEY not set")
             self.model = None
+
+        # Initialize Groq API as fallback
+        if settings.GROQ_API_KEY:
+            self.groq_client = Groq(api_key=settings.GROQ_API_KEY)
+        else:
+            logger.warning("⚠️ GROQ_API_KEY not set - Groq fallback unavailable")
+            self.groq_client = None
 
     def generate_interview_questions(
         self,
@@ -41,17 +49,13 @@ class QuestionGenerationService:
                 }
 
             # Use settings from interview or defaults
+            interview_settings = interview.get("settings", {})
             if num_questions is None:
-                if interview.get("settings") and interview["settings"].get("num_questions"):
-                    num_questions = interview["settings"]["num_questions"]
-                else:
-                    num_questions = settings.QUESTIONS_PER_INTERVIEW
+                # Check both max_questions and num_questions keys
+                num_questions = interview_settings.get("max_questions") or interview_settings.get("num_questions") or settings.QUESTIONS_PER_INTERVIEW
 
             if difficulty_level is None:
-                if interview.get("settings") and interview["settings"].get("difficulty"):
-                    difficulty_level = interview["settings"]["difficulty"]
-                else:
-                    difficulty_level = "medium"
+                difficulty_level = interview_settings.get("difficulty", "medium")
 
             # Get candidate and job info
             candidate = self.interview_repo.get_candidate_by_id(candidate_id)
@@ -182,6 +186,22 @@ class QuestionGenerationService:
         except json.JSONDecodeError:
             logger.warning("⚠️ Failed to parse Gemini response")
             return {"questions": []}
+
+    def _generate_with_groq(self, prompt: str) -> Dict:
+        """Generate questions using Groq API as fallback"""
+        try:
+            message = self.groq_client.chat.completions.create(
+                model=settings.GROQ_MODEL,
+                max_tokens=settings.MAX_TOKENS_RESPONSE,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            response_text = message.choices[0].message.content
+            return self._parse_gemini_response(response_text)
+        except Exception as e:
+            logger.error(f"❌ Groq generation failed: {str(e)}")
+            raise
 
     def _get_default_questions(self, num_questions: int) -> Dict:
         """Get default questions when Gemini is unavailable"""
@@ -321,9 +341,10 @@ class QuestionGenerationService:
             existing_sessions = self.question_repo.get_sessions_by_interview(interview_id)
             next_index = len(existing_sessions) + 1
 
-            # Get total questions from settings
-            total_questions = interview.get("settings", {}).get("num_questions", settings.QUESTIONS_PER_INTERVIEW)
-            difficulty = interview.get("settings", {}).get("difficulty", "medium")
+            # Get total questions from settings (check both max_questions and num_questions keys)
+            interview_settings = interview.get("settings", {})
+            total_questions = interview_settings.get("max_questions") or interview_settings.get("num_questions") or settings.QUESTIONS_PER_INTERVIEW
+            difficulty = interview_settings.get("difficulty", "medium")
 
             # CHECK: If we've already reached max questions, don't generate more
             if next_index > total_questions:
@@ -348,13 +369,37 @@ class QuestionGenerationService:
 
             logger.info(f"🔄 Generating question {next_index} for interview {interview_id}")
 
-            # Call Gemini API
+            # Call Gemini API first, fallback to Groq, then default questions
+            question_json = None
             if self.model:
-                response = self.model.generate_content(prompt)
-                question_json = self._parse_gemini_response(response.text)
+                try:
+                    response = self.model.generate_content(prompt)
+                    question_json = self._parse_gemini_response(response.text)
+                except Exception as gemini_error:
+                    error_msg = str(gemini_error)
+                    if "quota" in error_msg.lower() or "429" in error_msg or "resource exhausted" in error_msg.lower():
+                        logger.warning(f"⚠️ Gemini API quota exceeded, trying Groq fallback")
+                        if self.groq_client:
+                            try:
+                                question_json = self._generate_with_groq(prompt)
+                            except Exception as groq_error:
+                                logger.warning(f"⚠️ Groq generation failed: {str(groq_error)}, using default question")
+                                question_json = self._get_default_next_question(next_index, total_questions, difficulty)
+                        else:
+                            logger.warning("⚠️ Groq not available, using default question")
+                            question_json = self._get_default_next_question(next_index, total_questions, difficulty)
+                    else:
+                        raise
             else:
-                logger.warning("⚠️ Gemini model not initialized, generating default next question")
-                question_json = self._get_default_next_question(next_index, total_questions, difficulty)
+                logger.warning("⚠️ Gemini model not initialized, trying Groq")
+                if self.groq_client:
+                    try:
+                        question_json = self._generate_with_groq(prompt)
+                    except Exception as groq_error:
+                        logger.warning(f"⚠️ Groq generation failed: {str(groq_error)}, using default question")
+                        question_json = self._get_default_next_question(next_index, total_questions, difficulty)
+                else:
+                    question_json = self._get_default_next_question(next_index, total_questions, difficulty)
 
             if not question_json.get("questions") or len(question_json["questions"]) == 0:
                 return {

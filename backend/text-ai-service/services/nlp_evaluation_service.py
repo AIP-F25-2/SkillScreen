@@ -1,6 +1,7 @@
 import json
 from typing import Dict, Optional
 import google.generativeai as genai
+from groq import Groq
 from config import logger, settings
 from repositories import QuestionRepository
 import uuid
@@ -18,8 +19,15 @@ class NLPEvaluationService:
             genai.configure(api_key=settings.GEMINI_API_KEY)
             self.model = genai.GenerativeModel(settings.GEMINI_MODEL)
         else:
-            logger.warning("⚠️ GEMINI_API_KEY not set - evaluation will be limited")
+            logger.warning("⚠️ GEMINI_API_KEY not set")
             self.model = None
+
+        # Initialize Groq API as fallback
+        if settings.GROQ_API_KEY:
+            self.groq_client = Groq(api_key=settings.GROQ_API_KEY)
+        else:
+            logger.warning("⚠️ GROQ_API_KEY not set - Groq fallback unavailable")
+            self.groq_client = None
 
     def evaluate_response(
         self,
@@ -49,13 +57,37 @@ class NLPEvaluationService:
 
             logger.info(f"🔄 Evaluating response for session {session_id}")
 
-            # Call Gemini API
+            # Call Gemini API first, fallback to Groq, then basic evaluation
+            evaluation = None
             if self.model:
-                response = self.model.generate_content(prompt)
-                evaluation = self._parse_evaluation_response(response.text)
+                try:
+                    response = self.model.generate_content(prompt)
+                    evaluation = self._parse_evaluation_response(response.text)
+                except Exception as gemini_error:
+                    error_msg = str(gemini_error)
+                    if "quota" in error_msg.lower() or "429" in error_msg or "resource exhausted" in error_msg.lower():
+                        logger.warning(f"⚠️ Gemini API quota exceeded, trying Groq fallback")
+                        if self.groq_client:
+                            try:
+                                evaluation = self._evaluate_with_groq(prompt)
+                            except Exception as groq_error:
+                                logger.warning(f"⚠️ Groq evaluation failed: {str(groq_error)}, using basic evaluation")
+                                evaluation = self._get_basic_evaluation(response_text, expected_answer_points)
+                        else:
+                            logger.warning("⚠️ Groq not available, using basic evaluation")
+                            evaluation = self._get_basic_evaluation(response_text, expected_answer_points)
+                    else:
+                        raise
             else:
-                logger.warning("⚠️ Gemini model not initialized, using basic evaluation")
-                evaluation = self._get_basic_evaluation(response_text, expected_answer_points)
+                logger.warning("⚠️ Gemini model not initialized, trying Groq")
+                if self.groq_client:
+                    try:
+                        evaluation = self._evaluate_with_groq(prompt)
+                    except Exception as groq_error:
+                        logger.warning(f"⚠️ Groq evaluation failed: {str(groq_error)}, using basic evaluation")
+                        evaluation = self._get_basic_evaluation(response_text, expected_answer_points)
+                else:
+                    evaluation = self._get_basic_evaluation(response_text, expected_answer_points)
 
             # Save analysis to ai_analysis table
             analysis_id = str(uuid.uuid4())
@@ -145,6 +177,22 @@ class NLPEvaluationService:
         """
 
         return prompt.strip()
+
+    def _evaluate_with_groq(self, prompt: str) -> Dict:
+        """Evaluate using Groq API as fallback"""
+        try:
+            message = self.groq_client.chat.completions.create(
+                model=settings.GROQ_MODEL,
+                max_tokens=settings.MAX_TOKENS_RESPONSE,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            response_text = message.choices[0].message.content
+            return self._parse_evaluation_response(response_text)
+        except Exception as e:
+            logger.error(f"❌ Groq evaluation failed: {str(e)}")
+            raise
 
     def _parse_evaluation_response(self, response_text: str) -> Dict:
         """Parse Gemini evaluation response"""
