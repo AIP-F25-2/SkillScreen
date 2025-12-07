@@ -89,7 +89,7 @@ services:
     ports:
       - "8005:8005"
     env_file:
-      - ./backend/assessment-service/.env   
+      - ./backend/assessment-service/.env
     environment:
       - PORT=8080
       - HOST=0.0.0.0
@@ -179,7 +179,7 @@ services:
     ports:
       - "8000:8080"
     env_file:
-      - ./backend/audio-ai-service/.env  
+      - ./backend/audio-ai-service/.env
     environment:
       - PORT=8080
       - HOST=0.0.0.0
@@ -295,7 +295,7 @@ services:
       - SECRET_KEY=supersecret
       - ALGORITHM=HS256
       - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
-      - PYTHONPATH=/app:/common-service 
+      - PYTHONPATH=/app:/common-service
       - PYTHONPATH=/app:/common-service:/user-service
     volumes:
       - ./backend/sso-service:/app
@@ -369,3 +369,6 @@ networks:
 
 volumes:
   seq-data: {}
+  sonarqube_data: {}
+  sonarqube_extensions: {}
+  sonarqube_logs: {}

@@ -42,14 +42,14 @@ class OnboardRequest(BaseModel):
 # =====================
 @router.post("/onboard", summary="Create organization + admin user")
 def onboard(payload: OnboardRequest):
-    session = DBFactory.get_db()
+    session = DBFactory.get_session()
 
     org_repo = OrganizationRepository(session)
     user_repo = UserRepository(session)
 
     try:
         # 1️⃣ Create organization
-        org_id = org_repo.create(payload.organization.dict())
+        org_id = org_repo.create_organization(payload.organization.dict())
 
         # 2️⃣ Create user with organization_id
         user_data = payload.user.dict()
@@ -64,6 +64,8 @@ def onboard(payload: OnboardRequest):
             "org_id": str(org_id)
         })
 
+        session.commit()
+
         return {
             "success": True,
             "organization_id": org_id,
@@ -74,4 +76,7 @@ def onboard(payload: OnboardRequest):
 
     except SQLAlchemyError as e:
         session.rollback()
+        print(f"Onboarding failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        session.close()

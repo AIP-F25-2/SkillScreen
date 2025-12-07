@@ -86,7 +86,7 @@ class OrganizationRepository(BaseRepository):
             )
             .values(
                 deleted_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(), # nosonar
             )
             .returning(organizations_table.c.id)
         )

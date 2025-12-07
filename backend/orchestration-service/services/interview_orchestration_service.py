@@ -21,6 +21,8 @@ AUDIO_AI_SERVICE_URL = os.getenv("AUDIO_AI_SERVICE_URL", "http://audio-ai-servic
 VIDEO_AI_SERVICE_URL = os.getenv("VIDEO_AI_SERVICE_URL", "http://video-ai-service:8080")
 MEDIA_SERVICE_URL = os.getenv("MEDIA_SERVICE_URL", "http://media-service:8080")
 
+UNKNOWN_ERROR = "Unknown error"
+
 
 class InterviewOrchestrationService:
     """Service for orchestrating interview question generation"""
@@ -203,7 +205,7 @@ class InterviewOrchestrationService:
         interview_response.raise_for_status()
         return interview_response.json()
 
-    async def _generate_coding_question_if_needed(
+    async def _generate_coding_question_if_needed( # nosonar
         self,
         candidate_data: Dict[str, Any],
         resume_data: Dict[str, Any],
@@ -355,7 +357,7 @@ class InterviewOrchestrationService:
             # Fallback: generate contextual question
             return self._generate_contextual_followup(previous_response, question_number, resume_data)
     
-    def _generate_contextual_followup(
+    def _generate_contextual_followup( # nosonar
         self,
         previous_response: str,
         question_number: int,
@@ -527,7 +529,7 @@ class InterviewOrchestrationService:
             response.raise_for_status()
             result = response.json()
             
-            interview_id_for_log = interview_id_str if 'interview_id_str' in locals() else str(interview_id)
+            interview_id_for_log = interview_id_str if 'interview_id_str' in locals() else str(interview_id) # nosonar
             logger.info(f"Video analysis triggered successfully for interview {interview_id_for_log}")
             return {
                 "status": "success",
@@ -536,7 +538,7 @@ class InterviewOrchestrationService:
             }
             
         except httpx.TimeoutException as e:
-            interview_id_for_log = interview_id_str if 'interview_id_str' in locals() else str(interview_id)
+            interview_id_for_log = interview_id_str if 'interview_id_str' in locals() else str(interview_id) # nosonar
             logger.error(f"Video analysis timeout for interview {interview_id_for_log}: {str(e)}")
             return {
                 "status": "error",
@@ -544,7 +546,7 @@ class InterviewOrchestrationService:
                 "error": f"Timeout: {str(e)}"
             }
         except httpx.HTTPStatusError as e:
-            interview_id_for_log = interview_id_str if 'interview_id_str' in locals() else str(interview_id)
+            interview_id_for_log = interview_id_str if 'interview_id_str' in locals() else str(interview_id) # nosonar
             logger.error(f"Video analysis HTTP error for interview {interview_id_for_log}: {e.response.status_code} - {e.response.text}")
             return {
                 "status": "error",
@@ -552,7 +554,7 @@ class InterviewOrchestrationService:
                 "error": f"HTTP {e.response.status_code}: {e.response.text[:200]}"
             }
         except Exception as e:
-            interview_id_for_log = interview_id_str if 'interview_id_str' in locals() else str(interview_id)
+            interview_id_for_log = interview_id_str if 'interview_id_str' in locals() else str(interview_id) # nosonar
             logger.error(f"Video analysis error for interview {interview_id_for_log}: {type(e).__name__}: {str(e)}", exc_info=True)
             return {
                 "status": "error",
@@ -560,7 +562,7 @@ class InterviewOrchestrationService:
                 "error": f"{type(e).__name__}: {str(e)}"
             }
     
-    async def get_text_analysis(
+    async def get_text_analysis( # nosonar
         self,
         session_id: str
     ) -> Dict[str, Any]:
@@ -628,7 +630,7 @@ class InterviewOrchestrationService:
                     return {
                         "status": "skipped",
                         "service": "text-service",
-                        "message": f"Text service session not found. The interview may not have been processed through text-service.",
+                        "message": "Text service session not found. The interview may not have been processed through text-service.",
                         "hint": "Text analysis is only available for interviews that were processed through the text-service pipeline."
                     }
                 else:
@@ -661,7 +663,7 @@ class InterviewOrchestrationService:
                 "error": f"{type(e).__name__}: {str(e)}"
             }
     
-    async def trigger_all_analyses(
+    async def trigger_all_analyses( # nosonar
         self,
         interview_id: str,
         session_id: str,
@@ -719,7 +721,7 @@ class InterviewOrchestrationService:
                 results["summary"]["failed"] += 1
                 results["summary"]["errors"].append({
                     "service": "audio-ai",
-                    "error": audio_result.get("error", "Unknown error")
+                    "error": audio_result.get("error", UNKNOWN_ERROR)
                 })
         else:
             logger.warning(f"[Analysis Orchestration] Skipping audio analysis - no media_file_id provided for interview {interview_id_str}")
@@ -745,7 +747,7 @@ class InterviewOrchestrationService:
                 results["summary"]["failed"] += 1
                 results["summary"]["errors"].append({
                     "service": "video-ai",
-                    "error": video_result.get("error", "Unknown error")
+                    "error": video_result.get("error", UNKNOWN_ERROR)
                 })
         else:
             logger.warning(f"[Analysis Orchestration] Skipping video analysis - no video_url provided for interview {interview_id_str}")
@@ -770,7 +772,7 @@ class InterviewOrchestrationService:
             results["summary"]["failed"] += 1
             results["summary"]["errors"].append({
                 "service": "text-service",
-                "error": text_result.get("error", "Unknown error")
+                "error": text_result.get("error", UNKNOWN_ERROR)
             })
         
         # Log summary

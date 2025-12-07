@@ -88,22 +88,23 @@ def login(payload: LoginRequest):
     raw_password = payload.password
 
     # --------------------- Fetch user from database ---------------------------
+    conn = None
     try:
         conn = get_connection()
-        cur = conn.cursor()
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT id, organization_id, email, password_hash, role
+                FROM users
+                WHERE email = %s AND deleted_at IS NULL
+            """, (email,))
 
-        cur.execute("""
-            SELECT id, organization_id, email, password_hash, role
-            FROM users
-            WHERE email = %s AND deleted_at IS NULL
-        """, (email,))
-
-        row = cur.fetchone()
-        cur.close()
-        conn.close()
+            row = cur.fetchone()
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        if conn:
+            conn.close()
 
     if not row:
         raise HTTPException(status_code=401, detail="Invalid email or password")

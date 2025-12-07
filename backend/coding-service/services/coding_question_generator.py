@@ -149,7 +149,7 @@ try:
             
             # Method 2: Direct file import using importlib
             try:
-                _safe_log('info', f"[INIT] Trying direct file import using importlib")
+                _safe_log('info', "[INIT] Trying direct file import using importlib")
                 import importlib.util
                 
                 # Ensure text-service and its utils are in path for dependencies
@@ -159,7 +159,7 @@ try:
                 if utils_path not in sys.path:
                     sys.path.insert(0, utils_path)
                 
-                _safe_log('info', f"[INIT] Updated sys.path with text-service paths")
+                _safe_log('info', "[INIT] Updated sys.path with text-service paths")
                 if utils_logger_path:
                     _safe_log('info', f"[INIT] Checking if utils.logger exists: {os.path.exists(utils_logger_path)}")
                 else:
@@ -172,7 +172,7 @@ try:
                     if text_service_path not in sys.path:
                         sys.path.insert(0, text_service_path)
                     from utils.logger import log_info as _utils_log_info, log_error as _utils_log_error, log_warning as _utils_log_warning
-                    _safe_log('info', f"[INIT] Successfully imported utils.logger from text-service")
+                    _safe_log('info', "[INIT] Successfully imported utils.logger from text-service")
                 except Exception as utils_err:
                     _safe_log('warning', f"[INIT] Could not import utils.logger: {utils_err}")
                     _safe_log('warning', f"[INIT] Creating minimal logger stubs for llm_service")
@@ -218,7 +218,7 @@ try:
         _safe_log('warning', f"[INIT] All import methods failed. EnhancedLLMService will not be available.")
         _safe_log('warning', f"[INIT] This means LLM-generated questions will not be available.")
         _safe_log('warning', f"[INIT] Check that text-service is accessible and all dependencies are installed.")
-        _safe_log('warning', f"[INIT] In Docker: ensure text-service code is available in coding-service container")
+        _safe_log('warning', "[INIT] In Docker: ensure text-service code is available in coding-service container")
         
 except Exception as e:
     # CRITICAL: Don't let import errors crash the entire service
@@ -228,11 +228,11 @@ except Exception as e:
         _safe_log('error', f"[INIT] Unexpected error during import setup: {type(e).__name__}: {str(e)}")
         import traceback
         _safe_log('error', f"[INIT] Import traceback:\n{traceback.format_exc()}")
-    except:
+    except Exception:
         # Even logging failed, just print to stderr - this must never raise
         try:
             print(f"[CRITICAL] Failed to import EnhancedLLMService: {e}", file=sys.stderr)
-            print(f"[CRITICAL] Service will continue without LLM support", file=sys.stderr)
+            print("[CRITICAL] Service will continue without LLM support", file=sys.stderr)
         except:
             pass  # Absolute last resort - do nothing
 
@@ -306,7 +306,7 @@ class CodingQuestionGenerator:
         self.llm_service = None
         if EnhancedLLMService:
             try:
-                log_info(f"[INIT] Attempting to initialize EnhancedLLMService...")
+                log_info("[INIT] Attempting to initialize EnhancedLLMService...")
                 self.llm_service = EnhancedLLMService()
                 log_info("[INIT] EnhancedLLMService initialized successfully")
             except Exception as e:
@@ -408,7 +408,7 @@ class CodingQuestionGenerator:
 
     async def _attempt_llm_generation(self, context: Dict[str, Any], difficulty: str, skills: List[str]) -> Optional[Dict[str, Any]]:
         if not self.llm_service:
-            log_warning(f"[LLM] LLM service is not initialized/available.")
+            log_warning("[LLM] LLM service is not initialized/available.")
             return None
 
         question_prompt = self._create_question_prompt(context)
@@ -464,7 +464,7 @@ class CodingQuestionGenerator:
         previous_questions: List[str], interview_id: Optional[str], 
         candidate_id: Optional[str]
     ) -> Dict[str, Any]:
-        log_warning(f"[FALLBACK] Using personalized fallback question.")
+        log_warning("[FALLBACK] Using personalized fallback question.")
         
         fallback_question = self._get_fallback_question(
             difficulty, skills, resume_data, job_description, 
@@ -485,12 +485,12 @@ class CodingQuestionGenerator:
     def _build_context(self, **kwargs) -> Dict[str, Any]:
         return kwargs
 
-    def _build_question_from_scraped_data(self, inspiration: Dict[str, List[Dict]], difficulty: str, skills: List[str], resume_data: Dict[str, Any], job_description: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _build_question_from_scraped_data(self, inspiration: Dict[str, List[Dict]], difficulty: str, skills: List[str]) -> Optional[Dict[str, Any]]:
         """
         DEPRECATED: This method is no longer used. Scraped data is only used as inspiration for LLM.
         Always returns None to prevent using scraped data directly.
         """
-        log_warning(f"[DEPRECATED] _build_question_from_scraped_data called but is disabled. Scraped data should only be used as LLM inspiration.")
+        log_warning("[DEPRECATED] _build_question_from_scraped_data called but is disabled. Scraped data should only be used as LLM inspiration.")
         return None
         # OLD CODE BELOW - DISABLED
         try:
@@ -564,7 +564,7 @@ This problem comes from real Stack Overflow questions.""",
                 geeks_q = geeks_qs[0]
                 # Skip if it's the hardcoded sample (title starts with "Sample")
                 if geeks_q.get("title", "").startswith("Sample"):
-                    log_warning(f"[SCRAPER] Skipping hardcoded GeeksforGeeks sample. LeetCode and StackOverflow scraping failed.")
+                    log_warning("[SCRAPER] Skipping hardcoded GeeksforGeeks sample. LeetCode and StackOverflow scraping failed.")
                     return None
                 
                 return {
@@ -811,7 +811,7 @@ Return ONLY valid JSON, no additional text or markdown formatting."""
             problem_template, difficulty, skills, job_skills, experience_years
         )
 
-    def _enrich_problem_template(
+    def _enrich_problem_template( # nosonar
         self, problem_template: Dict[str, Any], difficulty: str, 
         skills: List[str], job_skills: List[str], experience_years: float
     ) -> Dict[str, Any]:
@@ -1047,7 +1047,7 @@ Example:
 - Output: [0, 1]
 - Explanation: nums[0] + nums[1] = 2 + 7 = 9""",
                 "test_cases": [
-                    {"input": "[2, 7, 11, 15], 9", "expected_output": "[0, 1]"},
+                    {"input": "[2, 7, 11, 15], 9", "expected_output": "[0, 1]"}, # nosonar
                     {"input": "[3, 2, 4], 6", "expected_output": "[1, 2]"},
                     {"input": "[3, 3], 6", "expected_output": "[0, 1]"},
                     {"input": "[1, 5, 3, 2], 4", "expected_output": "[0, 3]"}

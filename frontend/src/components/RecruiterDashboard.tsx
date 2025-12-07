@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { FileUploadDemo } from '@/components/ui/file-upload-demo';
 import { apiClient } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { FileText, User } from 'lucide-react';
 
 interface Candidate {
@@ -98,8 +99,10 @@ export default function RecruiterDashboard() {
   const [skillInput, setSkillInput] = useState('');
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
 
-  // Hardcoded org for now – Note: load from authenticated recruiter/org context (For this make our login use actual users from our database)
+  const { user } = useAuth();
+  // Use authenticated user's organization ID, fallback to default only if needed
   const DEFAULT_ORGANIZATION_ID = "ecf369b2-caae-4962-85a8-404db7ab0d7e";
+  const organizationId = user?.organizationId || DEFAULT_ORGANIZATION_ID;
 
   // Fetch all interviews, candidates, and job templates
   useEffect(() => {
@@ -109,7 +112,7 @@ export default function RecruiterDashboard() {
         setLoadingCandidates(true);
 
         // Fetch all interviews
-        const interviewsResponse = await apiClient.getAllInterviews();
+        const interviewsResponse = await apiClient.getAllInterviews(organizationId);
         if (interviewsResponse.success) {
           setInterviews(interviewsResponse.data.interviews || []);
         }
@@ -122,7 +125,7 @@ export default function RecruiterDashboard() {
 
         // Fetch job templates (job positions) from interview-service
         try {
-          const jobPositionsRes = await apiClient.getJobPositions(DEFAULT_ORGANIZATION_ID);
+          const jobPositionsRes = await apiClient.getJobPositions(organizationId);
           if (jobPositionsRes.success && jobPositionsRes.data?.job_positions) {
             const templates: JobTemplate[] = jobPositionsRes.data.job_positions.map((jp: any) => ({
               id: jp.id,

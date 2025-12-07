@@ -5,6 +5,7 @@ export interface User {
   name: string;
   email: string;
   userType: UserType;
+  organizationId?: string;
 }
 
 export interface AuthToken {

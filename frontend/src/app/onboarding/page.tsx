@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import Footer from '@/components/Footer';
 
-type UserType = 'recruiter' | 'job_seeker' | '';
+type UserType = 'recruiter' | '';
 
 interface FormData {
   // Common fields
@@ -15,10 +15,11 @@ interface FormData {
   email: string;
   password: string;
   // Recruiter specific fields
-  company: string;
-  role: string;
-  teamSize: string;
-  industry: string;
+  company?: string;
+  domain?: string;
+  role?: string;
+  teamSize?: string;
+  industry?: string;
   // Job seeker specific fields
   experience: string;
   skills: string;
@@ -29,10 +30,12 @@ interface FormData {
 
 interface Errors {
   userType?: string;
-  fullName?: string;
+  firstName?: string;
+  lastName?: string;
   email?: string;
   password?: string;
   company?: string;
+  domain?: string;
   role?: string;
   industry?: string;
   experience?: string;
@@ -53,20 +56,13 @@ export default function Onboarding() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [formData, setFormData] = useState<FormData>({
     // Common fields
-    fullName: '',
+    firstName: '',
+    lastName: '',
     email: '',
     password: '',
     // Recruiter specific fields
     company: '',
-    role: '',
-    teamSize: '',
-    industry: '',
-    // Job seeker specific fields
-    experience: '',
-    skills: '',
-    education: '',
-    preferredRole: '',
-    availability: '',
+    domain: '',
   });
   const [permissions, setPermissions] = useState({
     camera: false,
@@ -103,25 +99,16 @@ export default function Onboarding() {
     }
 
     if (step === 2) {
-      if (!formData.fullName) newErrors.fullName = 'Name is required';
+      if (!formData.firstName) newErrors.firstName = 'First name is required';
+      if (!formData.lastName) newErrors.lastName = 'Last name is required';
       if (!formData.email) newErrors.email = 'Email is required';
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-        newErrors.email = 'Please enter a valid email';
-      }
-      if (!formData.password) {
-        newErrors.password = 'Password is required';
-      } else if (formData.password.length < 6) {
-        newErrors.password = 'Password must be at least 6 characters';
-      }
+      else if (!/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = 'Email is invalid';
+      if (!formData.password) newErrors.password = 'Password is required';
+      else if (formData.password.length < 6) newErrors.password = 'Password must be at least 6 characters';
 
       if (userType === 'recruiter') {
         if (!formData.company) newErrors.company = 'Company name is required';
-        if (!formData.role) newErrors.role = 'Role is required';
-        if (!formData.industry) newErrors.industry = 'Industry is required';
-      } else if (userType === 'job_seeker') {
-        if (!formData.experience) newErrors.experience = 'Experience is required';
-        if (!formData.skills) newErrors.skills = 'Skills are required';
-        if (!formData.preferredRole) newErrors.preferredRole = 'Preferred role is required';
+        if (!formData.domain) newErrors.domain = 'Domain is required';
       }
     }
 
@@ -132,7 +119,7 @@ export default function Onboarding() {
   const handleNext = async () => {
     if (!validateStep()) return;
 
-    if (step === 3 && permissions.camera && permissions.microphone) {
+    if (step === 2) {
       // Final step - register user and complete onboarding
       setIsRegistering(true);
       setRippleEffect(true);
@@ -141,10 +128,13 @@ export default function Onboarding() {
       try {
         // Register the user
         const result = await register({
-          fullName: formData.fullName,
+          firstName: formData.firstName,
+          lastName: formData.lastName,
           email: formData.email,
           password: formData.password,
-          userType: userType === 'job_seeker' ? 'candidate' : 'recruiter'
+          userType: 'recruiter',
+          company: formData.company,
+          domain: formData.domain
         });
 
         if (result.success) {
@@ -170,7 +160,7 @@ export default function Onboarding() {
         setRippleEffect(false);
       }, 1200); // Match ripple duration
 
-      if (step < 3) {
+      if (step < 2) {
         setStep(prev => prev + 1);
       }
     }
@@ -180,7 +170,7 @@ export default function Onboarding() {
     setIsTransitioning(true);
     // Add a longer delay for smooth fade out, then navigate
     setTimeout(() => {
-      router.push(userType === 'recruiter' ? '/recruiter' : '/candidate');
+      router.push('/login');
     }, 800);
   };
 
@@ -213,20 +203,11 @@ export default function Onboarding() {
               <button
                 onClick={() => setUserType('recruiter')}
                 className={`px-8 py-4 rounded-xl transition-all duration-300 transform hover:scale-105 ${userType === 'recruiter'
-                    ? 'bg-white text-black'
-                    : 'bg-white/10 hover:bg-white/20 text-white'
+                  ? 'bg-white text-black'
+                  : 'bg-white/10 hover:bg-white/20 text-white'
                   }`}
               >
-                Recruiter
-              </button>
-              <button
-                onClick={() => setUserType('job_seeker')}
-                className={`px-8 py-4 rounded-xl transition-all duration-300 transform hover:scale-105 ${userType === 'job_seeker'
-                    ? 'bg-white text-black'
-                    : 'bg-white/10 hover:bg-white/20 text-white'
-                  }`}
-              >
-                Job Seeker
+                Recruiter / Employer
               </button>
             </div>
             {errors.userType && (
@@ -239,22 +220,37 @@ export default function Onboarding() {
         return (
           <div className="bg-black/40 backdrop-blur-md rounded-2xl p-8 md:p-12 w-full max-w-2xl mx-auto shadow-2xl">
             <h2 className="text-3xl font-bold text-white mb-6 text-center">
-              {userType === 'recruiter' ? 'Tell us about your company' : 'Tell us about yourself'}
+              Tell us about your company
             </h2>
             <div className="space-y-4">
               {/* Common Fields */}
-              <div className="space-y-2">
-                <input
-                  type="text"
-                  name="fullName"
-                  placeholder="Full Name"
-                  value={formData.fullName}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-3 bg-white/10 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30"
-                />
-                {errors.fullName && (
-                  <p className="text-red-400 text-sm">{errors.fullName}</p>
-                )}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    name="firstName"
+                    placeholder="First Name"
+                    value={formData.firstName}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-3 bg-white/10 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30"
+                  />
+                  {errors.firstName && (
+                    <p className="text-red-400 text-sm">{errors.firstName}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    name="lastName"
+                    placeholder="Last Name"
+                    value={formData.lastName}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-3 bg-white/10 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30"
+                  />
+                  {errors.lastName && (
+                    <p className="text-red-400 text-sm">{errors.lastName}</p>
+                  )}
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -286,198 +282,36 @@ export default function Onboarding() {
               </div>
 
               {/* Recruiter Specific Fields */}
-              {userType === 'recruiter' ? (
-                <>
-                  <div className="space-y-2">
-                    <input
-                      type="text"
-                      name="company"
-                      placeholder="Company Name"
-                      value={formData.company}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-3 bg-white/10 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30"
-                    />
-                    {errors.company && (
-                      <p className="text-red-400 text-sm">{errors.company}</p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <input
-                      type="text"
-                      name="role"
-                      placeholder="Your Role"
-                      value={formData.role}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-3 bg-white/10 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30"
-                    />
-                    {errors.role && (
-                      <p className="text-red-400 text-sm">{errors.role}</p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <input
-                      type="text"
-                      name="industry"
-                      placeholder="Industry"
-                      value={formData.industry}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-3 bg-white/10 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30"
-                    />
-                    {errors.industry && (
-                      <p className="text-red-400 text-sm">{errors.industry}</p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <input
-                      type="text"
-                      name="teamSize"
-                      placeholder="Team Size"
-                      value={formData.teamSize}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-3 bg-white/10 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30"
-                    />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="space-y-2">
-                    <input
-                      type="text"
-                      name="experience"
-                      placeholder="Years of Experience"
-                      value={formData.experience}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-3 bg-white/10 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30"
-                    />
-                    {errors.experience && (
-                      <p className="text-red-400 text-sm">{errors.experience}</p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <input
-                      type="text"
-                      name="preferredRole"
-                      placeholder="Preferred Role"
-                      value={formData.preferredRole}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-3 bg-white/10 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30"
-                    />
-                    {errors.preferredRole && (
-                      <p className="text-red-400 text-sm">{errors.preferredRole}</p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <input
-                      type="text"
-                      name="skills"
-                      placeholder="Key Skills (comma separated)"
-                      value={formData.skills}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-3 bg-white/10 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30"
-                    />
-                    {errors.skills && (
-                      <p className="text-red-400 text-sm">{errors.skills}</p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <input
-                      type="text"
-                      name="education"
-                      placeholder="Highest Education"
-                      value={formData.education}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-3 bg-white/10 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <select
-                      name="availability"
-                      value={formData.availability}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-3 bg-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-white/30"
-                    >
-                      <option value="">Select Availability</option>
-                      <option value="immediate">Immediate</option>
-                      <option value="2_weeks">2 Weeks Notice</option>
-                      <option value="1_month">1 Month Notice</option>
-                      <option value="3_months">3 Months Notice</option>
-                    </select>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        );
-
-      case 3:
-        return (
-          <div className="bg-black/40 backdrop-blur-md rounded-2xl p-8 md:p-12 w-full max-w-2xl mx-auto shadow-2xl">
-            <div className="text-center space-y-6">
-              <h2 className="text-3xl font-bold text-white mb-6">One Last Step!</h2>
-              <p className="text-lg text-white/80 mb-8">
-                We need access to your camera and microphone for video interviews.
-                This helps ensure a smooth interview experience.
-              </p>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-6 bg-white/10 rounded-xl border border-white/10">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
-                    </div>
-                    <span className="text-white text-lg">Camera Access</span>
-                  </div>
-                  <span className={`px-4 py-2 rounded-lg text-sm font-medium ${permissions.camera
-                      ? 'bg-green-500/20 text-green-300 border border-green-500/30'
-                      : 'bg-red-500/20 text-red-300 border border-red-500/30'
-                    }`}>
-                    {permissions.camera ? 'Granted' : 'Required'}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between p-6 bg-white/10 rounded-xl border border-white/10">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                      </svg>
-                    </div>
-                    <span className="text-white text-lg">Microphone Access</span>
-                  </div>
-                  <span className={`px-4 py-2 rounded-lg text-sm font-medium ${permissions.microphone
-                      ? 'bg-green-500/20 text-green-300 border border-green-500/30'
-                      : 'bg-red-500/20 text-red-300 border border-red-500/30'
-                    }`}>
-                    {permissions.microphone ? 'Granted' : 'Required'}
-                  </span>
-                </div>
-
-                {!permissions.camera || !permissions.microphone ? (
-                  <button
-                    onClick={requestMediaPermissions}
-                    className="w-full px-6 py-4 mt-6 bg-white text-black rounded-xl font-medium hover:bg-white/90 transition-all duration-300 transform hover:scale-[1.02]"
-                  >
-                    Grant Permissions
-                  </button>
-                ) : (
-                  <div className="mt-6 p-4 bg-green-500/20 rounded-xl border border-green-500/30">
-                    <p className="text-green-300">
-                      All permissions granted! You're ready to proceed.
-                    </p>
-                  </div>
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  name="company"
+                  placeholder="Company Name"
+                  value={formData.company}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-3 bg-white/10 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30"
+                />
+                {errors.company && (
+                  <p className="text-red-400 text-sm">{errors.company}</p>
                 )}
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    name="domain"
+                    placeholder="Company Domain (e.g. nvidia.ai)"
+                    value={formData.domain}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-3 bg-white/10 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30"
+                  />
+                  {errors.domain && (
+                    <p className="text-red-400 text-sm">{errors.domain}</p>
+                  )}
+                </div>
               </div>
             </div>
           </div>
         );
+
 
       default:
         return null;
@@ -488,23 +322,23 @@ export default function Onboarding() {
     <div className="mt-8 border-t border-white/10 pt-8">
       <div className="flex justify-between items-center">
         <div className="flex gap-3">
-          {[1, 2, 3].map((i) => (
+          {[1, 2].map((i) => (
             <div key={i} className="flex flex-col items-center">
               <div
                 className={`w-3 h-3 rounded-full transition-all duration-300 ${step === i
-                    ? 'bg-white scale-125'
-                    : step > i
-                      ? 'bg-green-500'
-                      : 'bg-white/30'
+                  ? 'bg-white scale-125'
+                  : step > i
+                    ? 'bg-green-500'
+                    : 'bg-white/30'
                   }`}
               />
               <div className="h-1 w-16 bg-white/10 mt-2 rounded-full overflow-hidden">
                 <div
                   className={`h-full bg-white transition-all duration-500 ${step > i
-                      ? 'w-full'
-                      : step === i
-                        ? 'w-1/2'
-                        : 'w-0'
+                    ? 'w-full'
+                    : step === i
+                      ? 'w-1/2'
+                      : 'w-0'
                     }`}
                 />
               </div>
@@ -524,13 +358,13 @@ export default function Onboarding() {
               Back
             </button>
           )}
-          {((step < 3) || (step === 3 && permissions.camera && permissions.microphone)) && (
+          {step <= 2 && (
             <button
               onClick={handleNext}
               disabled={(step === 1 && !userType) || isRegistering}
               className={`px-6 py-2 rounded-xl transition-all duration-300 flex items-center gap-2 ${(step === 1 && !userType) || isRegistering
-                  ? 'bg-white/10 text-white/50 cursor-not-allowed'
-                  : 'bg-white text-black hover:bg-white/90'
+                ? 'bg-white/10 text-white/50 cursor-not-allowed'
+                : 'bg-white text-black hover:bg-white/90'
                 }`}
             >
               {isRegistering ? (
@@ -540,7 +374,7 @@ export default function Onboarding() {
                 </>
               ) : (
                 <>
-                  {step === 3 ? 'Complete' : 'Next'}
+                  {step === 2 ? 'Complete' : 'Next'}
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                     <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" />
                   </svg>
@@ -557,17 +391,17 @@ export default function Onboarding() {
     <>
       <ShaderAnimation
         currentStep={step}
-        totalSteps={3}
+        totalSteps={2}
         progress={
           step === 1
             ? userType ? 0.5 : 0
             : step === 2
-              ? formData.fullName && formData.email && formData.password ? 0.75 : 0.5
-              : permissions.camera && permissions.microphone ? 1 : 0.75
+              ? formData.firstName && formData.lastName && formData.email && formData.password ? 0.75 : 0.5
+              : 0
         }
         rippleEffect={rippleEffect}
         textAnimation={textAnimation}
-        isCompleteRipple={step === 3 && rippleEffect}
+        isCompleteRipple={step === 2 && rippleEffect}
         fadeOut={showWelcome}
       />
 
@@ -710,7 +544,7 @@ export default function Onboarding() {
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
               >
-                Continue to Dashboard →
+                Continue to Login →
               </motion.button>
             </div>
           </motion.div>

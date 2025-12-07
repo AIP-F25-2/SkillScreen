@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 from sqlalchemy import update
 from repositories.orchestration_repository import OrchestrationRepository
@@ -11,12 +11,17 @@ from utilities.logger import init_logger
 from services.interview_orchestration_service import InterviewOrchestrationService
 from uuid import UUID
 
+from sqlalchemy import update
+from repositories.orchestration_repository import interviews_table
+
 router = APIRouter()
 
 uow = UnitOfWork()
 orchestrator_repo = OrchestrationRepository(uow)
 orchestration_service = InterviewOrchestrationService()
 log = init_logger("orchestrator-service")
+
+INTERVIEW_NOT_FOUND = "Interview not found"
 
 
 # Request/Response Models
@@ -39,11 +44,11 @@ def health():
     return create_response({
         "service": "orchestration-service",
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     })
 
 @router.get("/interviews/start/{interview_id}")
-async def start_interview(interview_id: UUID):
+async def start_interview(interview_id: UUID): # nosonar
     """
     Start interview flow based on interview ID
     
@@ -63,7 +68,7 @@ async def start_interview(interview_id: UUID):
         # Step 1: Get interview data
         interview = orchestrator_repo.get_interview_by_id(str(interview_id))
         if not interview:
-            raise HTTPException(status_code=404, detail="Interview not found")
+            raise HTTPException(status_code=404, detail=INTERVIEW_NOT_FOUND)
         
         candidate_id = interview.get("candidate_id")
         if not candidate_id:
@@ -106,7 +111,6 @@ async def start_interview(interview_id: UUID):
         text_service_session_id = session_data.get("session_id")
         coding_question = session_data.get("coding_question")
         first_question = session_data.get("first_question", "Tell me about yourself and your experience with this role.")
-        coding_question = session_data.get("coding_question")
         
         # Store text-service session_id in interview settings for later use
         try:
@@ -119,12 +123,8 @@ async def start_interview(interview_id: UUID):
                     settings["resume_data"] = resume_data  # Store for follow-up questions
                     if coding_question:
                         settings["coding_question"] = coding_question
-                    # Persist coding question into interview settings when present
-                    if coding_question:
-                        settings["coding_question"] = coding_question
 
-                    from sqlalchemy import update
-                    from repositories.orchestration_repository import interviews_table
+
 
                     stmt = (
                         update(interviews_table)
@@ -132,7 +132,7 @@ async def start_interview(interview_id: UUID):
                         .values(
                             settings=settings,
                             status="in_progress",
-                            updated_at=datetime.utcnow()
+                            updated_at=datetime.now(timezone.utc)
                         )
                     )
                     orchestrator_repo.session.execute(stmt)
@@ -210,7 +210,7 @@ async def get_next_question(interview_id: str, request: NextQuestionRequest):
         # Get interview data
         interview = orchestrator_repo.get_interview_by_id(interview_id)
         if not interview:
-            raise HTTPException(status_code=404, detail="Interview not found")
+            raise HTTPException(status_code=404, detail=INTERVIEW_NOT_FOUND)
         
         # Get text-service session_id from interview settings
         settings = interview.get("settings") or {}
@@ -318,7 +318,7 @@ async def submit_code(interview_id: str, body: SubmitCodeRequest):
     try:
         interview = orchestrator_repo.get_interview_by_id(interview_id)
         if not interview:
-            raise HTTPException(status_code=404, detail="Interview not found")
+            raise HTTPException(status_code=404, detail=INTERVIEW_NOT_FOUND)
 
         settings = interview.get("settings") or {}
         coding_q = settings.get("coding_question")
@@ -347,14 +347,13 @@ async def submit_code(interview_id: str, body: SubmitCodeRequest):
         # Persist evaluation in interview settings (append results)
         try:
             settings.setdefault("coding_attempts", [])
-            settings["coding_attempts"].append({"timestamp": datetime.utcnow().isoformat(), "result": result})
+            settings["coding_attempts"].append({"timestamp": datetime.now(timezone.utc).isoformat(), "result": result})
             # update DB
-            from repositories.orchestration_repository import interviews_table
-            from sqlalchemy import update
+            # update DB
             stmt = (
                 update(interviews_table)
                 .where(interviews_table.c.id == interview_id)
-                .values(settings=settings, updated_at=datetime.utcnow())
+                .values(settings=settings, updated_at=datetime.now(timezone.utc))
             )
             orchestrator_repo.session.execute(stmt)
             orchestrator_repo.session.commit()
@@ -381,7 +380,7 @@ async def get_interview_summary(interview_id: str):
     try:
         interview = orchestrator_repo.get_interview_by_id(interview_id)
         if not interview:
-            raise HTTPException(status_code=404, detail="Interview not found")
+            raise HTTPException(status_code=404, detail=INTERVIEW_NOT_FOUND)
         
         session_id = interview_id
         summary = await orchestration_service.get_interview_summary(session_id)
@@ -396,7 +395,7 @@ async def get_interview_summary(interview_id: str):
 
 
 @router.post("/interviews/trigger-analyses/{interview_id}")
-async def trigger_interview_analyses(interview_id: str):
+async def trigger_interview_analyses(interview_id: str): # nosonar
     """
     Trigger all analysis services (audio, video, text) for a completed interview
     
@@ -423,7 +422,7 @@ async def trigger_interview_analyses(interview_id: str):
         # Get interview data
         interview = orchestrator_repo.get_interview_by_id(interview_id_str)
         if not interview:
-            raise HTTPException(status_code=404, detail="Interview not found")
+            raise HTTPException(status_code=404, detail=INTERVIEW_NOT_FOUND)
         
         # Get text-service session_id from interview settings
         settings = interview.get("settings") or {}

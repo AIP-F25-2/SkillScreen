@@ -15,14 +15,15 @@ import { getInterviewToken } from '@/lib/interviewToken';
 interface ModernInterviewScreenProps {
   participantName: string;
   fromToken?: boolean;
+  mode?: 'chat' | 'audio' | 'video';
 }
 
-export default function ModernInterviewScreen({ participantName, fromToken = false }: ModernInterviewScreenProps) {
+export default function ModernInterviewScreen({ participantName, fromToken = false, mode = 'video' }: ModernInterviewScreenProps) {
   const router = useRouter();
   const { user, getToken } = useAuth();
   const [isCodeEditorOpen, setIsCodeEditorOpen] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [isVideoOn, setIsVideoOn] = useState(true);
+  const [isVideoOn, setIsVideoOn] = useState(mode === 'video');
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -39,8 +40,8 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
 
   // Initialize Speech Recognition
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (typeof globalThis !== 'undefined') {
+      const SpeechRecognition = (globalThis as any).SpeechRecognition || (globalThis as any).webkitSpeechRecognition;
       if (SpeechRecognition) {
         const recognition = new SpeechRecognition();
         recognition.continuous = true;
@@ -100,9 +101,9 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
   const toggleScreenShare = () => setIsScreenSharing(!isScreenSharing);
 
   const speakQuestion = (text: string) => {
-    if ('speechSynthesis' in window) {
+    if ('speechSynthesis' in globalThis) {
       // Cancel any ongoing speech
-      window.speechSynthesis.cancel();
+      globalThis.speechSynthesis.cancel();
 
       const utterance = new SpeechSynthesisUtterance(text);
       // Optional: Select a specific voice if desired, or let browser pick default
@@ -111,7 +112,7 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
 
       utterance.rate = 1.0;
       utterance.pitch = 1.0;
-      window.speechSynthesis.speak(utterance);
+      globalThis.speechSynthesis.speak(utterance);
     }
   };
 
@@ -137,10 +138,10 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
       }
     };
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
+    globalThis.addEventListener('beforeunload', handleBeforeUnload);
 
     return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
+      globalThis.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, [isRecording]);
 
@@ -206,8 +207,8 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
     return () => {
       isActive = false;
       cleanupRecording();
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
+      if ('speechSynthesis' in globalThis) {
+        globalThis.speechSynthesis.cancel();
       }
     };
   }, [fromToken]); // Run once on mount (dependency on fromToken is stable)
@@ -699,10 +700,23 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
                     {/* Fallback when no video stream */}
                     {!isRecording && (
                       <div className="absolute inset-0 w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800/50 to-gray-900/50">
-                        <div className="w-32 h-32 rounded-full bg-gray-700/50 flex items-center justify-center">
-                          <svg className="w-16 h-16 text-white/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                          </svg>
+                        <div className="flex flex-col items-center gap-4">
+                          <div className="w-32 h-32 rounded-full bg-gray-700/50 flex items-center justify-center">
+                            {mode === 'audio' ? (
+                              <Mic className="w-16 h-16 text-white/50" />
+                            ) : mode === 'chat' ? (
+                              <MessageSquare className="w-16 h-16 text-white/50" />
+                            ) : (
+                              <svg className="w-16 h-16 text-white/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                              </svg>
+                            )}
+                          </div>
+                          {mode !== 'video' && (
+                            <p className="text-white/60 font-medium">
+                              {mode === 'audio' ? 'Audio Only Interview' : 'Chat Interview'}
+                            </p>
+                          )}
                         </div>
                       </div>
                     )}
@@ -784,8 +798,8 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
 
           <button
             onClick={toggleVideo}
-            className={`p-4 rounded-xl transition-all ${isVideoOn ? 'hover:bg-white/10' : 'bg-red-500/20 hover:bg-red-500/30'
-              }`}
+            disabled={mode !== 'video'}
+            className={`p-4 rounded-xl transition-all ${isVideoOn ? 'hover:bg-white/10' : 'bg-red-500/20 hover:bg-red-500/30'} ${mode !== 'video' ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             {isVideoOn ? <Video className="w-6 h-6 text-white" /> : <VideoOff className="w-6 h-6 text-white" />}
           </button>

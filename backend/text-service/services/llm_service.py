@@ -174,7 +174,7 @@ class EnhancedLLMService:
             )
             
             # Try LLMs in priority order with fallback
-            response = await self._try_llm_generation(context_prompt, question_number, question_type, previous_questions, previous_responses)
+            response = await self._try_llm_generation(context_prompt, question_number, question_type, previous_questions)
             if response:
                 return response
             
@@ -189,7 +189,7 @@ class EnhancedLLMService:
 
     async def _try_llm_generation(
         self, prompt: str, question_number: int, question_type: str,
-        previous_questions: List[str], previous_responses: List[str]
+        previous_questions: List[str]
     ) -> Optional[str]:
         responses = []
         used_llms = []
@@ -223,7 +223,7 @@ class EnhancedLLMService:
         # Bias and hallucination mitigation
         if len(responses) > 1:
             log_info(f"[BIAS_MITIGATION] Comparing {len(responses)} responses from {', '.join(used_llms)}")
-            final_response = await self._mitigate_bias_and_hallucination(responses, question_type)
+            final_response = self._mitigate_bias_and_hallucination(responses)
             if final_response:
                 return final_response
         
@@ -247,7 +247,7 @@ class EnhancedLLMService:
         
         if enhanced_question:
             if previous_questions and enhanced_question in previous_questions:
-                log_warning(f"[LLM FALLBACK] Generated duplicate question, regenerating...")
+                log_warning("[LLM FALLBACK] Generated duplicate question, regenerating...")
                 enhanced_question = await self._generate_enhanced_mock_question(
                     question_type, candidate_context, job_context, question_number + 1, previous_questions, previous_responses
                 )
@@ -390,17 +390,16 @@ class EnhancedLLMService:
         
         return response
     
-    async def _mitigate_bias_and_hallucination(
+    def _mitigate_bias_and_hallucination(
         self, 
-        responses: List[Tuple[str, str]], 
-        question_type: str
+        responses: List[Tuple[str, str]]
     ) -> Optional[str]:
         """Compare responses from multiple LLMs to mitigate bias and hallucination"""
         if len(responses) < 2:
             return responses[0][1] if responses else None
         
         # Extract response texts
-        response_texts = [r[1] for r in responses]
+        # response_texts = [r[1] for r in responses]
         
         # Simple consensus: find the most common key phrases
         # For now, use the longest, most detailed response that doesn't contradict others
@@ -683,7 +682,7 @@ Return only the question text, no additional formatting or explanations.
             log_error(f"[ERROR] Enhanced mock question generation error: {e}")
             return self._get_fallback_question(question_type, question_number)
 
-    def _get_mock_questions_for_type(
+    def _get_mock_questions_for_type( # nosonar
         self, question_type: str, candidate_context: Dict[str, Any], 
         job_context: Dict[str, Any], industry_trends: str
     ) -> List[str]:
@@ -729,10 +728,10 @@ Return only the question text, no additional formatting or explanations.
         elif question_type == 'practical':
             return [
                 f"Can you walk me through a real project from your resume where you used {', '.join(candidate_skills[:2]) if candidate_skills else 'your technical skills'}?",
-                f"Describe a challenging technical problem you solved recently and the approach you took.",
+                "Describe a challenging technical problem you solved recently and the approach you took.",
                 f"Based on your {candidate_experience} years of experience, can you share an example of how you've applied {', '.join(job_skills[:2]) if job_skills else 'relevant skills'} in a project?",
                 f"Tell me about a project where you had to make a critical technical decision. What was your thought process?",
-                f"Can you describe a time when you had to optimize a system or process? What was the outcome?"
+                "Can you describe a time when you had to optimize a system or process? What was the outcome?"
             ]
         elif question_type == 'advanced':
             trends_context = f"Given the current trends in {industry_trends}" if industry_trends and industry_trends != "technology" else "Given recent developments"

@@ -103,10 +103,9 @@ class BiasDetectionService:
                 'error': str(e)
             }
     
-    async def detect_bias_in_questions(
+    async def detect_bias_in_questions( # nosonar
         self,
         question: str,
-        job_id: str,
         db
     ) -> Dict:
         """Detect bias in generated questions"""
@@ -184,7 +183,7 @@ class BiasDetectionService:
                 'error': str(e)
             }
     
-    async def _perform_statistical_tests(self) -> Dict:
+    async def _perform_statistical_tests(self) -> Dict: # nosonar
         """Perform statistical tests for bias detection"""
         try:
             if len(self.score_distributions) < 2:
@@ -257,7 +256,7 @@ class BiasDetectionService:
             log_error(f"Error performing statistical tests: {e}")
             return {}
     
-    async def _check_demographic_parity(self) -> Dict:
+    async def _check_demographic_parity(self) -> Dict: # nosonar
         """Check demographic parity (equal pass rates)"""
         try:
             if len(self.score_distributions) < 2:
@@ -301,7 +300,7 @@ class BiasDetectionService:
             log_error(f"Error checking demographic parity: {e}")
             return {}
     
-    async def _check_equal_opportunity(self) -> Dict:
+    async def _check_equal_opportunity(self) -> Dict: # nosonar
         """Check equal opportunity (equal true positive rates)"""
         try:
             if len(self.score_distributions) < 2:

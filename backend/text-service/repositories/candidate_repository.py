@@ -55,7 +55,7 @@ class CandidateRepository(BaseRepository):
         result = self.session.execute(query).scalars().all()
         return list(result)
     
-    def update(self, candidate_id: str, full_name: Optional[str] = None,
+    def update(self, candidate_id: str, full_name: Optional[str] = None, # nosonar
                email: Optional[str] = None, phone: Optional[str] = None,
                location: Optional[str] = None, resume_url: Optional[str] = None,
                skills: Optional[List[str]] = None, experience: Optional[Dict] = None,

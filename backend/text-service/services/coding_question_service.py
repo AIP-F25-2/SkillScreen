@@ -86,17 +86,16 @@ class CodingQuestionService:
                 raise ValueError(f"Interview {interview_id} not found")
             
             # Create or get coding question in database
-            coding_question = await self._create_or_get_coding_question(
+            coding_question = self._create_or_get_coding_question(
                 leetcode_question=leetcode_question,
                 organization_id=str(interview.organization_id),
                 db=db
             )
             
             # Create coding session
-            coding_session = await self._create_coding_session(
+            coding_session = self._create_coding_session(
                 interview_id=interview_id,
                 question_id=str(coding_question.id),
-                time_limit_minutes=self.time_limits.get(difficulty, 30),
                 db=db
             )
             
@@ -121,7 +120,7 @@ class CodingQuestionService:
             log_error(f"Error generating coding question: {e}")
             raise
     
-    async def _create_or_get_coding_question(
+    def _create_or_get_coding_question(
         self,
         leetcode_question: Dict,
         organization_id: str,
@@ -168,11 +167,10 @@ class CodingQuestionService:
             log_error(f"Error creating coding question: {e}")
             raise
     
-    async def _create_coding_session(
+    def _create_coding_session(
         self,
         interview_id: str,
         question_id: str,
-        time_limit_minutes: int,
         db
     ) -> CodingSession:
         """Create a new coding session"""
@@ -281,7 +279,7 @@ class CodingQuestionService:
                 'error': str(e)
             }
     
-    async def get_coding_session_status(
+    async def get_coding_session_status( # nosonar
         self,
         session_id: str,
         db

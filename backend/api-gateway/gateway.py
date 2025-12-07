@@ -14,53 +14,30 @@ SECRET_KEY = os.getenv("SECRET_KEY", "supersecret")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 PORT = int(os.getenv("PORT", "5000"))
 
-app = FastAPI(title="API Gateway")
-
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for development
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# RBAC rules: endpoint prefix → allowed roles
-RBAC_RULES = {
-    "/user": ["admin", "user"],  # only admins can access user service
-    "/auth": ["admin", "user"],  # both admin and user can access auth service
-    "/assessment": ["admin", "user"],  # both admin and user can access assessment
-    "/coding": ["admin", "user"],  # only normal users can access coding
-    "/text-service": ["admin", "user"],  # both admin and user can access text service
-    "/audio-ai": ["admin", "user"],  # both admin and user can access audio AI
-    "/video-ai": ["admin", "user"],  # both admin and user can access video AI
-    "/text-ai": ["admin", "user"],  # both admin and user can access text AI
-    "/interview": ["admin", "user"],  # both admin and user can access interview
-    "/media": ["admin", "user"],  # both admin and user can access media
-    "/notification": ["admin", "user"],  # both admin and user can access notification
-    "/logger": ["admin", "user"],  # only admins can access logger service
-    "/sso": ["admin", "user"],  # both admin and user can access SSO
-    "/orchestration": ["admin", "user"]  # both admin and user can access SSO
-}
-
-# Internal Docker service URLs - HTTP is acceptable for internal container communication
-# In production, these can be configured to use HTTPS if needed
-# Security Note: These URLs are internal to Docker network and not exposed externally
+# Define SERVICE_MAP for microservice URLs
 SERVICE_MAP = {
+    "audio-ai": os.getenv("AUDIO_AI_SERVICE_URL", "http://audio-ai-service:8080"),
+    "interview": os.getenv("INTERVIEW_SERVICE_URL", "http://interview-service:8080"),
+    "auth": os.getenv("SSO_SERVICE_URL", "http://sso-service:8080"),
     "user": os.getenv("USER_SERVICE_URL", "http://user-service:8080"),
-    "auth": os.getenv("AUTH_SERVICE_URL", "http://sso-service:8080"),
     "assessment": os.getenv("ASSESSMENT_SERVICE_URL", "http://assessment-service:8080"),
     "coding": os.getenv("CODING_SERVICE_URL", "http://coding-service:8080"),
+    "media": os.getenv("MEDIA_SERVICE_URL", "http://media-service:8080"),
     "text-service": os.getenv("TEXT_SERVICE_URL", "http://text-service:8080"),
-    "audio-ai": os.getenv("AUDIO_AI_SERVICE_URL", "http://audio-ai-service:8080"),
+    "orchestration": os.getenv("ORCHESTRATION_SERVICE_URL", "http://orchestration-service:8080"),
+    "notification": os.getenv("NOTIFICATION_SERVICE_URL", "http://notification-service:8080"),
     "video-ai": os.getenv("VIDEO_AI_SERVICE_URL", "http://video-ai-service:8080"),
     "text-ai": os.getenv("TEXT_AI_SERVICE_URL", "http://text-ai-service:8080"),
-    "interview": os.getenv("INTERVIEW_SERVICE_URL", "http://localhost:8003"),
-    "media": os.getenv("MEDIA_SERVICE_URL", "http://media-service:8080"),
-    "notification": os.getenv("NOTIFICATION_SERVICE_URL", "http://notification-service:8080"),
     "sso": os.getenv("SSO_SERVICE_URL", "http://sso-service:8080"),
-    "orchestration": os.getenv("ORCHESTRATION_SERVICE_URL", "http://orchestration-service:8080")
 }
+
+# RBAC Rules - Define protected routes and allowed roles
+RBAC_RULES = {
+    # Example: "/admin": ["admin"],
+}
+
+app = FastAPI(title="API Gateway")
+
 
 # Middleware for JWT validation and RBAC
 async def verify_jwt(request: Request, call_next):
@@ -111,10 +88,23 @@ async def verify_jwt(request: Request, call_next):
 
         return await call_next(request)
     except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"Error processing request: {e}")
         return JSONResponse(status_code=500, content={"detail": str(e)})
 
 
+
 app.add_middleware(BaseHTTPMiddleware, dispatch=verify_jwt)
+
+# CORS middleware - Add LAST so it executes FIRST (outermost layer)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for development
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Proxy function
 async def forward_request(service_url: str, path: str, request: Request) -> Response:

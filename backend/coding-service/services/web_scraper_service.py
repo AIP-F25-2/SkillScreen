@@ -1,7 +1,7 @@
 """
 Web Scraper Service for Question Inspiration
 """
-import requests
+import httpx
 import json
 from typing import Dict, List, Optional, Any
 import re
@@ -56,7 +56,9 @@ class WebScraperService:
             payload = {"query": query, "variables": variables}
 
             _log(f"Fetching LeetCode questions: difficulty={difficulty}, topic={topic}")
-            response = requests.post(url, json=payload, headers=self.headers, timeout=10)
+            async with httpx.AsyncClient() as client:
+                response = await client.post(url, json=payload, headers=self.headers, timeout=10.0)
+            
             if response.status_code == 200:
                 data = response.json()
                 # Check for GraphQL errors
@@ -72,17 +74,17 @@ class WebScraperService:
             else:
                 _log(f"LeetCode API error: HTTP {response.status_code}, Response: {response.text[:200]}")
                 return []
-        except requests.exceptions.Timeout:
-            _log(f"LeetCode API timeout: Request took longer than 10 seconds")
+        except httpx.TimeoutException:
+            _log("LeetCode API timeout: Request took longer than 10 seconds")
             return []
-        except requests.exceptions.ConnectionError as e:
+        except httpx.RequestError as e:
             _log(f"LeetCode API connection error: {str(e)}")
             return []
         except Exception as e:
             _log(f"Error fetching LeetCode questions: {type(e).__name__}: {str(e)}")
             return []
 
-    async def get_geeksforgeeks_questions(self, difficulty: str, topic: str = None) -> List[Dict[str, Any]]:
+    async def get_geeksforgeeks_questions(self, difficulty: str, topic: str = None) -> List[Dict[str, Any]]: # nosonar
         try:
             return [{"title": f"Sample {difficulty} Problem", "source": "GeeksforGeeks", "difficulty": difficulty, "topic": topic or "general"}]
         except Exception as e:
@@ -94,7 +96,9 @@ class WebScraperService:
             api_url = "https://api.stackexchange.com/2.3/questions"
             params = {"order": "desc", "sort": "votes", "tagged": ";".join(tags[:3]), "site": "stackoverflow", "pagesize": 5}
             _log(f"Fetching StackOverflow questions: tags={tags[:3]}")
-            response = requests.get(api_url, params=params, headers=self.headers, timeout=10)
+            async with httpx.AsyncClient() as client:
+                response = await client.get(api_url, params=params, headers=self.headers, timeout=10.0)
+            
             if response.status_code == 200:
                 data = response.json()
                 # Check for API errors
@@ -108,10 +112,10 @@ class WebScraperService:
             else:
                 _log(f"StackOverflow API error: HTTP {response.status_code}, Response: {response.text[:200]}")
                 return []
-        except requests.exceptions.Timeout:
-            _log(f"StackOverflow API timeout: Request took longer than 10 seconds")
+        except httpx.TimeoutException:
+            _log("StackOverflow API timeout: Request took longer than 10 seconds")
             return []
-        except requests.exceptions.ConnectionError as e:
+        except httpx.RequestError as e:
             _log(f"StackOverflow API connection error: {str(e)}")
             return []
         except Exception as e:

@@ -174,7 +174,7 @@ class MediaRepository:
         )
 
 
-    def _ensure_interview_session_exists(self, session_id: str, interview_id: str):
+    def _ensure_interview_session_exists(self, session_id: str, interview_id: str): # nosonar
         """Ensure interview_session exists in interview_sessions table. Create it if it doesn't exist."""
         import logging
         logger = logging.getLogger(__name__)
@@ -264,7 +264,7 @@ class MediaRepository:
             # Don't re-raise - let the calling code handle it
             return False
 
-    def create_recording_video(self, interview_id: str, session_id: str, expected_total: int | None = None):
+    def create_recording_video(self, interview_id: str, session_id: str, expected_total: int | None = None): # nosonar
         """Creates a new upload entry in media_files table."""
         import logging
         logger = logging.getLogger(__name__)
@@ -336,7 +336,7 @@ class MediaRepository:
         return record_id
 
 
-    def get_latest_active_record(self, interview_id, session_id):
+    def get_latest_active_record(self, interview_id, session_id): # nosonar
         """Get the latest active upload record.
         
         This method handles the case where session_id might be NULL in the database

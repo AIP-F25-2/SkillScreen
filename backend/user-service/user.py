@@ -26,6 +26,16 @@ DBFactory.init()
 
 app = FastAPI(title="User Service")
 
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(user_router)
 app.include_router(org_router)
 app.include_router(register_router)

@@ -19,8 +19,36 @@ export interface LoginRequest {
 
 export interface LoginResponse {
   access_token: string;
-  role: string;
-  expires_in: number;
+  token_type: string;
+  user: {
+    id: string;
+    email: string;
+    role: string;
+    organization_id: string;
+  };
+}
+
+export interface OnboardRequest {
+  organization: {
+    name: string;
+    domain?: string;
+    settings?: string;
+  };
+  user: {
+    email: string;
+    password: string;
+    first_name: string;
+    last_name: string;
+    role: string;
+  };
+}
+
+export interface OnboardResponse {
+  success: boolean;
+  organization_id: string;
+  user_id: string;
+  access_token: string;
+  token_type: string;
 }
 
 export interface User {
@@ -39,7 +67,7 @@ class ApiClient {
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
-  ): Promise<ApiResponse<T>> {
+  ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
 
     const defaultHeaders: Record<string, string> = {
@@ -88,37 +116,49 @@ class ApiClient {
   }
 
   // Auth endpoints
-  async login(credentials: LoginRequest): Promise<ApiResponse<LoginResponse>> {
+  async login(credentials: LoginRequest): Promise<LoginResponse> {
+    // The SSO service returns the response directly
     return this.request<LoginResponse>('/auth/login', {
       method: 'POST',
-      body: JSON.stringify(credentials),
+      body: JSON.stringify({
+        email: credentials.username,
+        password: credentials.password
+      }),
+    });
+  }
+
+  async onboard(data: OnboardRequest): Promise<OnboardResponse> {
+    // The user service returns the response directly
+    return this.request<OnboardResponse>('/user/onboard', {
+      method: 'POST',
+      body: JSON.stringify(data),
     });
   }
 
   async getAuthHealth(): Promise<ApiResponse> {
-    return this.request('/auth/health');
+    return this.request<ApiResponse>('/auth/health');
   }
 
   // User endpoints
   async getUsers(): Promise<ApiResponse<{ users: User[] }>> {
-    return this.request<{ users: User[] }>('/user/users');
+    return this.request<ApiResponse<{ users: User[] }>>('/user/users');
   }
 
   async getUserById(id: number): Promise<ApiResponse<{ user: User }>> {
-    return this.request<{ user: User }>(`/user/users/${id}`);
+    return this.request<ApiResponse<{ user: User }>>(`/user/users/${id}`);
   }
 
   async getUserHealth(): Promise<ApiResponse> {
-    return this.request('/user/health');
+    return this.request<ApiResponse>('/user/health');
   }
 
   // Assessment endpoints
   async getQuestions(): Promise<ApiResponse<{ questions: string[] }>> {
-    return this.request<{ questions: string[] }>('/assessment/questions');
+    return this.request<ApiResponse<{ questions: string[] }>>('/assessment/questions');
   }
 
   async submitAssessment(answer: any): Promise<ApiResponse<{ status: string; answer: any }>> {
-    return this.request<{ status: string; answer: any }>('/assessment/submit', {
+    return this.request<ApiResponse<{ status: string; answer: any }>>('/assessment/submit', {
       method: 'POST',
       body: JSON.stringify(answer),
     });
@@ -126,11 +166,11 @@ class ApiClient {
 
   // Coding endpoints
   async getProblems(): Promise<ApiResponse<{ problems: string[] }>> {
-    return this.request<{ problems: string[] }>('/coding/problems');
+    return this.request<ApiResponse<{ problems: string[] }>>('/coding/problems');
   }
 
   async submitSolution(solution: any): Promise<ApiResponse<{ status: string; solution: any }>> {
-    return this.request<{ status: string; solution: any }>('/coding/submit', {
+    return this.request<ApiResponse<{ status: string; solution: any }>>('/coding/submit', {
       method: 'POST',
       body: JSON.stringify(solution),
     });
@@ -199,11 +239,13 @@ class ApiClient {
     return this.request<{ interviews: any[]; count: number }>(`/media/api/interviews`);
   }
 
-  async getAllInterviews(): Promise<ApiResponse<{ interviews: any[]; count: number }>> {
+  async getAllInterviews(organizationId?: string): Promise<ApiResponse<{ interviews: any[]; count: number }>> {
+    const queryParams = organizationId ? `?organization_id=${organizationId}` : '';
+
     // Fetch from media-service and interview-service, then merge
     const [mediaRes, interviewSvcRes] = await Promise.all([
-      this.request<{ interviews: any[]; count: number }>('/media/api/interviews'),
-      this.request<{ interviews: any[]; count: number }>('/interview/api/interviews').catch(() => ({ success: true, data: { interviews: [], count: 0 }, meta: { timestamp: '', request_id: '', version: '' } } as any))
+      this.request<{ interviews: any[]; count: number }>(`/media/api/interviews${queryParams}`),
+      this.request<{ interviews: any[]; count: number }>(`/interview/api/interviews${queryParams}`).catch(() => ({ success: true, data: { interviews: [], count: 0 }, meta: { timestamp: '', request_id: '', version: '' } } as any))
     ]);
 
     const mediaList = mediaRes?.data?.interviews ?? [];
@@ -213,10 +255,21 @@ class ApiClient {
     const map = new Map<string, any>();
     [...mediaList, ...svcList].forEach((i: any) => {
       const key = i.interview_id || i.session_id || JSON.stringify(i);
-      if (!map.has(key)) map.set(key, i);
+      // If we already have this interview, merge the new data into it
+      if (map.has(key)) {
+        map.set(key, { ...map.get(key), ...i });
+      } else {
+        map.set(key, i);
+      }
     });
 
-    const merged = Array.from(map.values());
+    let merged = Array.from(map.values());
+
+    // Client-side filtering as a safety net
+    if (organizationId) {
+      merged = merged.filter(i => !i.organization_id || i.organization_id === organizationId);
+    }
+
     return { success: true, data: { interviews: merged, count: merged.length }, meta: mediaRes.meta } as ApiResponse<any>;
   }
 

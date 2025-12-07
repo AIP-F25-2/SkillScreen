@@ -14,6 +14,7 @@ export default function InterviewPage() {
   const { enableProtection } = useCheatPrevention();
   const [participantName, setParticipantName] = useState('');
   const [fromToken, setFromToken] = useState(false);
+  const mode = (searchParams?.get('mode') as 'chat' | 'audio' | 'video') || 'video';
 
   useEffect(() => {
     // Check if coming from email token
@@ -56,6 +57,7 @@ export default function InterviewPage() {
       <ModernInterviewScreen
         participantName={participantName}
         fromToken={fromToken}
+        mode={mode}
       />
     </div>
   );

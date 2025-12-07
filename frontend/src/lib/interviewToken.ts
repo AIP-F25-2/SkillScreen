@@ -11,6 +11,7 @@ export interface InterviewToken {
   candidateEmail: string;
   sessionId: string;
   interviewId: string;  // Add interview ID for proper integration
+  mode?: 'chat' | 'audio' | 'video';
   expiresAt: string;
   usedAt?: string;
 }
@@ -22,7 +23,7 @@ const TOKEN_STORAGE_KEY = 'interview_token_data';
  */
 export function storeInterviewToken(tokenData: InterviewToken): void {
   if (typeof window === 'undefined') return;
-  
+
   try {
     sessionStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(tokenData));
   } catch (error) {
@@ -35,19 +36,19 @@ export function storeInterviewToken(tokenData: InterviewToken): void {
  */
 export function getInterviewToken(): InterviewToken | null {
   if (typeof window === 'undefined') return null;
-  
+
   try {
     const stored = sessionStorage.getItem(TOKEN_STORAGE_KEY);
     if (!stored) return null;
-    
+
     const tokenData = JSON.parse(stored) as InterviewToken;
-    
+
     // Check if token is expired
     if (new Date(tokenData.expiresAt) < new Date()) {
       clearInterviewToken();
       return null;
     }
-    
+
     return tokenData;
   } catch (error) {
     console.error('Failed to get interview token:', error);
@@ -60,7 +61,7 @@ export function getInterviewToken(): InterviewToken | null {
  */
 export function clearInterviewToken(): void {
   if (typeof window === 'undefined') return;
-  
+
   try {
     sessionStorage.removeItem(TOKEN_STORAGE_KEY);
   } catch (error) {
@@ -74,7 +75,7 @@ export function clearInterviewToken(): void {
 export function markTokenAsUsed(): void {
   const tokenData = getInterviewToken();
   if (!tokenData) return;
-  
+
   tokenData.usedAt = new Date().toISOString();
   storeInterviewToken(tokenData);
 }

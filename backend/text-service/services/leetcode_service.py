@@ -3,7 +3,7 @@ LeetCode Integration Service for SkillScreen
 Fetches coding questions from LeetCode based on job requirements and candidate skills
 """
 
-import requests
+import httpx
 import json
 from typing import Dict, List, Optional, Any
 from datetime import datetime
@@ -116,15 +116,16 @@ class LeetCodeService:
             
             variables = {"titleSlug": slug}
             
-            response = requests.post(
-                self.graphql_endpoint,
-                json={"query": query, "variables": variables},
-                headers={
-                    "Content-Type": "application/json",
-                    "User-Agent": "Mozilla/5.0"
-                },
-                timeout=10
-            )
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    self.graphql_endpoint,
+                    json={"query": query, "variables": variables},
+                    headers={
+                        "Content-Type": "application/json",
+                        "User-Agent": "Mozilla/5.0"
+                    },
+                    timeout=10.0
+                )
             
             if response.status_code == 200:
                 data = response.json()
@@ -144,7 +145,7 @@ class LeetCodeService:
         difficulty: Optional[str] = None,
         tags: Optional[List[str]] = None,
         limit: int = 10
-    ) -> List[Dict[str, Any]]:
+    ) -> List[Dict[str, Any]]: # nosonar
         """Search for LeetCode questions by difficulty and tags"""
         try:
             # LeetCode doesn't have a public search API, so we'll use a curated list
@@ -417,7 +418,7 @@ class LeetCodeService:
         # Limit results
         return curated[:limit]
     
-    async def _get_fallback_question(
+    async def _get_fallback_question( # nosonar
         self,
         difficulty: str,
         question_type: str
