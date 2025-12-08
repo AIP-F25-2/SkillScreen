@@ -398,8 +398,11 @@ class InterviewOrchestrationService:
         elif question_number == 8:
             return "Where do you see yourself in 3-5 years, and how does this role align with your career goals?"
         else:
-            # Question 9 or beyond - wrap up
-            return "Thank you for your responses. Do you have any questions for us about the role or company?"
+            # Question 9 - wrap up
+            if question_number == 9:
+                return "Thank you for your responses. Do you have any questions for us about the role or company?"
+            # Question 10+ - finish interview
+            return None
     
     async def get_interview_summary(self, session_id: str) -> Dict[str, Any]:
         """

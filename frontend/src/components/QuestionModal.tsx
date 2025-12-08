@@ -35,13 +35,13 @@ export default function QuestionModal({
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.9, opacity: 0, y: 20 }}
             transition={{ type: "spring", duration: 0.5 }}
-            className="relative bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden border border-white/10"
+            className="relative bg-gradient-to-br from-primary-300 via-primary-200 to-primary-300 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden border border-white/10"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="relative p-6 border-b border-white/10 bg-gradient-to-r from-purple-900/20 to-blue-900/20">
+            <div className="relative p-6 border-b border-white/10 bg-gradient-to-r from-primary-100/10 to-primary-200/10">
               <div className="flex items-center gap-3 mb-3">
-                <div className="px-3 py-1 rounded-full bg-blue-500/20 text-blue-400 text-sm font-medium">
+                <div className="px-3 py-1 rounded-full bg-primary-100/20 text-primary-50 text-sm font-medium">
                   Live Interview
                 </div>
               </div>
@@ -72,7 +72,7 @@ export default function QuestionModal({
                 <button
                   onClick={onNext}
                   disabled={isLoading}
-                  className="flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-white font-medium shadow-lg shadow-blue-500/25"
+                  className="flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-primary-100 to-primary-200 hover:from-primary-100/90 hover:to-primary-200/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-white font-medium shadow-lg shadow-primary-200/25"
                 >
                   {isLoading ? (
                     <>

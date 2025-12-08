@@ -697,6 +697,22 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
                       muted
                       className="w-full h-full object-cover"
                     />
+
+                    {/* Live Transcript Overlay */}
+                    {transcript && (
+                      <div className="absolute bottom-20 left-0 right-0 flex justify-center px-4 pointer-events-none">
+                        <div className="bg-black/60 backdrop-blur-md px-6 py-3 rounded-2xl max-w-3xl text-center border border-white/10 shadow-lg">
+                          <p className="text-white/90 text-lg font-medium leading-relaxed">
+                            {transcript.split(' ').slice(-15).join(' ')}
+                            <span className="animate-pulse">|</span>
+                          </p>
+                          <p className="text-white/40 text-xs mt-1 uppercase tracking-wider font-semibold">
+                            Live Transcript
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Fallback when no video stream */}
                     {!isRecording && (
                       <div className="absolute inset-0 w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800/50 to-gray-900/50">
