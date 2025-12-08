@@ -187,6 +187,17 @@ async def get_all_interviews(organization_id: str = None, limit: int = 100, offs
                             interview_dict['candidate_email'] = candidate.email
                     except Exception as e:
                         logger.warning(f"Could not fetch candidate info for interview {interview.id}: {e}")
+
+                # Try to get job position info if job_position_id exists
+                if interview.job_position_id:
+                    try:
+                        from repository.job_position_repository import JobPositionRepository
+                        job_repo = JobPositionRepository(session)
+                        job_pos = job_repo.get_job_position_by_id(str(interview.job_position_id))
+                        if job_pos:
+                            interview_dict['job_position_title'] = job_pos.title
+                    except Exception as e:
+                        logger.warning(f"Could not fetch job position info for interview {interview.id}: {e}")
                 
                 interviews_data.append(interview_dict)
             
@@ -225,6 +236,17 @@ async def get_interview(interview_id: str):
                         interview_dict['candidate_email'] = candidate.email
                 except Exception as e:
                     logger.warning(f"Could not fetch candidate info: {e}")
+
+            # Try to get job position info if job_position_id exists
+            if interview.job_position_id:
+                try:
+                    from repository.job_position_repository import JobPositionRepository
+                    job_repo = JobPositionRepository(session)
+                    job_pos = job_repo.get_job_position_by_id(str(interview.job_position_id))
+                    if job_pos:
+                        interview_dict['job_position_title'] = job_pos.title
+                except Exception as e:
+                    logger.warning(f"Could not fetch job position info: {e}")
             
             return create_response(interview_dict)
         finally:
@@ -472,6 +494,7 @@ async def send_invitation(request: Request):
             session_id=data['session_id'],
             recruiter_name=data.get('recruiter_name'),
             company_name=data.get('company_name'),
+            job_title=data.get('job_title'),
             expires_in_hours=data.get('expires_in_hours', 48)
         )
         

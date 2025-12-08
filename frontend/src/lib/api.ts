@@ -602,6 +602,7 @@ class ApiClient {
     candidate_id: string;
     session_id: string;
     job_position_id?: string;
+    job_title?: string;
     recruiter_name?: string;
     company_name?: string;
     expires_in_hours?: number;
@@ -659,6 +660,19 @@ class ApiClient {
   async deleteJobPosition(id: string): Promise<ApiResponse<any>> {
     return this.request<any>(`/interview/job-positions/${id}`, {
       method: 'DELETE',
+    });
+  }
+  async runCode(data: { languageId: number; sourceCode: string; testCases: any[] }) {
+    return this.request('/coding/run', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async evaluateCode(data: { languageId: number; sourceCode: string; testCases: any[] }) {
+    return this.request('/coding/evaluate', {
+      method: 'POST',
+      body: JSON.stringify(data),
     });
   }
 }

@@ -334,9 +334,13 @@ export function FileUploadDemo({ onUploadSuccess }: FileUploadDemoProps) {
             organization_id: organizationId
           };
 
-          // Add job_position_id if selected
+          // Add job_position_id and job_title if selected
           if (candidate.selectedJobPositionId) {
             invitationData.job_position_id = candidate.selectedJobPositionId;
+            const selectedPosition = jobPositions.find(p => p.id === candidate.selectedJobPositionId);
+            if (selectedPosition) {
+              invitationData.job_title = selectedPosition.title;
+            }
           }
 
           const emailResponse = await apiClient.sendInterviewInvitation(invitationData);

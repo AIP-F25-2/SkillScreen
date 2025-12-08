@@ -7,6 +7,7 @@ import { apiClient } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { FileText, User } from 'lucide-react';
 
+
 interface Candidate {
   id: string;
   name: string;
@@ -289,11 +290,8 @@ export default function RecruiterDashboard() {
   };
 
   return (
-    <div className="min-h-screen p-6">
-      {/* Breathing circle background */}
-      <div className="breathing-circle"></div>
-
-      <div className="relative z-10 max-w-7xl mx-auto">
+    <div className="relative">
+      <div className="relative z-10">
 
         {/* Header */}
         <div className="mb-8">
@@ -302,21 +300,23 @@ export default function RecruiterDashboard() {
         </div>
         {/* Stats Overview */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-primary-200/20 backdrop-blur-sm rounded-xl p-6 border border-primary-200/30">
-            <div className="text-3xl font-bold text-white mb-2">24</div>
+          <div className="bg-white/5 backdrop-blur-md rounded-xl p-6 border border-white/10 hover:bg-white/10 transition-colors">
+            <div className="text-3xl font-bold text-white mb-2">{interviews.length}</div>
+            <div className="text-primary-100">Total Interviews</div>
+          </div>
+          <div className="bg-white/5 backdrop-blur-md rounded-xl p-6 border border-white/10 hover:bg-white/10 transition-colors">
+            <div className="text-3xl font-bold text-white mb-2">{jobTemplates.length}</div>
+            <div className="text-primary-100">Active Jobs</div>
+          </div>
+          <div className="bg-white/5 backdrop-blur-md rounded-xl p-6 border border-white/10 hover:bg-white/10 transition-colors">
+            <div className="text-3xl font-bold text-white mb-2">{candidates.length}</div>
             <div className="text-primary-100">Total Candidates</div>
           </div>
-          <div className="bg-primary-200/20 backdrop-blur-sm rounded-xl p-6 border border-primary-200/30">
-            <div className="text-3xl font-bold text-white mb-2">8</div>
-            <div className="text-primary-100">Interviews Today</div>
-          </div>
-          <div className="bg-primary-200/20 backdrop-blur-sm rounded-xl p-6 border border-primary-200/30">
-            <div className="text-3xl font-bold text-white mb-2">12</div>
-            <div className="text-primary-100">Pending Reviews</div>
-          </div>
-          <div className="bg-primary-200/20 backdrop-blur-sm rounded-xl p-6 border border-primary-200/30">
-            <div className="text-3xl font-bold text-white mb-2">85%</div>
-            <div className="text-primary-100">Avg. Score</div>
+          <div className="bg-white/5 backdrop-blur-md rounded-xl p-6 border border-white/10 hover:bg-white/10 transition-colors">
+            <div className="text-3xl font-bold text-white mb-2">
+              {interviews.filter(i => i.status === 'completed').length}
+            </div>
+            <div className="text-primary-100">Completed Interviews</div>
           </div>
         </div>
 
@@ -346,7 +346,7 @@ export default function RecruiterDashboard() {
         {/* Tab Content */}
         {/* Interviews Tab */}
         {activeTab === 'interviews' && (
-          <div className="bg-primary-200/20 backdrop-blur-sm rounded-xl p-6 border border-primary-200/30">
+          <div className="bg-white/5 backdrop-blur-md rounded-xl p-6 border border-white/10">
             {/* Document Upload */}
             <div className="mb-8">
               <FileUploadDemo onUploadSuccess={refreshData} />
@@ -378,10 +378,10 @@ export default function RecruiterDashboard() {
                   <thead>
                     <tr className="border-b border-white/10">
                       <th className="text-left py-3 px-4 text-white/80 font-medium">Candidate</th>
-                      <th className="text-left py-3 px-4 text-white/80 font-medium">User</th>
+                      <th className="text-left py-3 px-4 text-white/80 font-medium">Email</th>
+                      <th className="text-left py-3 px-4 text-white/80 font-medium">Job Position</th>
+                      <th className="text-left py-3 px-4 text-white/80 font-medium">Mode</th>
                       <th className="text-left py-3 px-4 text-white/80 font-medium">Date</th>
-                      <th className="text-left py-3 px-4 text-white/80 font-medium">Duration</th>
-                      <th className="text-left py-3 px-4 text-white/80 font-medium">Words</th>
                       <th className="text-left py-3 px-4 text-white/80 font-medium">Status</th>
                       <th className="text-left py-3 px-4 text-white/80 font-medium">Actions</th>
                     </tr>
@@ -397,16 +397,10 @@ export default function RecruiterDashboard() {
                             <span className="text-white font-medium">{interview.candidate_name || interview.candidate_id}</span>
                           </div>
                         </td>
-                        <td className="py-4 px-4 text-white/80">{interview.assigned_user || interview.user_id || '-'}</td>
+                        <td className="py-4 px-4 text-white/80">{interview.candidate_email || '-'}</td>
+                        <td className="py-4 px-4 text-white/80">{interview.job_position_title || interview.job_position || '-'}</td>
+                        <td className="py-4 px-4 text-white/80 capitalize">{interview.mode || 'Chat'}</td>
                         <td className="py-4 px-4 text-white/80">{formatDate(interview.created_at || interview.scheduled_at)}</td>
-                        <td className="py-4 px-4 text-white/80">
-                          {interview.transcript?.duration_seconds
-                            ? `${Math.floor(interview.transcript.duration_seconds / 60)}m`
-                            : '-'}
-                        </td>
-                        <td className="py-4 px-4 text-white/80">
-                          {interview.transcript?.word_count || '-'}
-                        </td>
                         <td className="py-4 px-4">
                           <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(interview.status)}`}>
                             {interview.status}
@@ -431,7 +425,7 @@ export default function RecruiterDashboard() {
 
         {/* Candidates Tab */}
         {activeTab === 'candidates' && (
-          <div className="bg-primary-200/20 backdrop-blur-sm rounded-xl p-6 border border-primary-200/30">
+          <div className="bg-white/5 backdrop-blur-md rounded-xl p-6 border border-white/10">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-semibold text-white">Candidate Pipeline</h2>
             </div>
@@ -486,7 +480,7 @@ export default function RecruiterDashboard() {
         )}
 
         {activeTab === 'jobs' && (
-          <div className="bg-primary-200/20 backdrop-blur-sm rounded-xl p-6 border border-primary-200/30">
+          <div className="bg-white/5 backdrop-blur-md rounded-xl p-6 border border-white/10">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-semibold text-white">Job Description Management</h2>
             </div>
@@ -642,7 +636,7 @@ export default function RecruiterDashboard() {
 
         {activeTab === 'analytics' && (
           <div className="grid grid-cols-1 lg:grid-cols-1 gap-8">
-            <div className="bg-primary-200/20 backdrop-blur-sm rounded-xl p-6 border border-primary-200/30">
+            <div className="bg-white/5 backdrop-blur-md rounded-xl p-6 border border-white/10">
               <h3 className="text-xl font-semibold text-white mb-6">Interview Performance</h3>
               <div className="space-y-4">
                 <div>

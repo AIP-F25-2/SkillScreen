@@ -321,6 +321,30 @@ class InterviewOrchestrationService:
             Generated follow-up question string, or None if interview completed
         """
         try:
+            # Check if this should be a coding question (e.g., Q9 out of 10)
+            # We assume a standard 10-question interview for now
+            TOTAL_QUESTIONS = 10
+            if question_number == TOTAL_QUESTIONS - 1:
+                logger.info(f"Question {question_number} is the penultimate question. Checking for coding question...")
+                coding_question = await self._generate_coding_question_if_needed(
+                    candidate_data={}, # We might need to fetch this if not available, but for now pass empty or rely on resume_data
+                    resume_data=resume_data or {},
+                    job_data=None, # We don't have job_data here easily without fetching, rely on resume
+                    interview_id=interview_id
+                )
+                
+                if coding_question:
+                    logger.info(f"Injecting coding question for interview {interview_id}")
+                    # Return structured data for coding question
+                    # We need to ensure the controller and frontend can handle this JSON string or dict
+                    # For now, we'll return a special marker or JSON string that the frontend can parse
+                    import json
+                    return json.dumps({
+                        "type": "coding",
+                        "data": coding_question,
+                        "text": "Please solve the following coding challenge."
+                    })
+
             # If we have a valid session_id from text-service, use it
             if session_id and session_id.startswith("session_"):
                 # Submit response to text-service to get next question

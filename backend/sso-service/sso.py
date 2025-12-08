@@ -3,7 +3,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from passlib.context import CryptContext
+
 import jwt
 import psycopg2
 import os
@@ -31,33 +31,53 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 # ------------------------------------------------------------------------------
 # Password Hashing + Normalization Fix
 # ------------------------------------------------------------------------------
-pwd_context = CryptContext(
-    schemes=["bcrypt"],
-    deprecated="auto"
-)
+import bcrypt
+import hashlib
+import base64
+
+# ------------------------------------------------------------------------------
+# Password Hashing + Normalization Fix
+# ------------------------------------------------------------------------------
 
 def normalize_password(password: str) -> str:
     """
     Safely normalize password to:
     - Handle unicode
     - Fix encoding
-    - Prevent bcrypt 72-byte crash
     """
     if not isinstance(password, str):
         password = str(password)
 
-    clean = password.encode("utf-8", "ignore").decode("utf-8", "ignore")
-    return clean[:72]  # Critical fix
+    return password.encode("utf-8", "ignore").decode("utf-8", "ignore")
 
 
 def hash_password(password: str) -> str:
     password = normalize_password(password)
-    return pwd_context.hash(password)
+    
+    # Pre-hash with SHA-256 to bypass bcrypt's 72-byte limit
+    sha256_hash = hashlib.sha256(password.encode('utf-8')).digest()
+    # Encode in base64 to get a string representation safe for bcrypt
+    password_b64 = base64.b64encode(sha256_hash)
+    
+    # Generate salt and hash
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password_b64, salt)
+    
+    return hashed.decode('utf-8')
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     plain_password = normalize_password(plain_password)
-    return pwd_context.verify(plain_password, hashed_password)
+    
+    # Pre-hash with SHA-256 to match the hashing strategy
+    sha256_hash = hashlib.sha256(plain_password.encode('utf-8')).digest()
+    plain_password_b64 = base64.b64encode(sha256_hash)
+    
+    # Verify hash
+    try:
+        return bcrypt.checkpw(plain_password_b64, hashed_password.encode('utf-8'))
+    except ValueError:
+        return False
 
 
 # ------------------------------------------------------------------------------

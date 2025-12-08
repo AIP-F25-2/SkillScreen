@@ -61,6 +61,7 @@ def send_invitation():
             session_id=data['session_id'],
             recruiter_name=data.get('recruiter_name'),
             company_name=data.get('company_name'),
+            job_title=data.get('job_title'),
             expires_in_hours=data.get('expires_in_hours', 48)
         )
         

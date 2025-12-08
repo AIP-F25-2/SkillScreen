@@ -37,6 +37,7 @@ class EmailService:
         session_id: str,
         recruiter_name: Optional[str] = None,
         company_name: Optional[str] = None,
+        job_title: Optional[str] = None,
         expires_in_hours: int = 48
     ) -> dict:
         """
@@ -49,6 +50,7 @@ class EmailService:
             session_id: Interview session ID
             recruiter_name: Name of the recruiter (optional)
             company_name: Name of the company (optional)
+            job_title: Title of the job position (optional)
             expires_in_hours: Token expiration time in hours (default 48)
         
         Returns:
@@ -65,13 +67,15 @@ class EmailService:
             expires_at = datetime.utcnow() + timedelta(hours=expires_in_hours)
             
             # Prepare email content
-            subject = f"Interview Invitation for {candidate_name} - {company_name or 'SkillScreen'}"
+            job_text = f" for {job_title}" if job_title else ""
+            subject = f"Interview Invitation{job_text} - {company_name or 'SkillScreen'}"
             
             html_content = self._build_invitation_email_html(
                 candidate_name=candidate_name,
                 interview_link=interview_link,
                 recruiter_name=recruiter_name,
                 company_name=company_name,
+                job_title=job_title,
                 expires_at=expires_at,
                 original_email=None  # No longer redirecting
             )
@@ -161,6 +165,7 @@ class EmailService:
         interview_link: str,
         recruiter_name: Optional[str],
         company_name: Optional[str],
+        job_title: Optional[str],
         expires_at: datetime,
         original_email: Optional[str] = None
     ) -> str:
@@ -168,6 +173,7 @@ class EmailService:
         
         recruiter_text = f"{recruiter_name} from " if recruiter_name else ""
         company_text = company_name or "SkillScreen"
+        job_text = f" for the <strong style=\"font-weight: 600; color: #ffffff;\">{job_title}</strong> position" if job_title else ""
         
         # Add original email info if provided (for testing)
         original_email_section = ""
@@ -218,7 +224,7 @@ class EmailService:
                                     {original_email_section}
                                     
                                     <p style="margin: 0 0 24px; color: rgba(255, 255, 255, 0.82); font-size: 16px; line-height: 1.6; font-weight: 400;">
-                                        {recruiter_text}<strong style="font-weight: 600; color: #ffffff;">{company_text}</strong> has invited you to complete an AI-powered interview experience.
+                                        {recruiter_text}<strong style="font-weight: 600; color: #ffffff;">{company_text}</strong> has invited you to complete an AI-powered interview{job_text}.
                                     </p>
                                     
                                     <div style="margin: 0 0 32px; padding: 24px; background: linear-gradient(135deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02)); border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 16px;">

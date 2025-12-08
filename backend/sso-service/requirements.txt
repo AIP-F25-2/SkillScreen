@@ -3,7 +3,7 @@ uvicorn[standard]==0.24.0
 python-jose[cryptography]==3.3.0
 PyJWT==2.8.0
 python-dotenv==1.0.0
-passlib[bcrypt]==1.7.4
+
 bcrypt==4.1.2
 sqlalchemy==2.0.23
 psycopg2-binary==2.9.9
