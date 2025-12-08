@@ -171,8 +171,10 @@ async def get_all_interviews(organization_id: str = None, limit: int = 100, offs
             
             # Convert to dict format with candidate info if available
             interviews_data = []
+            logger.info(f"Fetching interviews for organization_id: {organization_id}")
             for interview in interviews:
                 interview_dict = interview.to_dict()
+                logger.info(f"Found interview: {interview.id}, org_id: {interview.organization_id}")
                 
                 # Try to get candidate info if candidate_id exists
                 if interview.candidate_id:
@@ -429,11 +431,21 @@ async def send_invitation(request: Request):
             # If not found and candidate_id looks like a temp ID, try to find by email
             if not candidate and (candidate_id.startswith('temp_') or len(candidate_id) < 36):
                 logger.info(f"Candidate ID {candidate_id} appears to be temporary, looking up by email: {candidate_email}")
-                # Try to find by email - we need organization_id for this, but we can try common org
-                # Or we can search across all orgs (less ideal but works for now)
-                # Actually, let's use the hardcoded org ID for now
-                hardcoded_org_id = "e5d2d50b-6c07-43cd-8a78-ffd7b5b377bb"
-                candidate = candidate_repo.get_candidate_by_email(hardcoded_org_id, candidate_email)
+                
+                # Use organization_id from request if available
+                req_org_id = data.get('organization_id')
+                
+                if req_org_id:
+                    candidate = candidate_repo.get_candidate_by_email(req_org_id, candidate_email)
+                else:
+                    # If no org_id provided, we can't reliably look up by email if the method requires it
+                    # But we can try to find ANY candidate with this email if the repo supports it
+                    # For now, let's log a warning if we can't find it
+                    logger.warning(f"No organization_id provided for email lookup of {candidate_email}")
+                    # Attempt to find without org_id if the method allows, or skip
+                    # Assuming get_candidate_by_email MIGHT allow None for org_id or we need a new method
+                    # For safety, let's just try with the passed org_id if it exists.
+                    pass
                 
                 if candidate:
                     actual_candidate_id = str(candidate.id)
@@ -441,7 +453,7 @@ async def send_invitation(request: Request):
             
             if not candidate:
                 logger.warning(f"Candidate {candidate_id} (email: {candidate_email}) not found in database, creating interview without organization_id")
-                organization_id = None
+                organization_id = data.get('organization_id') # Use request org ID if candidate not found
             else:
                 organization_id = str(candidate.organization_id)
                 actual_candidate_id = str(candidate.id)  # Use the real database ID

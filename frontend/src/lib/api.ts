@@ -236,7 +236,7 @@ class ApiClient {
   // =========================================
 
   async getUserInterviews(userId: string): Promise<ApiResponse<{ interviews: any[]; count: number }>> {
-    return this.request<{ interviews: any[]; count: number }>(`/media/api/interviews`);
+    return this.request<ApiResponse<{ interviews: any[]; count: number }>>(`/media/api/interviews`);
   }
 
   async getAllInterviews(organizationId?: string): Promise<ApiResponse<{ interviews: any[]; count: number }>> {
@@ -244,8 +244,8 @@ class ApiClient {
 
     // Fetch from media-service and interview-service, then merge
     const [mediaRes, interviewSvcRes] = await Promise.all([
-      this.request<{ interviews: any[]; count: number }>(`/media/api/interviews${queryParams}`),
-      this.request<{ interviews: any[]; count: number }>(`/interview/api/interviews${queryParams}`).catch(() => ({ success: true, data: { interviews: [], count: 0 }, meta: { timestamp: '', request_id: '', version: '' } } as any))
+      this.request<ApiResponse<{ interviews: any[]; count: number }>>(`/media/api/interviews${queryParams}`),
+      this.request<ApiResponse<{ interviews: any[]; count: number }>>(`/interview/api/interviews${queryParams}`).catch(() => ({ success: true, data: { interviews: [], count: 0 }, meta: { timestamp: '', request_id: '', version: '' } } as any))
     ]);
 
     const mediaList = mediaRes?.data?.interviews ?? [];
@@ -320,11 +320,11 @@ class ApiClient {
   }
 
   async getAllCandidates(): Promise<ApiResponse<{ candidates: any[]; count: number }>> {
-    return this.request<{ candidates: any[]; count: number }>('/media/api/candidates');
+    return this.request<ApiResponse<{ candidates: any[]; count: number }>>('/media/api/candidates');
   }
 
   async getUserCandidates(userId: string): Promise<ApiResponse<{ candidates: any[]; count: number }>> {
-    return this.request<{ candidates: any[]; count: number }>(`/media/api/candidates`);
+    return this.request<ApiResponse<{ candidates: any[]; count: number }>>(`/media/api/candidates`);
   }
 
   async getCandidate(candidateId: string): Promise<ApiResponse<any>> {
@@ -428,7 +428,7 @@ class ApiClient {
   }
 
   // Use interview-service resume upload/parsing instead of text-service
-  async uploadResumeForParsing(files: File | File[], organizationId: string = "e5d2d50b-6c07-43cd-8a78-ffd7b5b377bb"): Promise<ApiResponse<any>> {
+  async uploadResumeForParsing(files: File | File[], organizationId: string): Promise<ApiResponse<any>> {
     const formData = new FormData();
     const fileArray = Array.isArray(files) ? files : [files];
 
@@ -626,7 +626,40 @@ class ApiClient {
   // =========================================
 
   async getJobPositions(organizationId: string): Promise<ApiResponse<{ job_positions: any[]; total: number }>> {
-    return this.request<{ job_positions: any[]; total: number }>(`/interview/job-positions?organization_id=${organizationId}`);
+    return this.request<ApiResponse<{ job_positions: any[]; total: number }>>(`/interview/job-positions?organization_id=${organizationId}`);
+  }
+
+  async createJobPosition(data: {
+    organization_id: string;
+    title: string;
+    description?: string;
+    required_skills?: string[];
+    department?: string;
+    is_active?: boolean;
+  }): Promise<ApiResponse<any>> {
+    return this.request<any>('/interview/job-positions', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateJobPosition(id: string, data: {
+    title?: string;
+    description?: string;
+    required_skills?: string[];
+    department?: string;
+    is_active?: boolean;
+  }): Promise<ApiResponse<any>> {
+    return this.request<any>(`/interview/job-positions/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteJobPosition(id: string): Promise<ApiResponse<any>> {
+    return this.request<any>(`/interview/job-positions/${id}`, {
+      method: 'DELETE',
+    });
   }
 }
 

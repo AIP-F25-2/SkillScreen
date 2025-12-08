@@ -121,7 +121,7 @@ export default function InterviewSetup() {
         video: mode === 'video'
           ? (selectedDevices.camera ? { deviceId: { exact: selectedDevices.camera } } : { facingMode: 'user' })
           : false,
-        audio: mode !== 'chat'
+        audio: (mode as string) !== 'chat'
           ? (selectedDevices.microphone ? { deviceId: { exact: selectedDevices.microphone } } : true)
           : false,
       };
@@ -143,7 +143,7 @@ export default function InterviewSetup() {
 
       setPermissions({
         camera: mode === 'video',
-        microphone: mode !== 'chat',
+        microphone: (mode as string) !== 'chat',
       });
 
       // Reload devices to get labels
@@ -493,8 +493,8 @@ export default function InterviewSetup() {
                       <span className="text-white">Camera</span>
                     </div>
                     <span className={`px-3 py-1 rounded-full text-xs font-medium ${permissions.camera
-                        ? 'bg-green-500/20 text-green-300 border border-green-500/30'
-                        : 'bg-red-500/20 text-red-300 border border-red-500/30'
+                      ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+                      : 'bg-red-500/20 text-red-300 border border-red-500/30'
                       }`}>
                       {permissions.camera ? 'Granted' : 'Required'}
                     </span>
@@ -511,8 +511,8 @@ export default function InterviewSetup() {
                       <span className="text-white">Microphone</span>
                     </div>
                     <span className={`px-3 py-1 rounded-full text-xs font-medium ${permissions.microphone
-                        ? 'bg-green-500/20 text-green-300 border border-green-500/30'
-                        : 'bg-red-500/20 text-red-300 border border-red-500/30'
+                      ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+                      : 'bg-red-500/20 text-red-300 border border-red-500/30'
                       }`}>
                       {permissions.microphone ? 'Granted' : 'Required'}
                     </span>
@@ -540,8 +540,8 @@ export default function InterviewSetup() {
                     onClick={requestMediaPermissions}
                     disabled={permissions.camera && permissions.microphone}
                     className={`w-full px-6 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98] ${permissions.camera && permissions.microphone
-                        ? 'bg-green-500/20 text-green-300 border border-green-500/30 cursor-default'
-                        : 'bg-white text-black hover:bg-white/90'
+                      ? 'bg-green-500/20 text-green-300 border border-green-500/30 cursor-default'
+                      : 'bg-white text-black hover:bg-white/90'
                       }`}
                   >
                     {permissions.camera && permissions.microphone ? (

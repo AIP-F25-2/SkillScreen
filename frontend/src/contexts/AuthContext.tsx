@@ -60,6 +60,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         organizationId: response.user.organization_id
       };
 
+      console.log('AuthContext: Login successful, user object:', user);
+
       const authToken: AuthToken = {
         token: response.access_token,
         user,

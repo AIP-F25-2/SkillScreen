@@ -99,6 +99,8 @@ def login(payload: LoginRequest):
             """, (email,))
 
             row = cur.fetchone()
+            if row:
+                print(f"SSO Login: Fetched user {row[2]} with Org ID: {row[1]}")
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")

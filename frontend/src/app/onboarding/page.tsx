@@ -9,9 +9,10 @@ import Footer from '@/components/Footer';
 
 type UserType = 'recruiter' | '';
 
-interface FormData {
+interface OnboardingFormData {
   // Common fields
-  fullName: string;
+  firstName: string;
+  lastName: string;
   email: string;
   password: string;
   // Recruiter specific fields
@@ -54,7 +55,7 @@ export default function Onboarding() {
   const [showWelcome, setShowWelcome] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
-  const [formData, setFormData] = useState<FormData>({
+  const [formData, setFormData] = useState<OnboardingFormData>({
     // Common fields
     firstName: '',
     lastName: '',
@@ -63,6 +64,12 @@ export default function Onboarding() {
     // Recruiter specific fields
     company: '',
     domain: '',
+    // Job seeker specific fields
+    experience: '',
+    skills: '',
+    education: '',
+    preferredRole: '',
+    availability: '',
   });
   const [permissions, setPermissions] = useState({
     camera: false,

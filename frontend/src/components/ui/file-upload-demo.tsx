@@ -65,7 +65,11 @@ const generateSecureRandomString = (length: number = 9): string => {
   throw new Error('Cryptographically secure random number generator not available');
 };
 
-export function FileUploadDemo() {
+interface FileUploadDemoProps {
+  onUploadSuccess?: () => void;
+}
+
+export function FileUploadDemo({ onUploadSuccess }: FileUploadDemoProps) {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -80,12 +84,12 @@ export function FileUploadDemo() {
   const { user } = useAuth();
 
   // Default organization ID - in production this should come from auth context
-  const DEFAULT_ORGANIZATION_ID = "ecf369b2-caae-4962-85a8-404db7ab0d7e";
-  const organizationId = user?.organizationId || DEFAULT_ORGANIZATION_ID;
+  const organizationId = user?.organizationId;
 
   // Fetch job positions on mount for the current organization
   useEffect(() => {
     const fetchJobPositions = async () => {
+      if (!organizationId) return;
       setLoadingJobPositions(true);
       try {
         const response = await apiClient.getJobPositions(organizationId);
@@ -189,6 +193,11 @@ export function FileUploadDemo() {
   const handleUpload = async () => {
     if (selectedFiles.length === 0) return;
 
+    if (!organizationId) {
+      setUploadError("Organization ID not found. Please log in again.");
+      return;
+    }
+
     setIsUploading(true);
     setUploadError(null);
 
@@ -241,6 +250,14 @@ export function FileUploadDemo() {
         i === index ? { ...file, [field]: value } : file
       )
     );
+  };
+
+  const resetForm = () => {
+    setSelectedFiles([]);
+    setProcessedFiles([]);
+    setUploadSuccess(false);
+    setProcessSuccess(false);
+    setUploadError(null);
   };
 
   const handleProcess = async () => {
@@ -313,7 +330,8 @@ export function FileUploadDemo() {
             mode: candidate.selectedMode || 'chat',
             recruiter_name: "Hiring Team",
             company_name: "SkillScreen",
-            expires_in_hours: 48
+            expires_in_hours: 48,
+            organization_id: organizationId
           };
 
           // Add job_position_id if selected
@@ -369,7 +387,13 @@ export function FileUploadDemo() {
 
       if (successCount > 0) {
         setProcessSuccess(true);
-        alert(`Successfully sent ${successCount} invitation email(s)!${failCount > 0 ? ` (${failCount} failed)` : ''}`);
+        // Trigger the success callback to refresh parent components
+        if (onUploadSuccess) {
+          onUploadSuccess();
+        }
+
+        // Don't show alert, just show the success UI
+        // alert(`Successfully sent ${successCount} invitation email(s)!${failCount > 0 ? ` (${failCount} failed)` : ''}`);
       } else {
         alert("Failed to send any invitation emails. Please check the errors and try again.");
       }
@@ -377,11 +401,7 @@ export function FileUploadDemo() {
       // Reset after delay if all successful
       if (failCount === 0 && successCount > 0) {
         setTimeout(() => {
-          setSelectedFiles([]);
-          setProcessedFiles([]);
-          setUploadSuccess(false);
-          setProcessSuccess(false);
-          setUploadError(null);
+          resetForm();
         }, 3000);
       }
     } catch (error) {
@@ -390,14 +410,6 @@ export function FileUploadDemo() {
     } finally {
       setIsProcessing(false);
     }
-  };
-
-  const resetForm = () => {
-    setSelectedFiles([]);
-    setProcessedFiles([]);
-    setUploadSuccess(false);
-    setProcessSuccess(false);
-    setUploadError(null);
   };
 
   return (

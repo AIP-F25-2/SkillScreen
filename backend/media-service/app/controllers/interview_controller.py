@@ -132,7 +132,8 @@ def schedule_candidate(candidate_id):
     candidate_name = payload.get("candidate_name", "Unknown Candidate")
     organization_id = payload.get("organization_id")
 
-    interview_id = f"interview_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')[:20]}"
+    import uuid
+    interview_id = str(uuid.uuid4())
 
     with UnitOfWork() as uow:
         repo = MediaRepository(uow)
@@ -171,8 +172,8 @@ def get_all_interviews():
         
         if organization_id:
             # Filter by organization_id in metadata if present
-            # Use json_extract_path_text for Postgres JSON/JSONB compatibility
-            query = query.where(func.json_extract_path_text(media_table.c.metadata, 'organization_id') == organization_id)
+            # Use jsonb_extract_path_text for Postgres JSONB compatibility
+            query = query.where(func.jsonb_extract_path_text(media_table.c.metadata, 'organization_id') == organization_id)
             
         rows = uow.session.execute(
             query.order_by(desc(media_table.c.created_at))

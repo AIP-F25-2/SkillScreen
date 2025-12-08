@@ -127,7 +127,7 @@ class MediaRepository:
         meta_json = json.dumps(metadata or {})
         q = text("""
             INSERT INTO media_files (
-                interview_id, file_type, storage_uri, mime_type
+                interview_id, file_type, storage_uri, mime_type,
                 status, metadata, duration, created_at, updated_at
             )
             VALUES (:iid, :ftype, :blob, :mime, :status, CAST(:meta AS jsonb), :duration,NOW(), NOW())

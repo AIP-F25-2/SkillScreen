@@ -101,54 +101,59 @@ export default function RecruiterDashboard() {
 
   const { user } = useAuth();
   // Use authenticated user's organization ID, fallback to default only if needed
-  const DEFAULT_ORGANIZATION_ID = "ecf369b2-caae-4962-85a8-404db7ab0d7e";
-  const organizationId = user?.organizationId || DEFAULT_ORGANIZATION_ID;
+  const organizationId = user?.organizationId;
 
   // Fetch all interviews, candidates, and job templates
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoadingInterviews(true);
-        setLoadingCandidates(true);
+  const refreshData = async () => {
+    try {
+      setLoadingInterviews(true);
+      setLoadingCandidates(true);
 
-        // Fetch all interviews
-        const interviewsResponse = await apiClient.getAllInterviews(organizationId);
-        if (interviewsResponse.success) {
-          setInterviews(interviewsResponse.data.interviews || []);
-        }
-
-        // Fetch all candidates
-        const candidatesResponse = await apiClient.getAllCandidates();
-        if (candidatesResponse.success) {
-          setCandidates(candidatesResponse.data.candidates || []);
-        }
-
-        // Fetch job templates (job positions) from interview-service
-        try {
-          const jobPositionsRes = await apiClient.getJobPositions(organizationId);
-          if (jobPositionsRes.success && jobPositionsRes.data?.job_positions) {
-            const templates: JobTemplate[] = jobPositionsRes.data.job_positions.map((jp: any) => ({
-              id: jp.id,
-              title: jp.title,
-              department: jp.department || 'General',
-              content: jp.description || '',
-              required_skills: Array.isArray(jp.required_skills) ? jp.required_skills : undefined,
-            }));
-            setJobTemplates(templates);
-          }
-        } catch (error_) {
-          console.error('Error loading job templates:', error_);
-        }
-      } catch (error) {
-        console.error('Failed to fetch data:', error);
-      } finally {
+      if (!organizationId) {
         setLoadingInterviews(false);
         setLoadingCandidates(false);
+        return;
       }
-    };
 
-    fetchData();
-  }, []);
+      // Fetch all interviews
+      const interviewsResponse = await apiClient.getAllInterviews(organizationId);
+      if (interviewsResponse.success) {
+        setInterviews(interviewsResponse.data.interviews || []);
+      }
+
+      // Fetch all candidates
+      const candidatesResponse = await apiClient.getAllCandidates();
+      if (candidatesResponse.success) {
+        setCandidates(candidatesResponse.data.candidates || []);
+      }
+
+      // Fetch job templates (job positions) from interview-service
+      try {
+        const jobPositionsRes = await apiClient.getJobPositions(organizationId);
+        if (jobPositionsRes.success && jobPositionsRes.data?.job_positions) {
+          const templates: JobTemplate[] = jobPositionsRes.data.job_positions.map((jp: any) => ({
+            id: jp.id,
+            title: jp.title,
+            department: jp.department || 'General',
+            content: jp.description || '',
+            required_skills: Array.isArray(jp.required_skills) ? jp.required_skills : undefined,
+          }));
+          setJobTemplates(templates);
+        }
+      } catch (error_) {
+        console.error('Error loading job templates:', error_);
+      }
+    } catch (error) {
+      console.error('Failed to fetch data:', error);
+    } finally {
+      setLoadingInterviews(false);
+      setLoadingCandidates(false);
+    }
+  };
+
+  useEffect(() => {
+    refreshData();
+  }, [organizationId]); // Add organizationId dependency
 
   const formatDate = (dateString: string) => {
     if (!dateString) return 'Unknown';
@@ -189,31 +194,56 @@ export default function RecruiterDashboard() {
     setEditingTemplateId(null);
   };
 
-  const saveTemplate = () => {
+  const saveTemplate = async () => {
     const trimmedTitle = templateTitle.trim();
     const trimmedDept = templateDepartment.trim();
     const trimmedContent = templateContent.trim();
-    if (!trimmedTitle || !trimmedDept || !trimmedContent) return;
+    if (!trimmedTitle || !trimmedDept || !trimmedContent || !organizationId) return;
 
-    if (editingTemplateId) {
-      setJobTemplates(prev => prev.map(t => t.id === editingTemplateId ? {
-        ...t,
-        title: trimmedTitle,
-        department: trimmedDept,
-        content: trimmedContent,
-        required_skills: templateSkills.length > 0 ? templateSkills : undefined,
-      } : t));
-    } else {
-      const newTemplate: JobTemplate = {
-        id: `tmpl-${Date.now()}`,
-        title: trimmedTitle,
-        department: trimmedDept,
-        content: trimmedContent,
-        required_skills: templateSkills.length > 0 ? templateSkills : undefined,
-      };
-      setJobTemplates(prev => [newTemplate, ...prev]);
+    try {
+      if (editingTemplateId) {
+        const response = await apiClient.updateJobPosition(editingTemplateId, {
+          title: trimmedTitle,
+          department: trimmedDept,
+          description: trimmedContent,
+          required_skills: templateSkills.length > 0 ? templateSkills : undefined,
+        });
+
+        if (response.success) {
+          setJobTemplates(prev => prev.map(t => t.id === editingTemplateId ? {
+            ...t,
+            title: trimmedTitle,
+            department: trimmedDept,
+            content: trimmedContent,
+            required_skills: templateSkills.length > 0 ? templateSkills : undefined,
+          } : t));
+        }
+      } else {
+        const response = await apiClient.createJobPosition({
+          organization_id: organizationId,
+          title: trimmedTitle,
+          department: trimmedDept,
+          description: trimmedContent,
+          required_skills: templateSkills.length > 0 ? templateSkills : undefined,
+          is_active: true
+        });
+
+        if (response.success && response.data) {
+          const newTemplate: JobTemplate = {
+            id: response.data.id,
+            title: response.data.title,
+            department: response.data.department || 'General',
+            content: response.data.description || '',
+            required_skills: response.data.required_skills,
+          };
+          setJobTemplates(prev => [newTemplate, ...prev]);
+        }
+      }
+      resetTemplateForm();
+    } catch (error) {
+      console.error('Failed to save template:', error);
+      alert('Failed to save template. Please try again.');
     }
-    resetTemplateForm();
   };
 
   const editTemplate = (template: JobTemplate) => {
@@ -243,9 +273,19 @@ export default function RecruiterDashboard() {
     }
   };
 
-  const deleteTemplate = (id: string) => {
-    setJobTemplates(prev => prev.filter(t => t.id !== id));
-    if (editingTemplateId === id) resetTemplateForm();
+  const deleteTemplate = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this template?')) return;
+
+    try {
+      const response = await apiClient.deleteJobPosition(id);
+      if (response.success) {
+        setJobTemplates(prev => prev.filter(t => t.id !== id));
+        if (editingTemplateId === id) resetTemplateForm();
+      }
+    } catch (error) {
+      console.error('Failed to delete template:', error);
+      alert('Failed to delete template. Please try again.');
+    }
   };
 
   return (
@@ -309,7 +349,7 @@ export default function RecruiterDashboard() {
           <div className="bg-primary-200/20 backdrop-blur-sm rounded-xl p-6 border border-primary-200/30">
             {/* Document Upload */}
             <div className="mb-8">
-              <FileUploadDemo />
+              <FileUploadDemo onUploadSuccess={refreshData} />
             </div>
             <div className="flex justify-between items-center mb-6">
 
