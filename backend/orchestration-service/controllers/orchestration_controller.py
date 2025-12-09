@@ -207,6 +207,13 @@ async def get_next_question(interview_id: str, request: NextQuestionRequest):
     try:
         log.info(f"Generating next question for interview {interview_id}, question #{request.question_number}")
         
+        # Validate UUID format
+        try:
+            UUID(interview_id)
+        except ValueError:
+            log.warning(f"Invalid UUID format for interview_id: {interview_id}")
+            raise HTTPException(status_code=400, detail="Invalid interview ID format")
+        
         # Get interview data
         interview = orchestrator_repo.get_interview_by_id(interview_id)
         if not interview:
@@ -316,6 +323,13 @@ class SubmitCodeRequest(BaseModel):
 async def submit_code(interview_id: str, body: SubmitCodeRequest):
     """Submit candidate code for the coding_question attached to the interview and evaluate using coding-service."""
     try:
+        # Validate UUID format
+        try:
+            UUID(interview_id)
+        except ValueError:
+            log.warning(f"Invalid UUID format for interview_id: {interview_id}")
+            raise HTTPException(status_code=400, detail="Invalid interview ID format")
+
         interview = orchestrator_repo.get_interview_by_id(interview_id)
         if not interview:
             raise HTTPException(status_code=404, detail=INTERVIEW_NOT_FOUND)
@@ -378,6 +392,13 @@ async def get_interview_summary(interview_id: str):
         interview_id: Interview ID
     """
     try:
+        # Validate UUID format
+        try:
+            UUID(interview_id)
+        except ValueError:
+            log.warning(f"Invalid UUID format for interview_id: {interview_id}")
+            raise HTTPException(status_code=400, detail="Invalid interview ID format")
+
         interview = orchestrator_repo.get_interview_by_id(interview_id)
         if not interview:
             raise HTTPException(status_code=404, detail=INTERVIEW_NOT_FOUND)
@@ -418,6 +439,25 @@ async def trigger_interview_analyses(interview_id: str): # nosonar
         # Ensure interview_id is a string (in case it's a UUID object from path parameter)
         interview_id_str = str(interview_id)
         log.info(f"Triggering analyses for interview {interview_id_str}")
+        
+        # Validate UUID format
+        try:
+            UUID(interview_id_str)
+        except ValueError:
+            log.warning(f"Invalid UUID format for interview_id: {interview_id_str}")
+            # For this endpoint, we might want to return a structured error result instead of raising
+            return create_response({
+                "interview_id": interview_id_str,
+                "status": "error",
+                "error": "Invalid interview ID format",
+                "analyses": {},
+                "summary": {
+                    "total_services": 3,
+                    "successful": 0,
+                    "failed": 3,
+                    "errors": [{"service": "orchestration", "error": "Invalid interview ID format"}]
+                }
+            })
         
         # Get interview data
         interview = orchestrator_repo.get_interview_by_id(interview_id_str)
