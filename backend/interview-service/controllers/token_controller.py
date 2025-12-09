@@ -97,9 +97,11 @@ def validate_token():
         
     except Exception as e:
         logger.error(f"Token validation error: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             "valid": False,
-            "error": "An error occurred while validating the token"
+            "error": f"An error occurred: {str(e)}"
         }), 500
 
 
