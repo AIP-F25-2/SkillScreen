@@ -1,5 +1,5 @@
 // Interview token management for email-based candidate access
-import { API_BASE_URL } from './config';
+import { API_BASE_URL, API_ENDPOINTS } from './config';
 
 // Use direct interview service URL for token validation
 const INTERVIEW_SERVICE_URL = API_BASE_URL;
@@ -89,7 +89,7 @@ export async function validateInterviewToken(token: string): Promise<{
   error?: string;
 }> {
   try {
-    const response = await fetch(`${INTERVIEW_SERVICE_URL}/api/token/validate`, {
+    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.INTERVIEW_TOKEN_VALIDATE}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
