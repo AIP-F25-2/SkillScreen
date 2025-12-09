@@ -90,6 +90,7 @@ export default function InterviewSummaryPage() {
           candidate_id: 'Dimantha Goonewardena',
           created_at: '2025-12-08T23:59:00',
           status: 'completed',
+          video_url: 'https://drive.google.com/uc?export=download&id=1o6wXBqzNep6rQwcEWxBnXesxchrhUQPm',
           transcript: {
             duration_seconds: 1845,
             text: "Interviewer: Welcome, Dimantha. Let's start with your experience in React.\n\nCandidate: Sure. I've been working with React for about 5 years now, focusing on performance optimization and scalable architecture. I'm particularly interested in server-side rendering with Next.js.\n\nInterviewer: That's great. Can you explain how you handle state management in complex applications?\n\nCandidate: For complex state, I typically prefer using a combination of React Context for global UI state and a library like Redux Toolkit or Zustand for more complex data flows. I also use React Query for server state management to handle caching and synchronization efficiently."
@@ -124,6 +125,7 @@ export default function InterviewSummaryPage() {
           candidate_id: 'Dimantha Goonewardena',
           created_at: '2025-12-07T14:30:00',
           status: 'completed',
+          video_url: 'https://drive.google.com/uc?export=download&id=1o6wXBqzNep6rQwcEWxBnXesxchrhUQPm',
           transcript: {
             duration_seconds: 1200,
             text: "Interviewer: Can you explain the difference between a process and a thread?\n\nCandidate: Um, I think a process is like a program running, and a thread is... part of it? I'm not entirely sure about the details.\n\nInterviewer: Okay. How about database indexing? When would you use it?\n\nCandidate: Indexing makes searches faster. I use it on all columns usually."
@@ -158,6 +160,7 @@ export default function InterviewSummaryPage() {
           candidate_id: 'Dimantha Goonewardena',
           created_at: '2025-12-06T09:15:00',
           status: 'completed',
+          video_url: 'https://drive.google.com/uc?export=download&id=1o6wXBqzNep6rQwcEWxBnXesxchrhUQPm',
           transcript: {
             duration_seconds: 2400,
             text: "Interviewer: How would you design a CI/CD pipeline for a microservices architecture?\n\nCandidate: I would use Jenkins or GitHub Actions. Each service would have its own pipeline. We'd run unit tests, build the Docker image, push to a registry, and then deploy to Kubernetes using Helm charts.\n\nInterviewer: Good. How do you handle secrets?\n\nCandidate: We can use Kubernetes Secrets or something like HashiCorp Vault. Never commit them to git."
@@ -192,6 +195,7 @@ export default function InterviewSummaryPage() {
           candidate_id: 'Dimantha Goonewardena',
           created_at: '2025-12-05T16:45:00',
           status: 'completed',
+          video_url: 'https://drive.google.com/uc?export=download&id=1o6wXBqzNep6rQwcEWxBnXesxchrhUQPm',
           transcript: {
             duration_seconds: 1500,
             text: "Interviewer: Tell me about a time you had to prioritize features under a tight deadline.\n\nCandidate: We had a launch coming up and too many features. I used the RICE scoring model to objectively rank them. I also met with stakeholders to manage expectations. We cut 20% of the scope but hit the deadline with a stable release."
@@ -253,6 +257,16 @@ export default function InterviewSummaryPage() {
     // Poll for updates if processing
     const pollInterval = setInterval(async () => {
       if (!interviewId) return;
+
+      // Skip polling for dummy interviews
+      const dummyIds = [
+        '550e8400-e29b-41d4-a716-446655440000',
+        '661f9511-f3ac-52e5-b827-557766551111',
+        '772g0622-g4bd-63f6-c938-668877662222',
+        '883h1733-h5ce-74g7-d049-779988773333'
+      ];
+
+      if (dummyIds.includes(interviewId)) return;
 
       try {
         const response = await apiClient.getInterviewSummary(interviewId);
@@ -362,9 +376,9 @@ export default function InterviewSummaryPage() {
     );
   }
 
-  const videoUrl = interview.video_path
+  const videoUrl = interview.video_url || (interview.video_path
     ? `${API_BASE_URL}/media/video${interview.video_path}`
-    : '';
+    : '');
 
   const analysis = interview.analysis || MOCK_ANALYSIS;
 
