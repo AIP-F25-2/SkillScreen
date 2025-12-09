@@ -336,11 +336,11 @@ export default function RecruiterDashboard() {
     }
   };
 
-  const getBorderClass = (score?: number) => {
-    if (score === undefined || score === null) return 'border-b border-white/5 hover:bg-white/5';
-    if (score < 60) return 'border-2 border-red-500/50 hover:bg-white/5';
-    if (score < 80) return 'border-2 border-orange-500/50 hover:bg-white/5';
-    return 'border-b border-white/5 hover:bg-white/5';
+  const getBorderColor = (score?: number) => {
+    if (score === undefined || score === null) return 'border-white/5';
+    if (score < 60) return 'border-red-500/50';
+    if (score < 80) return 'border-orange-500/50';
+    return 'border-white/5';
   };
 
   return (
@@ -437,39 +437,46 @@ export default function RecruiterDashboard() {
                       <th className="text-left py-3 px-4 text-white/80 font-medium">Mode</th>
                       <th className="text-left py-3 px-4 text-white/80 font-medium">Date</th>
                       <th className="text-left py-3 px-4 text-white/80 font-medium">Status</th>
+                      <th className="text-left py-3 px-4 text-white/80 font-medium">Score</th>
                       <th className="text-left py-3 px-4 text-white/80 font-medium">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {interviews.map((interview) => (
-                      <tr key={interview.interview_id} className={`${getBorderClass(interview.score)} rounded-lg transition-all`}>
-                        <td className="py-4 px-4">
-                          <div className="flex items-center gap-3">
-                            <div className="bg-blue-500/20 rounded-full p-2">
-                              <User className="w-5 h-5 text-blue-300" />
+                    {interviews.map((interview) => {
+                      const borderColor = getBorderColor(interview.score);
+                      return (
+                        <tr key={interview.interview_id} className="hover:bg-white/5 transition-all">
+                          <td className={`py-4 px-4 border-y-2 border-l-2 rounded-l-lg ${borderColor}`}>
+                            <div className="flex items-center gap-3">
+                              <div className="bg-blue-500/20 rounded-full p-2">
+                                <User className="w-5 h-5 text-blue-300" />
+                              </div>
+                              <span className="text-white font-medium">{interview.candidate_name || interview.candidate_id}</span>
                             </div>
-                            <span className="text-white font-medium">{interview.candidate_name || interview.candidate_id}</span>
-                          </div>
-                        </td>
-                        <td className="py-4 px-4 text-white/80">{interview.candidate_email || '-'}</td>
-                        <td className="py-4 px-4 text-white/80">{interview.job_position_title || interview.job_position || '-'}</td>
-                        <td className="py-4 px-4 text-white/80 capitalize">{interview.mode || 'Chat'}</td>
-                        <td className="py-4 px-4 text-white/80">{formatDate(interview.created_at || interview.scheduled_at)}</td>
-                        <td className="py-4 px-4">
-                          <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(interview.status)}`}>
-                            {interview.status}
-                          </span>
-                        </td>
-                        <td className="py-4 px-4">
-                          <button
-                            onClick={() => router.push(`/interview-summary?id=${interview.interview_id}`)}
-                            className="text-blue-400 hover:text-blue-300 font-medium"
-                          >
-                            View
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className={`py-4 px-4 border-y-2 ${borderColor} text-white/80`}>{interview.candidate_email || '-'}</td>
+                          <td className={`py-4 px-4 border-y-2 ${borderColor} text-white/80`}>{interview.job_position_title || interview.job_position || '-'}</td>
+                          <td className={`py-4 px-4 border-y-2 ${borderColor} text-white/80 capitalize`}>{interview.mode || 'Chat'}</td>
+                          <td className={`py-4 px-4 border-y-2 ${borderColor} text-white/80`}>{formatDate(interview.created_at || interview.scheduled_at)}</td>
+                          <td className={`py-4 px-4 border-y-2 ${borderColor}`}>
+                            <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(interview.status)}`}>
+                              {interview.status}
+                            </span>
+                          </td>
+                          <td className={`py-4 px-4 border-y-2 ${borderColor} text-white/80`}>
+                            {interview.status === 'completed' ? (interview.score !== undefined ? `${interview.score}%` : 'N/A') : 'N/A'}
+                          </td>
+                          <td className={`py-4 px-4 border-y-2 border-r-2 rounded-r-lg ${borderColor}`}>
+                            <button
+                              onClick={() => router.push(`/interview-summary?id=${interview.interview_id}`)}
+                              className="text-blue-400 hover:text-blue-300 font-medium"
+                            >
+                              View
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
