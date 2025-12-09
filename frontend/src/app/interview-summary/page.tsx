@@ -113,7 +113,11 @@ export default function InterviewSummaryPage() {
               'Slight tendency to over-engineer simple solutions initially'
             ],
             executive_summary: "Dimantha is a highly skilled Senior Frontend Engineer with a deep understanding of modern web technologies. He demonstrated exceptional technical proficiency and a strong problem-solving mindset. His communication was clear, and he showed a great cultural fit for a collaborative team environment. Highly recommended for the role."
-          }
+          },
+          cheating_detection: [
+            { timestamp: "05:23", description: "Tab switch detected for 15 seconds", severity: "medium" },
+            { timestamp: "12:45", description: "Multiple faces detected in frame", severity: "high" }
+          ]
         });
         setLoading(false);
         return;
@@ -148,7 +152,10 @@ export default function InterviewSummaryPage() {
               'Improve confidence in technical explanations'
             ],
             executive_summary: "The candidate struggled with foundational backend concepts. While they showed some basic knowledge, they lacked the depth required for a Junior Backend Developer role. Significant upskilling would be needed."
-          }
+          },
+          cheating_detection: [
+            { timestamp: "02:10", description: "Audio input level dropped to zero", severity: "low" }
+          ]
         });
         setLoading(false);
         return;
@@ -183,7 +190,8 @@ export default function InterviewSummaryPage() {
               'Discussion on rollback strategies was brief'
             ],
             executive_summary: "A solid candidate for the DevOps role. They have the necessary technical skills and practical experience. With a bit more focus on observability and incident management, they would be a very strong addition to the team."
-          }
+          },
+          cheating_detection: []
         });
         setLoading(false);
         return;
@@ -217,7 +225,10 @@ export default function InterviewSummaryPage() {
               'Could improve technical vocabulary to better interface with engineering leads'
             ],
             executive_summary: "An excellent Product Manager candidate. They demonstrated strong leadership and prioritization skills essential for the role. Their ability to manage stakeholders and deliver under pressure is a major asset."
-          }
+          },
+          cheating_detection: [
+            { timestamp: "08:15", description: "Second person detected in background", severity: "medium" }
+          ]
         });
         setLoading(false);
         return;
@@ -428,7 +439,12 @@ export default function InterviewSummaryPage() {
             <div className="glass-dark rounded-2xl overflow-hidden border border-white/10 shadow-xl">
               <div className="relative aspect-video bg-black group">
                 {videoUrl ? (
-                  <video src={videoUrl} controls className="w-full h-full object-cover" />
+                  <video
+                    src={videoUrl}
+                    controls
+                    className="w-full h-full object-cover"
+                    crossOrigin="anonymous"
+                  />
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center text-white/30">
                     <p>Video unavailable</p>
@@ -498,6 +514,9 @@ export default function InterviewSummaryPage() {
                 ))}
               </div>
             </div>
+
+            {/* Cheating Detection */}
+            <CheatingDetection events={interview.cheating_detection || []} />
           </div>
 
           {/* Right Column: Deep Analysis (8 cols) */}
@@ -584,6 +603,60 @@ export default function InterviewSummaryPage() {
         candidateName={interview.candidate_id}
         date={interview.created_at}
       />
+    </div>
+  );
+}
+
+function CheatingDetection({ events }: { events: any[] }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  if (!events || events.length === 0) return null;
+
+  return (
+    <div className="glass-dark rounded-2xl border border-white/10 overflow-hidden">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between p-6 hover:bg-white/5 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <ShieldAlert className="w-6 h-6 text-red-400" />
+          <div className="text-left">
+            <h3 className="text-lg font-semibold text-white">Cheating Detection</h3>
+            <p className="text-white/50 text-sm">{events.length} suspicious events detected</p>
+          </div>
+        </div>
+        <div className={`transform transition-transform ${isOpen ? 'rotate-180' : ''}`}>
+          <svg className="w-6 h-6 text-white/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+      </button>
+
+      {isOpen && (
+        <div className="p-6 pt-0 border-t border-white/10">
+          <div className="space-y-4 mt-4">
+            {events.map((event, idx) => (
+              <div key={idx} className="flex items-start gap-4 p-4 rounded-xl bg-white/5 border border-white/5">
+                <div className="flex-shrink-0 mt-1">
+                  <Clock className="w-5 h-5 text-white/40" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-mono text-blue-400 text-sm">{event.timestamp}</span>
+                    <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${event.severity === 'high' ? 'bg-red-500/20 text-red-300' :
+                      event.severity === 'medium' ? 'bg-orange-500/20 text-orange-300' :
+                        'bg-yellow-500/20 text-yellow-300'
+                      }`}>
+                      {event.severity}
+                    </span>
+                  </div>
+                  <p className="text-white/80">{event.description}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
