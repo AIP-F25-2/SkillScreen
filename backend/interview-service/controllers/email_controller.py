@@ -59,6 +59,7 @@ def send_invitation():
             candidate_name=data['candidate_name'],
             candidate_id=data['candidate_id'],
             session_id=data['session_id'],
+            interview_id=data.get('interview_id'),
             recruiter_name=data.get('recruiter_name'),
             company_name=data.get('company_name'),
             job_title=data.get('job_title'),
@@ -75,6 +76,7 @@ def send_invitation():
                     'candidate_name': result['candidate_name'],
                     'candidate_email': result['candidate_email'],
                     'session_id': result['session_id'],
+                    'interview_id': result.get('interview_id'),
                     'expires_at': result['expires_at']
                 }
             )

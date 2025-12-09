@@ -89,6 +89,7 @@ def validate_token():
                 "candidateName": token_data['candidate_name'],
                 "candidateEmail": token_data['candidate_email'],
                 "sessionId": token_data['session_id'],
+                "interviewId": token_data.get('interview_id'),  # Return interview_id
                 "expiresAt": token_data['expires_at'],
                 "usedAt": token_data.get('used_at')
             }
@@ -142,6 +143,7 @@ def store_token():
             'candidate_name': data['candidate_name'],
             'candidate_email': data['candidate_email'],
             'session_id': data['session_id'],
+            'interview_id': data.get('interview_id'),  # Add interview_id support
             'expires_at': data['expires_at'],
             'used_at': None
         }

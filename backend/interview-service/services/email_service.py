@@ -34,7 +34,9 @@ class EmailService:
         candidate_email: str,
         candidate_name: str,
         candidate_id: str,
+        candidate_id: str,
         session_id: str,
+        interview_id: Optional[str] = None,
         recruiter_name: Optional[str] = None,
         company_name: Optional[str] = None,
         job_title: Optional[str] = None,
@@ -98,7 +100,8 @@ class EmailService:
                 "session_id": session_id,
                 "candidate_id": candidate_id,
                 "candidate_email": candidate_email,
-                "candidate_name": candidate_name
+                "candidate_name": candidate_name,
+                "interview_id": interview_id
             }
             
         except Exception as e:
