@@ -34,7 +34,6 @@ class EmailService:
         candidate_email: str,
         candidate_name: str,
         candidate_id: str,
-        candidate_id: str,
         session_id: str,
         interview_id: Optional[str] = None,
         recruiter_name: Optional[str] = None,
