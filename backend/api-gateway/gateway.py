@@ -68,7 +68,9 @@ async def verify_jwt(request: Request, call_next):
         if request.url.path.startswith("/text-service/"):
             return await call_next(request)
         
-
+        # TEMP: allow coding service routes during development/testing without auth
+        if request.url.path.startswith("/coding/"):
+            return await call_next(request)
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):
             raise HTTPException(status_code=401, detail="Missing or invalid token")

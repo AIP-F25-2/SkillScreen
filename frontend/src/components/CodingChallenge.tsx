@@ -6,6 +6,7 @@ interface CodingChallengeProps {
   userType: 'candidate' | 'recruiter';
   participantName: string;
   videoStream?: MediaStream | null;
+  challengeData?: any;
   onComplete?: () => void;
 }
 
@@ -31,7 +32,7 @@ interface ChallengeData {
   languageId: number;
 }
 
-export default function CodingChallenge({ userType, participantName, videoStream, onComplete }: CodingChallengeProps) {
+export default function CodingChallenge({ userType, participantName, videoStream, challengeData, onComplete }: CodingChallengeProps) {
   const [challenge, setChallenge] = useState<ChallengeData | null>(null);
   const [code, setCode] = useState('');
   const [testResults, setTestResults] = useState<TestCase[]>([]);
@@ -39,12 +40,11 @@ export default function CodingChallenge({ userType, participantName, videoStream
   const [output, setOutput] = useState('');
   const [selectedLanguage, setSelectedLanguage] = useState('python'); // Default to Python as per request example
 
-  // Listen for coding challenge data event
+  // Initialize from props or listen for event
   useEffect(() => {
-    const handleData = (e: CustomEvent) => {
-      console.log('Received coding challenge data:', e.detail);
-      if (e.detail) {
-        const data = e.detail;
+    const initChallenge = (data: any) => {
+      console.log('Initializing coding challenge with data:', data);
+      if (data) {
         setChallenge({
           id: data.id || '1',
           title: data.title || 'Coding Challenge',
@@ -60,11 +60,20 @@ export default function CodingChallenge({ userType, participantName, videoStream
       }
     };
 
+    if (challengeData) {
+      initChallenge(challengeData);
+    }
+
+    const handleData = (e: CustomEvent) => {
+      console.log('Received coding challenge data event:', e.detail);
+      initChallenge(e.detail);
+    };
+
     window.addEventListener('coding-challenge-data' as any, handleData);
     return () => {
       window.removeEventListener('coding-challenge-data' as any, handleData);
     };
-  }, []);
+  }, [challengeData]);
 
   const runTests = async () => {
     if (!challenge) return;

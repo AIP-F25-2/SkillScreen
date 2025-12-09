@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
+import { FRONTEND_URL } from '@/lib/config';
 
 interface HeaderProps {
   readonly isPortfolio?: boolean;
@@ -12,7 +13,7 @@ interface HeaderProps {
 export default function Header({ isPortfolio = false, toggleSidebar, isSidebarOpen }: HeaderProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  const MAIN_URL = process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : 'https://skillscreen.dev';
+  const MAIN_URL = FRONTEND_URL;
 
   const getLinkUrl = (path: string) => {
     if (isPortfolio) {

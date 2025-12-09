@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { FRONTEND_URL } from '@/lib/config';
 
 interface NavBarProps {
   readonly isPortfolio?: boolean;
@@ -18,7 +19,7 @@ export default function NavBar({ isPortfolio = false }: NavBarProps) {
   const [isScrolled, setIsScrolled] = useState(false);
   const { user, isAuthenticated, logout } = useAuth();
 
-  const MAIN_URL = process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : 'https://skillscreen.dev';
+  const MAIN_URL = FRONTEND_URL;
 
   const getLinkUrl = (path: string) => {
     if (isPortfolio) {

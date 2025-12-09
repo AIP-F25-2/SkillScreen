@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Video } from 'lucide-react';
+import { FRONTEND_URL } from '@/lib/config';
 
 interface InterviewAnalysis {
   id: string;
@@ -223,12 +224,11 @@ export default function CandidateDashboard() {
                 <button
                   onClick={(e) => {
                     e.preventDefault();
-                    const MAIN_URL = process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : 'https://skillscreen.dev';
-                    globalThis.location.href = `${MAIN_URL}/interview`;
+                    globalThis.location.href = `${FRONTEND_URL}/interview`;
                   }}
-                  className="block w-full glass text-white py-4 px-6 rounded-xl font-semibold 
-                             hover:bg-white/10 transition-all duration-300 transform hover:scale-[1.02]
-                             text-center shadow-lg hover:shadow-indigo-500/20 border border-white/10"
+                  className="block w-full glass text-white py-4 px-6 rounded-xl font-semibold
+                hover:bg-white/10 transition-all duration-300 transform hover:scale-[1.02]
+                text-center shadow-lg hover:shadow-indigo-500/20 border border-white/10"
                 >
                   Start New Interview
                 </button>
@@ -340,6 +340,6 @@ export default function CandidateDashboard() {
           </div>
         )}
       </div>
-    </div>
+    </div >
   );
 }

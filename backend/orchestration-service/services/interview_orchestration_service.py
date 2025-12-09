@@ -30,7 +30,7 @@ class InterviewOrchestrationService:
     def __init__(self):
         self.interview_service_url = INTERVIEW_SERVICE_URL
         self.text_service_url = TEXT_SERVICE_URL
-        self.client = httpx.AsyncClient(timeout=30.0)
+        self.client = httpx.AsyncClient(timeout=60.0)
     
     async def download_and_parse_resume(self, resume_url: str) -> Dict[str, Any]:
         """

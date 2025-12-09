@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { FRONTEND_URL } from '@/lib/config';
 
 export default function ShaderHero() {
     return (
@@ -24,8 +25,7 @@ export default function ShaderHero() {
                         size="lg"
                         className="bg-white text-indigo-950 hover:bg-indigo-50 text-lg px-8 py-6 rounded-full font-semibold transition-all hover:scale-105"
                         onClick={() => {
-                            const MAIN_URL = process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : 'https://skillscreen.dev';
-                            globalThis.location.href = `${MAIN_URL}/onboarding`;
+                            globalThis.location.href = `${FRONTEND_URL}/onboarding`;
                         }}
                     >
                         Get Started

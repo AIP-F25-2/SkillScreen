@@ -36,6 +36,7 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
   const [isQuestionLoading, setIsQuestionLoading] = useState(false);
   const [isInterviewComplete, setIsInterviewComplete] = useState(false);
   const [transcript, setTranscript] = useState('');
+  const [codingChallengeData, setCodingChallengeData] = useState<any>(null);
   const recognitionRef = useRef<any>(null);
 
   // Initialize Speech Recognition
@@ -239,24 +240,12 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
               if (parsedData.type === 'coding') {
                 console.log('👨‍💻 Coding question detected:', parsedData);
                 // Set coding challenge data
-                // We need to pass this to CodingChallenge component, maybe via state or context
-                // For now, let's just open the editor and set the question text
+                if (parsedData.data) {
+                  setCodingChallengeData(parsedData.data);
+                }
+
                 nextQuestionText = parsedData.text;
                 setIsCodeEditorOpen(true);
-                // You might need a way to pass the specific coding problem to the CodingChallenge component
-                // For now, we'll assume CodingChallenge fetches or receives it. 
-                // Ideally, we should update state: setCodingChallengeData(parsedData.data)
-                // But let's stick to the plan: open editor.
-
-                // Store the coding data in a temporary state or local storage if needed
-                // Or update CodingChallenge to accept it as a prop if we can render it conditionally
-                // For this step, we just trigger the view.
-                if (parsedData.data) {
-                  // Dispatch a custom event or use a state manager if CodingChallenge is not a direct child receiving props
-                  // Since CodingChallenge IS a child, we should add a state for it.
-                  // Let's assume we add `codingChallengeData` state later.
-                  window.dispatchEvent(new CustomEvent('coding-challenge-data', { detail: parsedData.data }));
-                }
               } else {
                 nextQuestionText = rawData;
               }
@@ -838,6 +827,7 @@ export default function ModernInterviewScreen({ participantName, fromToken = fal
                   userType="candidate"
                   participantName={participantName}
                   videoStream={streamRef.current}
+                  challengeData={codingChallengeData}
                   onComplete={() => {
                     setIsCodeEditorOpen(false);
                     handleNextQuestion('Code Submitted');

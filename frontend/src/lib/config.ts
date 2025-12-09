@@ -4,17 +4,18 @@
  */
 
 // API Base URL - Gateway endpoint
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001';
+// API Base URL - Gateway endpoint
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://4.206.209.183';
 
 // Media Service URL (if different from gateway)
 export const MEDIA_SERVICE_URL = process.env.NEXT_PUBLIC_MEDIA_SERVICE_URL || API_BASE_URL;
 
-// Frontend URL (for email links, etc.)
-export const FRONTEND_URL = process.env.NEXT_PUBLIC_FRONTEND_URL || 'http://localhost:3000';
-
 // Other configuration
 export const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 export const IS_DEVELOPMENT = process.env.NODE_ENV === 'development';
+
+// Frontend URL (for email links, etc.)
+export const FRONTEND_URL = process.env.NEXT_PUBLIC_FRONTEND_URL || (IS_PRODUCTION ? 'https://skillscreen.dev' : 'http://localhost:3000');
 
 // API Endpoints
 export const API_ENDPOINTS = {

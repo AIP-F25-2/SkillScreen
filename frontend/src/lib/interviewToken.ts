@@ -2,7 +2,7 @@
 import { API_BASE_URL } from './config';
 
 // Use direct interview service URL for token validation
-const INTERVIEW_SERVICE_URL = 'http://localhost:8003';
+const INTERVIEW_SERVICE_URL = API_BASE_URL;
 
 export interface InterviewToken {
   token: string;
