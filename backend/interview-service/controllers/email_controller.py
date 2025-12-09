@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 email_bp = Blueprint('email', __name__)
 
-API_BASE_URL = os.getenv('API_BASE_URL', 'http://localhost:5001')
+API_BASE_URL = os.getenv('API_BASE_URL', 'http://4.206.209.183:80')
 
 @email_bp.route('/api/email/send-invitation', methods=['POST'])
 def send_invitation():

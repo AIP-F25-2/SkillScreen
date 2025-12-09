@@ -23,7 +23,7 @@ class EmailService:
     
     def __init__(self):
         self.from_email = os.getenv("FROM_EMAIL", "interviews@skillscreen.io")
-        self.base_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+        self.base_url = os.getenv("FRONTEND_URL", "https://skillscreen.dev")
     
     def generate_interview_token(self) -> str:
         """Generate a secure random token for interview access"""

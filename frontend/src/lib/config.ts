@@ -5,7 +5,7 @@
 
 // API Base URL - Gateway endpoint
 // API Base URL - Gateway endpoint
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://4.206.209.183';
+export const API_BASE_URL = process.env.NODE_ENV === 'production' ? '/api-proxy' : (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://4.206.209.183:80');
 
 // Media Service URL (if different from gateway)
 export const MEDIA_SERVICE_URL = process.env.NEXT_PUBLIC_MEDIA_SERVICE_URL || API_BASE_URL;
