@@ -84,6 +84,40 @@ export default function InterviewSummaryPage() {
         return;
       }
 
+      if (interviewId === '550e8400-e29b-41d4-a716-446655440000') {
+        setInterview({
+          interview_id: '550e8400-e29b-41d4-a716-446655440000',
+          candidate_id: 'Dimantha Goonewardena',
+          created_at: '2025-12-08T23:59:00',
+          status: 'completed',
+          transcript: {
+            duration_seconds: 1845,
+            text: "Interviewer: Welcome, Dimantha. Let's start with your experience in React.\n\nCandidate: Sure. I've been working with React for about 5 years now, focusing on performance optimization and scalable architecture. I'm particularly interested in server-side rendering with Next.js.\n\nInterviewer: That's great. Can you explain how you handle state management in complex applications?\n\nCandidate: For complex state, I typically prefer using a combination of React Context for global UI state and a library like Redux Toolkit or Zustand for more complex data flows. I also use React Query for server state management to handle caching and synchronization efficiently."
+          },
+          analysis: {
+            overall_score: 92,
+            categories: [
+              { name: 'Technical Proficiency', score: 95, feedback: 'Exceptional understanding of React internals and modern frontend patterns.' },
+              { name: 'Communication', score: 88, feedback: 'Articulate and clear, though could be slightly more concise in technical explanations.' },
+              { name: 'Problem Solving', score: 90, feedback: 'Demonstrated strong analytical skills when breaking down the system design problem.' },
+              { name: 'Cultural Fit', score: 94, feedback: 'Showed great enthusiasm for mentorship and team collaboration.' }
+            ],
+            key_strengths: [
+              'Deep expertise in React ecosystem and performance optimization',
+              'Strong architectural thinking',
+              'Proactive approach to testing and quality assurance'
+            ],
+            areas_for_improvement: [
+              'Could provide more concrete examples of conflict resolution',
+              'Slight tendency to over-engineer simple solutions initially'
+            ],
+            executive_summary: "Dimantha is a highly skilled Senior Frontend Engineer with a deep understanding of modern web technologies. He demonstrated exceptional technical proficiency and a strong problem-solving mindset. His communication was clear, and he showed a great cultural fit for a collaborative team environment. Highly recommended for the role."
+          }
+        });
+        setLoading(false);
+        return;
+      }
+
       try {
         // Use the new summary endpoint
         const response = await apiClient.getInterviewSummary(interviewId);

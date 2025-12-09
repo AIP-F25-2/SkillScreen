@@ -118,9 +118,23 @@ export default function RecruiterDashboard() {
 
       // Fetch all interviews
       const interviewsResponse = await apiClient.getAllInterviews(organizationId);
+      let fetchedInterviews: any[] = [];
       if (interviewsResponse.success) {
-        setInterviews(interviewsResponse.data.interviews || []);
+        fetchedInterviews = interviewsResponse.data.interviews || [];
       }
+
+      // Add dummy interview
+      const dummyInterview = {
+        interview_id: '550e8400-e29b-41d4-a716-446655440000',
+        candidate_name: 'Dimantha Goonewardena',
+        candidate_email: 'goonewardenadimantha@gmail.com',
+        job_position_title: 'Senior Frontend Engineer',
+        mode: 'video',
+        created_at: '2025-12-08T23:59:00',
+        status: 'completed'
+      };
+
+      setInterviews([dummyInterview, ...fetchedInterviews]);
 
       // Fetch all candidates
       const candidatesResponse = await apiClient.getAllCandidates();
