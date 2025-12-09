@@ -132,7 +132,8 @@ export default function RecruiterDashboard() {
           job_position_title: 'Senior Frontend Engineer',
           mode: 'video',
           created_at: '2025-12-08T23:59:00',
-          status: 'completed'
+          status: 'completed',
+          score: 92
         },
         {
           interview_id: '661f9511-f3ac-52e5-b827-557766551111',
@@ -141,7 +142,8 @@ export default function RecruiterDashboard() {
           job_position_title: 'Junior Backend Developer',
           mode: 'audio',
           created_at: '2025-12-07T14:30:00',
-          status: 'completed'
+          status: 'completed',
+          score: 45
         },
         {
           interview_id: '772g0622-g4bd-63f6-c938-668877662222',
@@ -150,7 +152,8 @@ export default function RecruiterDashboard() {
           job_position_title: 'DevOps Engineer',
           mode: 'video',
           created_at: '2025-12-06T09:15:00',
-          status: 'completed'
+          status: 'completed',
+          score: 78
         },
         {
           interview_id: '883h1733-h5ce-74g7-d049-779988773333',
@@ -159,7 +162,8 @@ export default function RecruiterDashboard() {
           job_position_title: 'Product Manager',
           mode: 'chat',
           created_at: '2025-12-05T16:45:00',
-          status: 'completed'
+          status: 'completed',
+          score: 88
         }
       ];
 
@@ -332,6 +336,13 @@ export default function RecruiterDashboard() {
     }
   };
 
+  const getBorderClass = (score?: number) => {
+    if (score === undefined || score === null) return 'border-b border-white/5 hover:bg-white/5';
+    if (score < 60) return 'border-2 border-red-500/50 hover:bg-white/5';
+    if (score < 80) return 'border-2 border-orange-500/50 hover:bg-white/5';
+    return 'border-b border-white/5 hover:bg-white/5';
+  };
+
   return (
     <div className="relative">
       <div className="relative z-10">
@@ -417,7 +428,7 @@ export default function RecruiterDashboard() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <table className="w-full border-separate border-spacing-y-2">
                   <thead>
                     <tr className="border-b border-white/10">
                       <th className="text-left py-3 px-4 text-white/80 font-medium">Candidate</th>
@@ -431,7 +442,7 @@ export default function RecruiterDashboard() {
                   </thead>
                   <tbody>
                     {interviews.map((interview) => (
-                      <tr key={interview.interview_id} className="border-b border-white/5 hover:bg-white/5">
+                      <tr key={interview.interview_id} className={`${getBorderClass(interview.score)} rounded-lg transition-all`}>
                         <td className="py-4 px-4">
                           <div className="flex items-center gap-3">
                             <div className="bg-blue-500/20 rounded-full p-2">
