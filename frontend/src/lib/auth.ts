@@ -5,6 +5,7 @@ export interface User {
   name: string;
   email: string;
   userType: UserType;
+  organizationId?: string;
 }
 
 export interface AuthToken {
@@ -50,22 +51,23 @@ export async function mockLogin(usernameOrEmail: string, password: string): Prom
       password: password,
     });
 
-    if (!response.success) {
+    if (!response || !response.access_token) {
       return null;
     }
 
-    // Extract user info from JWT token or create from response
+    // Extract user info from response
     const user: User = {
-      id: usernameOrEmail, // Using username/email as ID for now
-      name: usernameOrEmail.includes('@') ? usernameOrEmail.split('@')[0] : usernameOrEmail,
-      email: usernameOrEmail.includes('@') ? usernameOrEmail : `${usernameOrEmail}@intervuai.com`,
-      userType: response.data.role === 'admin' ? 'recruiter' : 'candidate',
+      id: response.user.id,
+      name: response.user.email.split('@')[0], // Fallback name
+      email: response.user.email,
+      userType: response.user.role === 'admin' || response.user.role === 'recruiter' ? 'recruiter' : 'candidate',
+      organizationId: response.user.organization_id,
     };
 
     return {
-      token: response.data.access_token,
+      token: response.access_token,
       user,
-      expiresAt: Date.now() + (response.data.expires_in * 1000), // Convert seconds to milliseconds
+      expiresAt: Date.now() + (24 * 60 * 60 * 1000), // Default 24h expiration
     };
   } catch (error) {
     console.error('Login error:', error);

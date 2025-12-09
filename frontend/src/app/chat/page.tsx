@@ -16,7 +16,7 @@ export default function ChatPage() {
   const [messages] = useState<Message[]>([
     {
       type: 'assistant',
-      content: 'Welcome to your IntervuAI interview! I\'ll be assessing your technical and problem-solving skills. Let\'s begin with the first question.'
+      content: 'Welcome to your SkillScreen interview! I\'ll be assessing your technical and problem-solving skills. Let\'s begin with the first question.'
     },
     {
       type: 'assistant',
@@ -61,9 +61,8 @@ export default function ChatPage() {
             {messages.map((message, index) => (
               <div
                 key={index}
-                className={`border-b border-white/10 ${
-                  message.type === 'assistant' ? 'bg-[#1E1E1E]' : 'bg-[#27272A]'
-                }`}
+                className={`border-b border-white/10 ${message.type === 'assistant' ? 'bg-[#1E1E1E]' : 'bg-[#27272A]'
+                  }`}
               >
                 <div className="max-w-3xl mx-auto px-4 py-6 flex gap-4">
                   <div className="mt-1 flex-shrink-0">

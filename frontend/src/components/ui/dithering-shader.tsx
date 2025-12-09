@@ -258,16 +258,16 @@ export type DitheringShape = keyof typeof DitheringShapes
 export type DitheringType = keyof typeof DitheringTypes
 
 interface DitheringShaderProps {
-  width?: number
-  height?: number
-  colorBack?: string
-  colorFront?: string
-  shape?: DitheringShape
-  type?: DitheringType
-  pxSize?: number
-  speed?: number
-  className?: string
-  style?: React.CSSProperties
+  readonly width?: number
+  readonly height?: number
+  readonly colorBack?: string
+  readonly colorFront?: string
+  readonly shape?: DitheringShape
+  readonly type?: DitheringType
+  readonly pxSize?: number
+  readonly speed?: number
+  readonly className?: string
+  readonly style?: React.CSSProperties
 }
 
 function hexToRgba(hex: string): [number, number, number, number] {

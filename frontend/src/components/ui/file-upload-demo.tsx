@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Upload, FileText, Trash2, CheckCircle, Loader2, X, AlertCircle, Mail, Edit2, Save, Video, Mic, MessageCircle } from "lucide-react";
 import { useState, useCallback, useEffect } from "react";
+import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from "@/lib/api";
 import { getDemoJobDescription } from "@/lib/demoHelpers";
 import {
@@ -64,7 +65,11 @@ const generateSecureRandomString = (length: number = 9): string => {
   throw new Error('Cryptographically secure random number generator not available');
 };
 
-export function FileUploadDemo() {
+interface FileUploadDemoProps {
+  onUploadSuccess?: () => void;
+}
+
+export function FileUploadDemo({ onUploadSuccess }: FileUploadDemoProps) {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -76,15 +81,18 @@ export function FileUploadDemo() {
   const [jobPositions, setJobPositions] = useState<JobPosition[]>([]);
   const [loadingJobPositions, setLoadingJobPositions] = useState(false);
 
+  const { user } = useAuth();
+
   // Default organization ID - in production this should come from auth context
-  const DEFAULT_ORGANIZATION_ID = "ecf369b2-caae-4962-85a8-404db7ab0d7e";
+  const organizationId = user?.organizationId;
 
   // Fetch job positions on mount for the current organization
   useEffect(() => {
     const fetchJobPositions = async () => {
+      if (!organizationId) return;
       setLoadingJobPositions(true);
       try {
-        const response = await apiClient.getJobPositions(DEFAULT_ORGANIZATION_ID);
+        const response = await apiClient.getJobPositions(organizationId);
         console.log('Job positions response:', response);
         if (response.success && response.data?.job_positions) {
           setJobPositions(response.data.job_positions.filter((jp: JobPosition) => jp.is_active !== false));
@@ -100,14 +108,14 @@ export function FileUploadDemo() {
 
   const validateFile = (file: File): string | null => {
     const fileExt = '.' + file.name.split('.').pop()?.toLowerCase();
-    
+
     if (!SUPPORTED_TYPES.includes(fileExt)) {
       return `File type ${fileExt} not supported. Supported: PDF, DOC, DOCX, ZIP`;
     }
 
     const isZip = fileExt === '.zip';
     const maxSize = isZip ? MAX_ZIP_SIZE : MAX_FILE_SIZE;
-    
+
     if (file.size > maxSize) {
       const maxSizeMB = Math.round(maxSize / (1024 * 1024));
       return `File size exceeds ${maxSizeMB}MB limit`;
@@ -170,9 +178,9 @@ export function FileUploadDemo() {
   };
 
   const onDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setIsDragging(false);
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
     handleFileSelect(e.dataTransfer.files);
   }, [selectedFiles]);
 
@@ -185,12 +193,17 @@ export function FileUploadDemo() {
   const handleUpload = async () => {
     if (selectedFiles.length === 0) return;
 
+    if (!organizationId) {
+      setUploadError("Organization ID not found. Please log in again.");
+      return;
+    }
+
     setIsUploading(true);
     setUploadError(null);
-    
+
     try {
       console.log(`Uploading ${selectedFiles.length} file(s) to interview-service...`);
-      const parseResponse = await apiClient.uploadResumeForParsing(selectedFiles);
+      const parseResponse = await apiClient.uploadResumeForParsing(selectedFiles, organizationId);
       console.log("Interview-service parse response:", parseResponse);
 
       if (!parseResponse.success) {
@@ -199,7 +212,7 @@ export function FileUploadDemo() {
 
       const files = parseResponse.data?.files || [];
       console.log(`Raw files data:`, files);
-      
+
       // Initialize editable fields with extracted values
       const filesWithEditableFields = files.map((file: ProcessedFile) => ({
         ...file,
@@ -208,12 +221,12 @@ export function FileUploadDemo() {
         selectedJobPositionId: '',
         isEditing: false,
       }));
-      
+
       setProcessedFiles(filesWithEditableFields);
       setUploadSuccess(true);
-      
+
       console.log(`Successfully processed ${files.length} file(s). Ready for review before sending invitations.`);
-        
+
     } catch (error: any) {
       console.error("Upload error:", error);
       setUploadError(error.message || "Upload failed. Please try again.");
@@ -224,19 +237,27 @@ export function FileUploadDemo() {
   };
 
   const toggleEditMode = (index: number) => {
-    setProcessedFiles((prev) => 
-      prev.map((file, i) => 
+    setProcessedFiles((prev) =>
+      prev.map((file, i) =>
         i === index ? { ...file, isEditing: !file.isEditing } : file
       )
     );
   };
 
   const updateCandidateField = (index: number, field: 'editedName' | 'editedEmail' | 'selectedJobPositionId' | 'selectedMode', value: string) => {
-    setProcessedFiles((prev) => 
-      prev.map((file, i) => 
+    setProcessedFiles((prev) =>
+      prev.map((file, i) =>
         i === index ? { ...file, [field]: value } : file
       )
     );
+  };
+
+  const resetForm = () => {
+    setSelectedFiles([]);
+    setProcessedFiles([]);
+    setUploadSuccess(false);
+    setProcessSuccess(false);
+    setUploadError(null);
   };
 
   const handleProcess = async () => {
@@ -246,11 +267,11 @@ export function FileUploadDemo() {
     try {
       // Filter candidates that are ready to process
       const processedCandidates = processedFiles.filter(
-        (f: ProcessedFile) => f.status === 'processed' && 
-        (f.editedEmail || (f.extracted_emails && f.extracted_emails.length > 0)) && 
-        (f.editedName || f.extracted_name)
+        (f: ProcessedFile) => f.status === 'processed' &&
+          (f.editedEmail || (f.extracted_emails && f.extracted_emails.length > 0)) &&
+          (f.editedName || f.extracted_name)
       );
-      
+
       if (processedCandidates.length === 0) {
         alert("No valid candidates found. Please ensure each candidate has a name and email.");
         setIsProcessing(false);
@@ -270,36 +291,36 @@ export function FileUploadDemo() {
       }
 
       console.log(`Processing ${processedCandidates.length} candidate(s) and sending invitations...`);
-      
+
       const emailResults: Array<{ candidate: ProcessedFile; success: boolean; error?: string }> = [];
-      
+
       // Add a small delay to ensure database operations complete
       await new Promise(resolve => setTimeout(resolve, 500));
-      
+
       for (const candidate of processedCandidates) {
         try {
           // Use edited values if available, otherwise fall back to extracted
           const candidateName = candidate.editedName || candidate.extracted_name || 'Candidate';
           const candidateEmail = candidate.editedEmail || candidate.extracted_emails?.[0];
-          
+
           if (!candidateEmail) {
             console.warn(`Skipping candidate ${candidateName} - no email address`);
-            emailResults.push({ 
-              candidate, 
-              success: false, 
-              error: 'No email address provided' 
+            emailResults.push({
+              candidate,
+              success: false,
+              error: 'No email address provided'
             });
             continue;
           }
-          
+
           // Use database ID if available, otherwise generate a temporary one
           const candidateId = candidate.id || `temp_${Date.now()}_${generateSecureRandomString(9)}`;
-          
+
           // Generate unique session_id for the interview
           const sessionId = `session_${Date.now()}_${generateSecureRandomString(9)}_${candidateId}`;
-          
+
           console.log(`📧 Sending invitation email to ${candidateEmail} for candidate ${candidateName}...`);
-          
+
           const invitationData: any = {
             candidate_email: candidateEmail,
             candidate_name: candidateName,
@@ -309,41 +330,46 @@ export function FileUploadDemo() {
             mode: candidate.selectedMode || 'chat',
             recruiter_name: "Hiring Team",
             company_name: "SkillScreen",
-            expires_in_hours: 48
+            expires_in_hours: 48,
+            organization_id: organizationId
           };
-          
-          // Add job_position_id if selected
+
+          // Add job_position_id and job_title if selected
           if (candidate.selectedJobPositionId) {
             invitationData.job_position_id = candidate.selectedJobPositionId;
+            const selectedPosition = jobPositions.find(p => p.id === candidate.selectedJobPositionId);
+            if (selectedPosition) {
+              invitationData.job_title = selectedPosition.title;
+            }
           }
-          
+
           const emailResponse = await apiClient.sendInterviewInvitation(invitationData);
-          
+
           if (emailResponse.success || emailResponse.data) {
             console.log(`✅ Email sent successfully to ${candidateEmail}`);
             emailResults.push({ candidate, success: true });
           } else {
             console.warn(`❌ Failed to send email to ${candidateEmail}`);
-            emailResults.push({ 
-              candidate, 
-              success: false, 
-              error: 'Email sending failed' 
+            emailResults.push({
+              candidate,
+              success: false,
+              error: 'Email sending failed'
             });
           }
         } catch (emailError: any) {
           console.error(`Error sending email to candidate:`, emailError);
-          emailResults.push({ 
-            candidate, 
-            success: false, 
-            error: emailError.message || 'Email sending failed' 
+          emailResults.push({
+            candidate,
+            success: false,
+            error: emailError.message || 'Email sending failed'
           });
         }
       }
-      
+
       // Update processed files with email status
       const updatedFiles = processedFiles.map((file: ProcessedFile) => {
-        const emailResult = emailResults.find(r => 
-          r.candidate.id === file.id || 
+        const emailResult = emailResults.find(r =>
+          r.candidate.id === file.id ||
           (r.candidate.editedEmail === file.editedEmail && r.candidate.editedName === file.editedName)
         );
         if (emailResult) {
@@ -355,29 +381,31 @@ export function FileUploadDemo() {
         }
         return file;
       });
-      
+
       setProcessedFiles(updatedFiles);
-      
+
       const successCount = emailResults.filter(r => r.success).length;
       const failCount = emailResults.filter(r => !r.success).length;
-      
+
       console.log(`Email sending complete: ${successCount} sent, ${failCount} failed`);
-      
+
       if (successCount > 0) {
         setProcessSuccess(true);
-        alert(`Successfully sent ${successCount} invitation email(s)!${failCount > 0 ? ` (${failCount} failed)` : ''}`);
+        // Trigger the success callback to refresh parent components
+        if (onUploadSuccess) {
+          onUploadSuccess();
+        }
+
+        // Don't show alert, just show the success UI
+        // alert(`Successfully sent ${successCount} invitation email(s)!${failCount > 0 ? ` (${failCount} failed)` : ''}`);
       } else {
         alert("Failed to send any invitation emails. Please check the errors and try again.");
       }
-      
+
       // Reset after delay if all successful
       if (failCount === 0 && successCount > 0) {
         setTimeout(() => {
-          setSelectedFiles([]);
-          setProcessedFiles([]);
-          setUploadSuccess(false);
-          setProcessSuccess(false);
-          setUploadError(null);
+          resetForm();
         }, 3000);
       }
     } catch (error) {
@@ -386,14 +414,6 @@ export function FileUploadDemo() {
     } finally {
       setIsProcessing(false);
     }
-  };
-
-  const resetForm = () => {
-    setSelectedFiles([]);
-    setProcessedFiles([]);
-    setUploadSuccess(false);
-    setProcessSuccess(false);
-    setUploadError(null);
   };
 
   return (
@@ -423,9 +443,8 @@ export function FileUploadDemo() {
           onDragEnter={onDragEnter}
           onDragLeave={onDragLeave}
           onDrop={onDrop}
-          className={`flex h-40 cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-white/15 bg-white/5 transition-colors hover:bg-white/10 ${
-            isDragging ? 'border-blue-400/60 bg-blue-500/10' : ''
-          }`}
+          className={`flex h-40 cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-white/15 bg-white/5 transition-colors hover:bg-white/10 ${isDragging ? 'border-blue-400/60 bg-blue-500/10' : ''
+            }`}
         >
           <div className="rounded-full bg-black/40 p-3">
             <Upload className="h-5 w-5 text-white/80" />
@@ -445,17 +464,17 @@ export function FileUploadDemo() {
                 key={index}
                 className="flex items-center gap-4 rounded-lg border border-white/10 bg-white/5 p-4"
               >
-            <div className="rounded-md bg-white/10 p-2">
-              <FileText className="h-6 w-6 text-white" />
-            </div>
+                <div className="rounded-md bg-white/10 p-2">
+                  <FileText className="h-6 w-6 text-white" />
+                </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-white text-sm font-medium truncate">{file.name}</div>
                   <div className="text-xs text-white/60">{formatFileSize(file.size)}</div>
                   {file.name.toLowerCase().endsWith('.zip') && (
                     <div className="text-xs text-blue-400 mt-1">ZIP archive - will extract and process all resumes</div>
-              )}
-            </div>
-            {!uploadSuccess && (
+                  )}
+                </div>
+                {!uploadSuccess && (
                   <Button
                     size="sm"
                     variant="destructive"
@@ -463,7 +482,7 @@ export function FileUploadDemo() {
                     className="flex-shrink-0"
                   >
                     <X className="h-4 w-4" />
-                </Button>
+                  </Button>
                 )}
               </div>
             ))}
@@ -488,23 +507,23 @@ export function FileUploadDemo() {
                 >
                   Add More
                 </Button>
-            <Button 
-              onClick={handleUpload} 
+                <Button
+                  onClick={handleUpload}
                   disabled={isUploading || selectedFiles.length === 0}
                   className="bg-blue-600 hover:bg-blue-700"
-            >
-              {isUploading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Uploading...
-                </>
-              ) : (
-                <>
-                  <Upload className="mr-2 h-4 w-4" />
+                >
+                  {isUploading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="mr-2 h-4 w-4" />
                       Upload & Parse {selectedFiles.length} File{selectedFiles.length !== 1 ? 's' : ''}
-                </>
-              )}
-            </Button>
+                    </>
+                  )}
+                </Button>
               </div>
             </div>
           )}
@@ -537,11 +556,11 @@ export function FileUploadDemo() {
                   {processedFiles.filter(f => f.status === 'processed').length} of {processedFiles.length} processed
                 </span>
               </div>
-              
+
               <p className="text-xs text-white/60 mb-4">
                 Review and edit candidate details below. Select a job position and interview mode for each candidate, then click "Send Invitations" to email them.
               </p>
-              
+
               {/* Email Summary */}
               {processedFiles.some(f => f.emailSent !== undefined) && (
                 <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 mb-3">
@@ -550,7 +569,7 @@ export function FileUploadDemo() {
                     <span className="text-sm font-semibold text-white">Email Invitations</span>
                   </div>
                   <div className="text-xs text-white/70 space-y-1">
-                <div>
+                    <div>
                       ✅ Sent: {processedFiles.filter(f => f.emailSent === true).length}
                     </div>
                     {processedFiles.filter(f => f.emailSent === false).length > 0 && (
@@ -558,7 +577,7 @@ export function FileUploadDemo() {
                         ❌ Failed: {processedFiles.filter(f => f.emailSent === false).length}
                       </div>
                     )}
-                </div>
+                  </div>
                 </div>
               )}
 
@@ -566,19 +585,18 @@ export function FileUploadDemo() {
                 {processedFiles.map((file, index) => (
                   <div
                     key={index}
-                    className={`p-4 rounded-lg border ${
-                      file.status === 'processed'
-                        ? 'bg-green-500/10 border-green-500/30'
-                        : file.status === 'duplicate_email'
+                    className={`p-4 rounded-lg border ${file.status === 'processed'
+                      ? 'bg-green-500/10 border-green-500/30'
+                      : file.status === 'duplicate_email'
                         ? 'bg-yellow-500/10 border-yellow-500/30'
                         : 'bg-red-500/10 border-red-500/30'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex-1 min-w-0">
                         <div className="text-white text-sm font-medium truncate">{file.filename}</div>
                         <div className="text-xs text-white/60 mt-1">{formatFileSize(file.size)}</div>
-                </div>
+                      </div>
                       <div className="flex items-center gap-2">
                         {file.status === 'processed' && !file.emailSent && (
                           <Button
@@ -599,9 +617,9 @@ export function FileUploadDemo() {
                         {file.status === 'duplicate_email' && (
                           <AlertCircle className="h-5 w-5 text-yellow-400 flex-shrink-0" />
                         )}
-                </div>
-              </div>
-              
+                      </div>
+                    </div>
+
                     {file.status === 'processed' && (
                       <div className="space-y-3 mt-3 pt-3 border-t border-white/10">
                         {/* Editable Name Field */}
@@ -618,7 +636,7 @@ export function FileUploadDemo() {
                             <span className="text-sm text-white">{file.editedName || file.extracted_name || 'N/A'}</span>
                           )}
                         </div>
-                        
+
                         {/* Editable Email Field */}
                         <div>
                           <label className="text-xs text-white/70 block mb-1">Email Address</label>
@@ -634,7 +652,7 @@ export function FileUploadDemo() {
                             <span className="text-sm text-blue-300">{file.editedEmail || file.extracted_emails?.[0] || 'N/A'}</span>
                           )}
                         </div>
-                        
+
                         {/* Job Position Selector */}
                         <div>
                           <label className="text-xs text-white/70 block mb-1">Job Position <span className="text-yellow-400">*</span></label>
@@ -677,11 +695,10 @@ export function FileUploadDemo() {
                                 type="button"
                                 onClick={() => updateCandidateField(index, 'selectedMode', value)}
                                 disabled={file.emailSent === true}
-                                className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs transition ${
-                                  (file.selectedMode || 'chat') === value
-                                    ? 'border-blue-400 bg-blue-500/20 text-blue-100'
-                                    : 'border-white/20 bg-white/5 text-white/70 hover:bg-white/10'
-                                }`}
+                                className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs transition ${(file.selectedMode || 'chat') === value
+                                  ? 'border-blue-400 bg-blue-500/20 text-blue-100'
+                                  : 'border-white/20 bg-white/5 text-white/70 hover:bg-white/10'
+                                  }`}
                               >
                                 <Icon className="h-3 w-3" />
                                 <span>{label}</span>
@@ -692,14 +709,14 @@ export function FileUploadDemo() {
                             Default is <span className="font-medium">Chat</span> if no mode is selected.
                           </p>
                         </div>
-                        
+
                         {file.id && (
                           <div>
                             <span className="text-xs text-white/50">Candidate ID: </span>
                             <span className="text-xs text-white/70 font-mono">{file.id}</span>
                           </div>
                         )}
-                        
+
                         {file.emailSent !== undefined && (
                           <div className="mt-2 pt-2 border-t border-white/10">
                             {file.emailSent ? (
@@ -717,17 +734,17 @@ export function FileUploadDemo() {
                                   )}
                                 </div>
                               </div>
-                  )}
-                </div>
+                            )}
+                          </div>
                         )}
-              </div>
+                      </div>
                     )}
 
                     {file.status === 'failed' && file.error && (
                       <div className="mt-2 pt-2 border-t border-red-500/20">
                         <p className="text-xs text-red-300">{file.error}</p>
-            </div>
-          )}
+                      </div>
+                    )}
 
                     {file.status === 'duplicate_email' && (
                       <div className="mt-2 pt-2 border-t border-yellow-500/20">
@@ -739,43 +756,43 @@ export function FileUploadDemo() {
                   </div>
                 ))}
               </div>
-              
+
               {/* Process Button */}
               {!processSuccess && (
                 <div className="flex gap-3 pt-4 border-t border-white/10">
-              <Button 
-                onClick={handleProcess} 
+                  <Button
+                    onClick={handleProcess}
                     disabled={isProcessing || processedFiles.filter(f => f.status === 'processed').length === 0}
-                  className="flex-1 bg-green-600 hover:bg-green-700"
-              >
-                {isProcessing ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Sending Invitations...
-                  </>
-                ) : (
-                  <>
-                    <Mail className="mr-2 h-4 w-4" />
+                    className="flex-1 bg-green-600 hover:bg-green-700"
+                  >
+                    {isProcessing ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Sending Invitations...
+                      </>
+                    ) : (
+                      <>
+                        <Mail className="mr-2 h-4 w-4" />
                         Send Invitations ({processedFiles.filter(f => f.status === 'processed' && (f.editedEmail || f.extracted_emails?.length)).length})
-                  </>
-                )}
-              </Button>
-                <Button 
+                      </>
+                    )}
+                  </Button>
+                  <Button
                     onClick={resetForm}
-                  variant="outline"
+                    variant="outline"
                     className="border-white/20 text-white hover:bg-white/10"
-                >
-                  Start Over
-                </Button>
-            </div>
-          )}
+                  >
+                    Start Over
+                  </Button>
+                </div>
+              )}
 
-          {/* Success Message */}
-          {processSuccess && (
-            <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 text-center">
-              <CheckCircle className="h-8 w-8 text-green-400 mx-auto mb-2" />
+              {/* Success Message */}
+              {processSuccess && (
+                <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 text-center">
+                  <CheckCircle className="h-8 w-8 text-green-400 mx-auto mb-2" />
                   <p className="text-sm text-green-300 font-medium">Invitations Sent Successfully!</p>
-              <p className="text-xs text-white/60 mt-1">Candidates will receive their interview links via email.</p>
+                  <p className="text-xs text-white/60 mt-1">Candidates will receive their interview links via email.</p>
                 </div>
               )}
             </div>

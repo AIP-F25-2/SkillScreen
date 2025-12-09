@@ -16,7 +16,7 @@ import { GrainGradient as GrainGradient1 } from '@paper-design/shaders-react';
 export default function LoginPage() {
   const router = useRouter();
   const { login, isAuthenticated, isLoading } = useAuth();
-  
+
   const [formData, setFormData] = useState({
     usernameOrEmail: '',
     password: ''
@@ -34,42 +34,42 @@ export default function LoginPage() {
 
   const validateForm = () => {
     const newErrors: { [key: string]: string } = {};
-    
+
     if (!formData.usernameOrEmail.trim()) {
       newErrors.usernameOrEmail = 'Username or email is required';
     }
-    
+
     if (!formData.password.trim()) {
       newErrors.password = 'Password is required';
     } else if (formData.password.length < 3) {
       newErrors.password = 'Password must be at least 3 characters';
     }
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!validateForm()) return;
-    
+
     setIsSubmitting(true);
     const result = await login(formData.usernameOrEmail, formData.password);
-    
+
     if (result.success) {
       router.push('/');
     } else {
       setErrors({ submit: result.error || 'Login failed' });
     }
-    
+
     setIsSubmitting(false);
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-    
+
     // Clear error when user starts typing
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
@@ -94,7 +94,7 @@ export default function LoginPage() {
   }
 
   return (
-   <div className="relative min-h-screen flex flex-col overflow-hidden">
+    <div className="relative min-h-screen flex flex-col overflow-hidden">
       {/*<div className="absolute inset-0 -z-10">
         <GrainGradient1
           colors={['#7300ff', '#eba8ff', '#00bfff', '#2a00ff']}
@@ -112,14 +112,14 @@ export default function LoginPage() {
         />
       </div>*/}
 
-       <ShaderAnimation 
+      <ShaderAnimation
         currentStep={1}
         totalSteps={1}
         progress={0.5}
-      /> 
+      />
 
       <div className="flex-1 flex items-center justify-center p-6">
-        <motion.div 
+        <motion.div
           className="w-full max-w-md bg-black/40 backdrop-blur-md rounded-2xl p-8 shadow-2xl"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -127,20 +127,20 @@ export default function LoginPage() {
         >
           {/* Logo */}
           <div className="text-center mb-8">
-          <Link href="/" className="flex items-center space-x-2 justify-center">
-          <div className="relative w-8 h-8">
-            <Image
-                src="/logo.png"
-                alt="IntervuAI Logo"
-                fill
-                sizes="(max-width: 768px) 32px, (max-width: 1200px) 32px, 32px"
-                className="object-contain"
-              />
-            </div>
-            <span className="text-white text-xl font-bold">
-              IntervuAI
-            </span>
-          </Link>
+            <Link href="/" className="flex items-center space-x-2 justify-center">
+              <div className="relative w-8 h-8">
+                <Image
+                  src="/logo.png"
+                  alt="IntervuAI Logo"
+                  fill
+                  sizes="(max-width: 768px) 32px, (max-width: 1200px) 32px, 32px"
+                  className="object-contain"
+                />
+              </div>
+              <span className="text-white text-xl font-bold">
+                SkillScreen
+              </span>
+            </Link>
             <p className="text-white/70">Sign in to your account</p>
           </div>
 
@@ -158,9 +158,9 @@ export default function LoginPage() {
                 {showDemo ? 'Hide' : 'Show'}
               </button>
             </div>
-            
+
             {showDemo && (
-              <motion.div 
+              <motion.div
                 className="mt-3 space-y-2"
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
@@ -199,9 +199,8 @@ export default function LoginPage() {
                 name="usernameOrEmail"
                 value={formData.usernameOrEmail}
                 onChange={handleInputChange}
-                className={`w-full px-4 py-3 bg-white/10 border rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 transition-all ${
-                  errors.usernameOrEmail ? 'border-red-500 focus:ring-red-500' : 'border-white/20 focus:ring-blue-500'
-                }`}
+                className={`w-full px-4 py-3 bg-white/10 border rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 transition-all ${errors.usernameOrEmail ? 'border-red-500 focus:ring-red-500' : 'border-white/20 focus:ring-blue-500'
+                  }`}
                 placeholder="Enter your username or email"
               />
               {errors.usernameOrEmail && (
@@ -219,9 +218,8 @@ export default function LoginPage() {
                 name="password"
                 value={formData.password}
                 onChange={handleInputChange}
-                className={`w-full px-4 py-3 bg-white/10 border rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 transition-all ${
-                  errors.password ? 'border-red-500 focus:ring-red-500' : 'border-white/20 focus:ring-blue-500'
-                }`}
+                className={`w-full px-4 py-3 bg-white/10 border rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 transition-all ${errors.password ? 'border-red-500 focus:ring-red-500' : 'border-white/20 focus:ring-blue-500'
+                  }`}
                 placeholder="Enter your password"
               />
               {errors.password && (
@@ -254,7 +252,7 @@ export default function LoginPage() {
           {/* Footer */}
           <div className="mt-6 text-center">
             <p className="text-sm text-white/60">
-              New to IntervuAI?{' '}
+              New to SkillScreen?{' '}
               <button
                 onClick={() => router.push('/onboarding')}
                 className="text-blue-300 hover:text-blue-200 font-medium"

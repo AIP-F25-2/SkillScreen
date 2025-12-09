@@ -55,7 +55,6 @@ app.include_router(job_position_controller)
 
 # In-memory storage for sessions
 sessions_db = {}
-token_store = {}
 
 # Initialize email service
 email_service = EmailService()
@@ -171,8 +170,10 @@ async def get_all_interviews(organization_id: str = None, limit: int = 100, offs
             
             # Convert to dict format with candidate info if available
             interviews_data = []
+            logger.info(f"Fetching interviews for organization_id: {organization_id}")
             for interview in interviews:
                 interview_dict = interview.to_dict()
+                logger.info(f"Found interview: {interview.id}, org_id: {interview.organization_id}")
                 
                 # Try to get candidate info if candidate_id exists
                 if interview.candidate_id:
@@ -185,6 +186,17 @@ async def get_all_interviews(organization_id: str = None, limit: int = 100, offs
                             interview_dict['candidate_email'] = candidate.email
                     except Exception as e:
                         logger.warning(f"Could not fetch candidate info for interview {interview.id}: {e}")
+
+                # Try to get job position info if job_position_id exists
+                if interview.job_position_id:
+                    try:
+                        from repository.job_position_repository import JobPositionRepository
+                        job_repo = JobPositionRepository(session)
+                        job_pos = job_repo.get_job_position_by_id(str(interview.job_position_id))
+                        if job_pos:
+                            interview_dict['job_position_title'] = job_pos.title
+                    except Exception as e:
+                        logger.warning(f"Could not fetch job position info for interview {interview.id}: {e}")
                 
                 interviews_data.append(interview_dict)
             
@@ -223,6 +235,17 @@ async def get_interview(interview_id: str):
                         interview_dict['candidate_email'] = candidate.email
                 except Exception as e:
                     logger.warning(f"Could not fetch candidate info: {e}")
+
+            # Try to get job position info if job_position_id exists
+            if interview.job_position_id:
+                try:
+                    from repository.job_position_repository import JobPositionRepository
+                    job_repo = JobPositionRepository(session)
+                    job_pos = job_repo.get_job_position_by_id(str(interview.job_position_id))
+                    if job_pos:
+                        interview_dict['job_position_title'] = job_pos.title
+                except Exception as e:
+                    logger.warning(f"Could not fetch job position info: {e}")
             
             return create_response(interview_dict)
         finally:
@@ -237,6 +260,8 @@ async def get_interview(interview_id: str):
 # Token Management Endpoints
 # ========================================
 
+from services.token_service import token_service
+
 @app.post("/api/token/validate")
 async def validate_token(request: Request):
     """Validate an interview access token and create interview record"""
@@ -244,27 +269,15 @@ async def validate_token(request: Request):
         data = await request.json()
         token = data.get('token')
         
-        if not token:
-            raise HTTPException(status_code=400, detail="Token is required")
+        # Use TokenService for validation
+        validation_result = token_service.validate_token(token)
         
-        # Check if token exists
-        if token not in token_store:
-            logger.warning(f"Token not found: {token[:10]}...")
-            raise HTTPException(status_code=404, detail="Invalid or expired token")
+        if not validation_result['valid']:
+            error_msg = validation_result['error']
+            status_code = 400 if "required" in error_msg else (404 if "found" in error_msg else 410)
+            raise HTTPException(status_code=status_code, detail=error_msg)
         
-        token_data = token_store[token]
-        
-        # Check if token is expired
-        expires_at = datetime.fromisoformat(token_data['expires_at'])
-        if datetime.utcnow() > expires_at:
-            logger.warning(f"Token expired: {token[:10]}...")
-            raise HTTPException(status_code=410, detail="This interview link has expired")
-        
-        # Check if token was already used
-        if token_data.get('used_at'):
-            logger.warning(f"Token already used: {token[:10]}...")
-            raise HTTPException(status_code=410, detail="This interview link has already been used")
-        
+        token_data = validation_result['data']
         candidate_id = token_data['candidate_id']
         
         # Try to find existing interview for this candidate (created when invitation was sent)
@@ -335,8 +348,12 @@ async def validate_token(request: Request):
             session.close()
         
         # Mark token as used
-        token_data['used_at'] = datetime.utcnow().isoformat()
-        token_data['interview_id'] = interview_id  # Link token to interview
+        token_service.mark_token_used(token)
+        
+        # Update token data with interview_id for future reference
+        token_data['interview_id'] = interview_id
+        # We need to update the store with this new info
+        token_service.store_token(token, token_data)
         
         logger.info(f"Token validated and interview created: {token[:10]}... -> {interview_id} for {token_data['candidate_email']}")
         
@@ -350,7 +367,7 @@ async def validate_token(request: Request):
                 "sessionId": interview_id,  # Use interview_id as session_id
                 "interviewId": interview_id,  # Add explicit interview_id
                 "expiresAt": token_data['expires_at'],
-                "usedAt": token_data.get('used_at')
+                "usedAt": datetime.utcnow().isoformat()
             }
         }
         
@@ -358,7 +375,9 @@ async def validate_token(request: Request):
         raise
     except Exception as e:
         logger.error(f"Token validation error: {str(e)}")
-        raise HTTPException(status_code=500, detail="An error occurred while validating the token")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"An error occurred while validating the token: {str(e)}")
 
 
 @app.post("/api/token/store")
@@ -374,21 +393,12 @@ async def store_token(request: Request):
         
         token = data['token']
         
-        # Store token data
-        token_store[token] = {
-            'candidate_id': data['candidate_id'],
-            'candidate_name': data['candidate_name'],
-            'candidate_email': data['candidate_email'],
-            'session_id': data['session_id'],
-            'expires_at': data['expires_at'],
-            'used_at': None
-        }
-        
-        logger.info(f"Token stored: {token[:10]}... for {data['candidate_email']}")
-        
-        return create_response({
-            "message": "Token stored successfully"
-        })
+        if token_service.store_token(token, data):
+            return create_response({
+                "message": "Token stored successfully"
+            })
+        else:
+            raise HTTPException(status_code=500, detail="Failed to store token")
         
     except HTTPException:
         raise
@@ -429,11 +439,15 @@ async def send_invitation(request: Request):
             # If not found and candidate_id looks like a temp ID, try to find by email
             if not candidate and (candidate_id.startswith('temp_') or len(candidate_id) < 36):
                 logger.info(f"Candidate ID {candidate_id} appears to be temporary, looking up by email: {candidate_email}")
-                # Try to find by email - we need organization_id for this, but we can try common org
-                # Or we can search across all orgs (less ideal but works for now)
-                # Actually, let's use the hardcoded org ID for now
-                hardcoded_org_id = "e5d2d50b-6c07-43cd-8a78-ffd7b5b377bb"
-                candidate = candidate_repo.get_candidate_by_email(hardcoded_org_id, candidate_email)
+                
+                # Use organization_id from request if available
+                req_org_id = data.get('organization_id')
+                
+                if req_org_id:
+                    candidate = candidate_repo.get_candidate_by_email(req_org_id, candidate_email)
+                else:
+                    logger.warning(f"No organization_id provided for email lookup of {candidate_email}")
+                    pass
                 
                 if candidate:
                     actual_candidate_id = str(candidate.id)
@@ -441,7 +455,7 @@ async def send_invitation(request: Request):
             
             if not candidate:
                 logger.warning(f"Candidate {candidate_id} (email: {candidate_email}) not found in database, creating interview without organization_id")
-                organization_id = None
+                organization_id = data.get('organization_id') # Use request org ID if candidate not found
             else:
                 organization_id = str(candidate.organization_id)
                 actual_candidate_id = str(candidate.id)  # Use the real database ID
@@ -460,18 +474,20 @@ async def send_invitation(request: Request):
             session_id=data['session_id'],
             recruiter_name=data.get('recruiter_name'),
             company_name=data.get('company_name'),
+            job_title=data.get('job_title'),
             expires_in_hours=data.get('expires_in_hours', 48)
         )
         
-        # Store token with actual candidate ID
-        token_store[result['token']] = {
-            'candidate_id': actual_candidate_id,  # Use the real database candidate ID
+        # Store token with actual candidate ID using TokenService
+        token_data = {
+            'candidate_id': actual_candidate_id,
             'candidate_name': result['candidate_name'],
             'candidate_email': result['candidate_email'],
             'session_id': result['session_id'],
             'expires_at': result['expires_at'],
             'used_at': None
         }
+        token_service.store_token(result['token'], token_data)
         
         # Create interview record in database
         interview_id = None

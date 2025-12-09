@@ -64,7 +64,8 @@ services:
       - PYTHONPATH=/app:/common-service
       # logging
       - ENV=dev
-      - LOG_LEVEL=DEBUG
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=text
       - LOG_TO_FILE=true
       - LOG_DIR=/var/log/app
       - LOG_FILE=user-service.log
@@ -88,12 +89,13 @@ services:
     ports:
       - "8005:8005"
     env_file:
-      - ./backend/assessment-service/.env   
+      - ./backend/assessment-service/.env
     environment:
       - PORT=8080
       - HOST=0.0.0.0
       - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
-      - USE_LLM_WEIGHTS=false   
+      - USE_LLM_WEIGHTS=false
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
     volumes:
       - ./backend/assessment-service:/app
       - ./backend/common-service:/common-service
@@ -109,24 +111,35 @@ services:
       - PORT=8080
       - HOST=0.0.0.0
       - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
-      - PYTHONPATH=/app:/common-service
+      - PYTHONPATH=/app:/common-service:/app/text-service
       # logging
       - ENV=dev
-      - LOG_LEVEL=DEBUG
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=text
       - LOG_TO_FILE=true
       - LOG_DIR=/var/log/app
       - LOG_FILE=coding-service.log
       - ENABLE_SEQ=false
       - SEQ_URL=http://seq:5341
-      - JUDGE0_BASE_URL=https://judge0-ce.p.rapidapi.com
-      - JUDGE0_RAPIDAPI_KEY=
-      - JUDGE0_RAPIDAPI_HOST=judge0-ce.p.rapidapi.com
+      - JUDGE0_BASE_URL=${JUDGE0_BASE_URL:-}
+      - JUDGE0_RAPIDAPI_KEY=${JUDGE0_RAPIDAPI_KEY:-}
+      - JUDGE0_RAPIDAPI_HOST=${JUDGE0_RAPIDAPI_HOST:-}
+      # LLM API Keys (for personalized question generation)
+      # Get your keys from: Gemini (https://aistudio.google.com/app/apikey), Groq (https://console.groq.com/), Mistral (https://console.mistral.ai/), SerpApi (https://serpapi.com/)
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY:-}
+      - SERPAPI_KEY=${SERPAPI_KEY:-}
     volumes:
       - ./backend/coding-service:/app
       - ./backend/common-service:/common-service
+      # Mount text-service code so coding-service can import EnhancedLLMService
+      # Mount the entire text-service directory structure for proper imports
+      - ./backend/text-service:/app/text-service
       - ./_logs:/var/log/app
     depends_on:
       - seq
+      - text-service
     networks:
       - skill-screen-network
 
@@ -146,6 +159,12 @@ services:
       - DEBUG=True
       - LOG_LEVEL=INFO
       - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+      # LLM API Keys (for enhanced LLM service with multi-LLM support)
+      # Get your keys from: Gemini (https://aistudio.google.com/app/apikey), Groq (https://console.groq.com/), Mistral (https://console.mistral.ai/), SerpApi (https://serpapi.com/)
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY:-}
+      - SERPAPI_KEY=${SERPAPI_KEY:-}
     volumes:
       - ./backend/text-service:/app
     networks:
@@ -160,7 +179,7 @@ services:
     ports:
       - "8000:8080"
     env_file:
-      - ./backend/audio-ai-service/.env  
+      - ./backend/audio-ai-service/.env
     environment:
       - PORT=8080
       - HOST=0.0.0.0
@@ -276,8 +295,12 @@ services:
       - SECRET_KEY=supersecret
       - ALGORITHM=HS256
       - DATABASE_URL=postgresql://intervuai:LOYALlist_2025@skillscreen-postgres.postgres.database.azure.com:5432/skillscreen_database?sslmode=require
+      - PYTHONPATH=/app:/common-service
+      - PYTHONPATH=/app:/common-service:/user-service
     volumes:
       - ./backend/sso-service:/app
+      - ./backend/common-service:/common-service
+      - ./backend/user-service:/user-service
     networks:
       - skill-screen-network
 
@@ -320,14 +343,17 @@ services:
       # Service URLs
       - INTERVIEW_SERVICE_URL=http://interview-service:8080
       - TEXT_SERVICE_URL=http://text-service:8080
+      - CODING_SERVICE_URL=http://coding-service:8080
       # logging
       - ENV=dev
-      - LOG_LEVEL=DEBUG
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=text
       - LOG_TO_FILE=true
       - LOG_DIR=/var/log/app
       - LOG_FILE=orchestration-service.log
       - ENABLE_SEQ=false
       - SEQ_URL=http://seq:5341
+      - JUDGE0_RAPIDAPI_KEY=e6334e0abcmshcb21a98ad960c8ep1594b5jsnb67cbdc3dfef
     volumes:
       - ./backend/orchestration-service:/app
       - ./backend/common-service:/common-service
@@ -343,3 +369,6 @@ networks:
 
 volumes:
   seq-data: {}
+  sonarqube_data: {}
+  sonarqube_extensions: {}
+  sonarqube_logs: {}

@@ -7,7 +7,7 @@ from app.services.storage_service import StorageService
 from db import UnitOfWork
 from app.db.schema import media as media_table
 from app.repositories.media_repository import MediaRepository
-from sqlalchemy import select, update, desc
+from sqlalchemy import select, update, desc, func
 import app.utils.constants as CONSTANTS
 
 load_dotenv()
@@ -28,6 +28,7 @@ def upload_resume():
     file = request.files.get("file")
     candidate_name = request.form.get("candidate_name", "Unknown Candidate")
     assigned_user = request.form.get("assigned_user", "ashish")
+    organization_id = request.form.get("organization_id")
     if not file:
         return jsonify({"error": "Missing file"}), 400
     if not file.filename.lower().endswith(".pdf"):
@@ -60,6 +61,7 @@ def upload_resume():
                 "candidate_name": candidate_name,
                 "resume_url": resume_uri,
                 "assigned_user": assigned_user,
+                "organization_id": organization_id,
                 "uploaded_at": datetime.now(timezone.utc).isoformat(),
             },
         )
@@ -128,8 +130,10 @@ def schedule_candidate(candidate_id):
     payload = request.get_json() or {}
     assigned_user = payload.get("assigned_user", "ashish")
     candidate_name = payload.get("candidate_name", "Unknown Candidate")
+    organization_id = payload.get("organization_id")
 
-    interview_id = f"interview_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')[:20]}"
+    import uuid
+    interview_id = str(uuid.uuid4())
 
     with UnitOfWork() as uow:
         repo = MediaRepository(uow)
@@ -143,6 +147,7 @@ def schedule_candidate(candidate_id):
                 "candidate_name": candidate_name,
                 "candidate_id": candidate_id,
                 "assigned_user": assigned_user,
+                "organization_id": organization_id,
                 "scheduled_at": datetime.now(timezone.utc).isoformat(),
             },
         )
@@ -160,11 +165,18 @@ def schedule_candidate(candidate_id):
 @interview_bp.route("/api/interviews", methods=["GET"])
 def get_all_interviews():
     """Return all interviews."""
+    organization_id = request.args.get("organization_id")
+    
     with UnitOfWork() as uow:
+        query = select(media_table).where(media_table.c.file_type == "interview")
+        
+        if organization_id:
+            # Filter by organization_id in metadata if present
+            # Use jsonb_extract_path_text for Postgres JSONB compatibility
+            query = query.where(func.jsonb_extract_path_text(media_table.c.metadata, 'organization_id') == organization_id)
+            
         rows = uow.session.execute(
-            select(media_table)
-            .where(media_table.c.file_type == "interview")
-            .order_by(desc(media_table.c.created_at))
+            query.order_by(desc(media_table.c.created_at))
         ).mappings().all()
 
     return jsonify({

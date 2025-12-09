@@ -1,0 +1,166 @@
+## Endpoints
+
+### 1. Start Interview (Token Validation & Initial Question)
+
+**Endpoint:** `GET /interviews/start/{interview_id}`
+
+**Description:** 
+Retrieves candidate data, downloads and parses the resume, then generates the first interview question.
+
+**Flow:**
+1. Gets candidate data from database
+2. Downloads resume from Azure Blob Storage (using resume_url from candidates table)
+3. Parses resume using text-service
+4. Generates initial question based on resume data
+5. Updates interview status to "in_progress"
+
+**Request:**
+```
+GET /interviews/start/23efc3ec-6166-4c85-b458-9f0ea5b374fc
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "interview_id": "23efc3ec-6166-4c85-b458-9f0ea5b374fc",
+    "session_id": "23efc3ec-6166-4c85-b458-9f0ea5b374fc",
+    "candidate_id": "70509419-2376-450f-bcb6-2e9b6942475d",
+    "candidate_name": "Ashish Lama",
+    "candidate_email": "lama.ashish07@gmail.com",
+    "resume_data": {
+      "name": "Ashish Lama",
+      "skills": [".Net", "Ai", "Html", "C#", "Javascript", "Mysql", "Go", "Css", "Spring", "Java", "Microservices", "Sql", "Python", "Flask", "Angular", "React"],
+      "experience_years": 2.5
+    },
+    "first_question": "Tell me about yourself and your experience with this role.",
+    "question_number": 1,
+    "status": "in_progress"
+  },
+  "meta": {
+    "timestamp": "2025-11-27T01:52:00.000Z",
+    "request_id": "req_abc123",
+    "version": "v1"
+  }
+}
+```
+
+**Error Responses:**
+- `400`: Invalid token data or missing resume
+- `404`: Candidate not found or invalid token
+- `410`: Token expired or already used
+- `500`: Server error
+
+---
+
+### 2. Get Next Question (Follow-up Questions)
+
+**Endpoint:** `POST /interviews/{interview_id}/next-question`
+
+**Description:**
+Generates the next interview question based on the candidate's previous response. Uses text-service to analyze the response and generate a contextual follow-up question.
+
+**Flow:**
+1. Gets interview session data
+2. Submits previous response to text-service
+3. Text-service analyzes response and generates next question
+4. Returns next question or completion status
+
+**Request:**
+```json
+POST /interviews/23efc3ec-6166-4c85-b458-9f0ea5b374fc/next-question
+
+{
+  "previous_response": "I have 5 years of experience in full-stack development, working primarily with React and Node.js. I've led several projects and have experience with microservices architecture.",
+  "question_number": 1
+}
+```
+
+**Response (Next Question):**
+```json
+{
+  "success": true,
+  "data": {
+    "interview_id": "23efc3ec-6166-4c85-b458-9f0ea5b374fc",
+    "session_id": "23efc3ec-6166-4c85-b458-9f0ea5b374fc",
+    "next_question": "Can you tell me about a specific project where you implemented microservices architecture? What challenges did you face?",
+    "question_number": 2,
+    "status": "in_progress"
+  },
+  "meta": {
+    "timestamp": "2025-11-27T01:53:00.000Z",
+    "request_id": "req_def456",
+    "version": "v1"
+  }
+}
+```
+
+**Response (Interview Completed):**
+```json
+{
+  "success": true,
+  "data": {
+    "status": "completed",
+    "message": "Interview completed",
+    "interview_id": "23efc3ec-6166-4c85-b458-9f0ea5b374fc"
+  },
+  "meta": {
+    "timestamp": "2025-11-27T01:55:00.000Z",
+    "request_id": "req_ghi789",
+    "version": "v1"
+  }
+}
+```
+
+**Error Responses:**
+- `404`: Interview not found
+- `500`: Server error
+
+---
+
+### 3. Get Interview Summary
+
+**Endpoint:** `GET /interviews/{interview_id}/summary`
+
+**Description:**
+Retrieves the complete interview summary after the interview is completed, including scores, recommendations, and detailed analysis.
+
+**Request:**
+```
+GET /interviews/23efc3ec-6166-4c85-b458-9f0ea5b374fc/summary
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "session_id": "23efc3ec-6166-4c85-b458-9f0ea5b374fc",
+    "candidate_name": "Ashish Lama",
+    "job_title": "Software Engineer",
+    "total_questions": 9,
+    "total_responses": 9,
+    "overall_score": 7.5,
+    "recommendation": "Strong Consider",
+    "summary": "Interview completed for Ashish Lama...",
+    "strengths": ["Good communication", "Relevant experience"],
+    "areas_for_improvement": ["Could provide more specific examples"],
+    "detailed_assessment": {
+      "technical_skills": 7.5,
+      "communication": 8.0,
+      "cultural_fit": 7.3
+    },
+    "violations_analysis": {
+      "funny_analysis": {...},
+      "violations": [],
+      "violation_count": 0
+    }
+  },
+  "meta": {
+    "timestamp": "2025-11-27T01:56:00.000Z",
+    "request_id": "req_jkl012",
+    "version": "v1"
+  }
+}
+

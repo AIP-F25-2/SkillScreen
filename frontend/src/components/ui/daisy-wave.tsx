@@ -3,8 +3,8 @@
 import React, { useEffect, useRef } from "react";
 
 interface DaisyWaveProps {
-    className?: string;
-    style?: React.CSSProperties;
+    readonly className?: string;
+    readonly style?: React.CSSProperties;
 }
 
 export function DaisyWave({ className, style }: DaisyWaveProps) {
@@ -39,7 +39,6 @@ export function DaisyWave({ className, style }: DaisyWaveProps) {
         // Colors
         const colorDeepBlue = [27, 60, 83];   // #1B3C53 (Requested)
         const colorLightBlue = [100, 181, 246]; // Lighter blue for contrast
-        const colorDark = [15, 23, 42];       // #0F172A (Background match)
 
         const lerpColor = (c1: number[], c2: number[], t: number) => {
             return `rgb(${Math.round(c1[0] + (c2[0] - c1[0]) * t)}, ${Math.round(c1[1] + (c2[1] - c1[1]) * t)}, ${Math.round(c1[2] + (c2[2] - c1[2]) * t)})`;
@@ -53,31 +52,44 @@ export function DaisyWave({ className, style }: DaisyWaveProps) {
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
 
-            const t = time * 0.001; // Speed 1
+            const t = time * 0.001;
             const cols = Math.ceil(width / cellSize);
             const rows = Math.ceil(height / cellSize);
 
             // Parameters
             const amplitude = 0.42;
             const frequency = 0.51;
-            const angle = 90 * (Math.PI / 180); // Vertical (90 degrees)
 
-            const cosAngle = Math.cos(angle);
-            const sinAngle = Math.sin(angle);
+            // Vertical wave flow (moving up)
+            // To make it look like a "sine wave" and not just straight bars, we need to distort the x-coordinate
 
             for (let y = 0; y < rows; y++) {
                 for (let x = 0; x < cols; x++) {
-                    // Normalize coordinates -1 to 1
-                    const u = (x / cols) * 2 - 1;
-                    const v = (y / rows) * 2 - 1;
+                    // Normalize coordinates
+                    const u = x / cols;
+                    const v = y / rows;
 
-                    // Rotate coordinates based on angle
-                    // We want the wave to propagate in the direction of the angle
-                    const rotatedU = u * cosAngle + v * sinAngle;
+                    // Create a vertical sine wave pattern
+                    // The "wave" shape is defined by x (u), propagating along y (v)
+                    // Math.sin(u * freq) gives the shape
+                    // + v * speed gives the movement
+                    // + t gives animation
 
-                    // Sine wave function
-                    // Frequency needs to be higher for the grid scale, multiplying by 10 as a baseline
-                    const wave = Math.sin(rotatedU * (frequency * 10) + t) * amplitude;
+                    // We want the "bands" to be vertical, but wavy.
+                    // So the primary variation is along X, but shifted by Y
+
+
+
+                    // A vertical wave: The phase depends on Y, but the value depends on X?
+                    // No, a "wave" usually means the wavefronts are lines.
+                    // If the user wants "vertical", they probably want vertical wavefronts.
+                    // But straight vertical lines aren't "sine waves".
+                    // They probably want the LINES to be curved like sine waves.
+
+                    // Let's try:
+                    // Value depends on X + sin(Y)
+                    const distortion = Math.sin(v * 5 + t) * 0.5;
+                    const wave = Math.sin((u + distortion) * (frequency * 10) + t) * amplitude;
 
                     // Map -1..1 to 0..1 for value
                     const value = (wave + 1) / 2;
@@ -87,7 +99,6 @@ export function DaisyWave({ className, style }: DaisyWaveProps) {
                     const char = chars[charIndex];
 
                     // Color selection
-                    // Gradient from Deep Blue to Light Blue
                     const color = lerpColor(colorDeepBlue, colorLightBlue, value);
 
                     ctx.fillStyle = color;

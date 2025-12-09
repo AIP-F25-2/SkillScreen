@@ -1,54 +1,54 @@
 import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const teamMembers = [
     {
         name: "Sheethal Shivakumar",
         role: "Project Manager & Team Lead",
-        image: "/avatars/01.png",
+        image: "/avatars/Sheethal.png",
         initials: "SS"
     },
     {
         name: "Chalithya Sangeeth",
         role: "Technical Lead & Full-stack Dev",
-        image: "/avatars/02.png",
+        image: "/avatars/Sangeeth.jpeg",
         initials: "CS"
     },
     {
-        name: "Dimantha Kalhara",
+        name: "Dimantha Goonewardena",
         role: "Full-Stack Dev(Frontend/ UI/UX Focus)",
-        image: "/avatars/03.png",
+        image: "/avatars/Dimantha.png",
         initials: "DK"
     },
     {
         name: "Mukul Garg",
         role: "Full-Stack Dev(Backend Focus)",
-        image: "/avatars/04.png",
+        image: "/avatars/Mukul.JPG",
         initials: "MG"
     },
     {
         name: "Moksh Jaiswal",
         role: "ML Engineer",
-        image: "/avatars/05.png",
+        image: "/avatars/Moksh.jpeg",
         initials: "MJ"
     },
     {
         name: "Subhash Somarouthu",
         role: "ML Engineer",
-        image: "/avatars/06.png",
+        image: "/avatars/Subhash.png",
         initials: "SS"
     },
     {
         name: "Yugahang Limbu",
         role: "Data Engineer & Database Administrator",
-        image: "/avatars/07.png",
+        image: "/avatars/Yugahang.jpeg",
         initials: "YL"
     },
     {
         name: "Ashish Lama",
         role: "Full-Stack (Integration) & DevOps/QA Specialist",
-        image: "/avatars/08.png",
+        image: "/avatars/Ashish.jpeg",
         initials: "AL"
     },
 ];
@@ -61,36 +61,34 @@ export function TeamSection() {
                     <h2 className="text-3xl md:text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-200 to-white mb-4">
                         Meet Our Team
                     </h2>
-                    <p className="text-lg text-indigo-200/80 max-w-2xl mx-auto">
+                    <p className="text-2xl text-white-200/80 max-w-2xl mx-auto font-bold">
                         The talented individuals behind SkillScreen.
                     </p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 justify-items-center">
-                    {teamMembers.map((member, index) => (
-                        <Card key={index} className="w-full max-w-sm bg-indigo-950/20 border-indigo-500/20 backdrop-blur-sm hover:bg-indigo-900/30 transition-all duration-300 group">
-                            <CardHeader className="text-center pb-2">
-                                <div className="mx-auto mb-4 w-24 h-24 rounded-full overflow-hidden ring-2 ring-indigo-500/30 ring-offset-2 ring-offset-transparent group-hover:ring-indigo-400 transition-all">
+                    {teamMembers.map((member) => (
+                        <Card key={member.name} className="bg-[#020617] border-white/10 overflow-hidden hover:border-indigo-500/50 transition-all duration-300 group flex flex-col relative shrink-0 shadow-lg shadow-black/50 w-[280px] h-[420px]">
+                            <CardHeader className="text-center p-8 h-full flex flex-col items-center justify-start pt-10">
+                                <div className="mb-6 w-32 h-32 rounded-full overflow-hidden ring-4 ring-indigo-500/20 group-hover:ring-indigo-500/50 transition-all shrink-0 shadow-[0_0_20px_rgba(99,102,241,0.3)] group-hover:shadow-[0_0_30px_rgba(99,102,241,0.5)]">
                                     <Avatar className="w-full h-full">
-                                        <AvatarImage src={member.image} alt={member.name} />
-                                        <AvatarFallback className="bg-indigo-900/50 text-indigo-200 text-xl">
+                                        <AvatarImage src={member.image} alt={member.name} className="object-cover w-full h-full" />
+                                        <AvatarFallback className="bg-indigo-950 text-indigo-200 text-xl">
                                             {member.initials}
                                         </AvatarFallback>
                                     </Avatar>
                                 </div>
-                                <CardTitle className="text-xl font-semibold text-white group-hover:text-indigo-200 transition-colors">{member.name}</CardTitle>
-                                <CardDescription className="text-indigo-300/80 font-medium mt-2">{member.role}</CardDescription>
+                                <CardTitle className="text-xl font-bold text-white group-hover:text-indigo-200 transition-colors min-h-[3.5rem] flex items-center justify-center leading-tight w-full">{member.name}</CardTitle>
+                                <CardDescription className="text-slate-400 font-medium mt-2 h-[5rem] flex items-start justify-center leading-tight w-full overflow-hidden text-sm">{member.role}</CardDescription>
                             </CardHeader>
-                            <CardContent className="text-center">
-                                {/* Add social links or bio here if needed */}
-                            </CardContent>
                         </Card>
                     ))}
+
                 </div>
             </div>
 
             {/* Background decoration */}
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-indigo-600/10 rounded-full blur-3xl -z-10" />
-        </section>
+        </section >
     );
 }

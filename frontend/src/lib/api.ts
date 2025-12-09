@@ -4,6 +4,7 @@ import { API_BASE_URL } from './config';
 export interface ApiResponse<T = any> {
   success: boolean;
   data: T;
+  error?: string;
   meta: {
     timestamp: string;
     request_id: string;
@@ -18,8 +19,36 @@ export interface LoginRequest {
 
 export interface LoginResponse {
   access_token: string;
-  role: string;
-  expires_in: number;
+  token_type: string;
+  user: {
+    id: string;
+    email: string;
+    role: string;
+    organization_id: string;
+  };
+}
+
+export interface OnboardRequest {
+  organization: {
+    name: string;
+    domain?: string;
+    settings?: string;
+  };
+  user: {
+    email: string;
+    password: string;
+    first_name: string;
+    last_name: string;
+    role: string;
+  };
+}
+
+export interface OnboardResponse {
+  success: boolean;
+  organization_id: string;
+  user_id: string;
+  access_token: string;
+  token_type: string;
 }
 
 export interface User {
@@ -38,9 +67,9 @@ class ApiClient {
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
-  ): Promise<ApiResponse<T>> {
+  ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
-    
+
     const defaultHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
     };
@@ -61,7 +90,7 @@ class ApiClient {
 
     try {
       const response = await fetch(url, config);
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -87,37 +116,49 @@ class ApiClient {
   }
 
   // Auth endpoints
-  async login(credentials: LoginRequest): Promise<ApiResponse<LoginResponse>> {
+  async login(credentials: LoginRequest): Promise<LoginResponse> {
+    // The SSO service returns the response directly
     return this.request<LoginResponse>('/auth/login', {
       method: 'POST',
-      body: JSON.stringify(credentials),
+      body: JSON.stringify({
+        email: credentials.username,
+        password: credentials.password
+      }),
+    });
+  }
+
+  async onboard(data: OnboardRequest): Promise<OnboardResponse> {
+    // The user service returns the response directly
+    return this.request<OnboardResponse>('/user/onboard', {
+      method: 'POST',
+      body: JSON.stringify(data),
     });
   }
 
   async getAuthHealth(): Promise<ApiResponse> {
-    return this.request('/auth/health');
+    return this.request<ApiResponse>('/auth/health');
   }
 
   // User endpoints
   async getUsers(): Promise<ApiResponse<{ users: User[] }>> {
-    return this.request<{ users: User[] }>('/user/users');
+    return this.request<ApiResponse<{ users: User[] }>>('/user/users');
   }
 
   async getUserById(id: number): Promise<ApiResponse<{ user: User }>> {
-    return this.request<{ user: User }>(`/user/users/${id}`);
+    return this.request<ApiResponse<{ user: User }>>(`/user/users/${id}`);
   }
 
   async getUserHealth(): Promise<ApiResponse> {
-    return this.request('/user/health');
+    return this.request<ApiResponse>('/user/health');
   }
 
   // Assessment endpoints
   async getQuestions(): Promise<ApiResponse<{ questions: string[] }>> {
-    return this.request<{ questions: string[] }>('/assessment/questions');
+    return this.request<ApiResponse<{ questions: string[] }>>('/assessment/questions');
   }
 
   async submitAssessment(answer: any): Promise<ApiResponse<{ status: string; answer: any }>> {
-    return this.request<{ status: string; answer: any }>('/assessment/submit', {
+    return this.request<ApiResponse<{ status: string; answer: any }>>('/assessment/submit', {
       method: 'POST',
       body: JSON.stringify(answer),
     });
@@ -125,11 +166,11 @@ class ApiClient {
 
   // Coding endpoints
   async getProblems(): Promise<ApiResponse<{ problems: string[] }>> {
-    return this.request<{ problems: string[] }>('/coding/problems');
+    return this.request<ApiResponse<{ problems: string[] }>>('/coding/problems');
   }
 
   async submitSolution(solution: any): Promise<ApiResponse<{ status: string; solution: any }>> {
-    return this.request<{ status: string; solution: any }>('/coding/submit', {
+    return this.request<ApiResponse<{ status: string; solution: any }>>('/coding/submit', {
       method: 'POST',
       body: JSON.stringify(solution),
     });
@@ -195,14 +236,16 @@ class ApiClient {
   // =========================================
 
   async getUserInterviews(userId: string): Promise<ApiResponse<{ interviews: any[]; count: number }>> {
-    return this.request<{ interviews: any[]; count: number }>(`/media/api/interviews`);
+    return this.request<ApiResponse<{ interviews: any[]; count: number }>>(`/media/api/interviews`);
   }
 
-  async getAllInterviews(): Promise<ApiResponse<{ interviews: any[]; count: number }>> {
+  async getAllInterviews(organizationId?: string): Promise<ApiResponse<{ interviews: any[]; count: number }>> {
+    const queryParams = organizationId ? `?organization_id=${organizationId}` : '';
+
     // Fetch from media-service and interview-service, then merge
     const [mediaRes, interviewSvcRes] = await Promise.all([
-      this.request<{ interviews: any[]; count: number }>('/media/api/interviews'),
-      this.request<{ interviews: any[]; count: number }>('/interview/api/interviews').catch(() => ({ success: true, data: { interviews: [], count: 0 }, meta: { timestamp: '', request_id: '', version: '' } } as any))
+      this.request<ApiResponse<{ interviews: any[]; count: number }>>(`/media/api/interviews${queryParams}`),
+      this.request<ApiResponse<{ interviews: any[]; count: number }>>(`/interview/api/interviews${queryParams}`).catch(() => ({ success: true, data: { interviews: [], count: 0 }, meta: { timestamp: '', request_id: '', version: '' } } as any))
     ]);
 
     const mediaList = mediaRes?.data?.interviews ?? [];
@@ -212,10 +255,21 @@ class ApiClient {
     const map = new Map<string, any>();
     [...mediaList, ...svcList].forEach((i: any) => {
       const key = i.interview_id || i.session_id || JSON.stringify(i);
-      if (!map.has(key)) map.set(key, i);
+      // If we already have this interview, merge the new data into it
+      if (map.has(key)) {
+        map.set(key, { ...map.get(key), ...i });
+      } else {
+        map.set(key, i);
+      }
     });
 
-    const merged = Array.from(map.values());
+    let merged = Array.from(map.values());
+
+    // Client-side filtering as a safety net
+    if (organizationId) {
+      merged = merged.filter(i => !i.organization_id || i.organization_id === organizationId);
+    }
+
     return { success: true, data: { interviews: merged, count: merged.length }, meta: mediaRes.meta } as ApiResponse<any>;
   }
 
@@ -266,11 +320,11 @@ class ApiClient {
   }
 
   async getAllCandidates(): Promise<ApiResponse<{ candidates: any[]; count: number }>> {
-    return this.request<{ candidates: any[]; count: number }>('/media/api/candidates');
+    return this.request<ApiResponse<{ candidates: any[]; count: number }>>('/media/api/candidates');
   }
 
   async getUserCandidates(userId: string): Promise<ApiResponse<{ candidates: any[]; count: number }>> {
-    return this.request<{ candidates: any[]; count: number }>(`/media/api/candidates`);
+    return this.request<ApiResponse<{ candidates: any[]; count: number }>>(`/media/api/candidates`);
   }
 
   async getCandidate(candidateId: string): Promise<ApiResponse<any>> {
@@ -328,6 +382,28 @@ class ApiClient {
   }
 
   // =========================================
+  // Interview Flow Methods (New)
+  // =========================================
+
+  async startInterview(interviewId: string): Promise<ApiResponse<any>> {
+    return this.request<any>(`/orchestration/interviews/start/${interviewId}`);
+  }
+
+  async getNextQuestion(interviewId: string, previousResponse: string, questionNumber: number): Promise<ApiResponse<any>> {
+    return this.request<any>(`/orchestration/interviews/${interviewId}/next-question`, {
+      method: 'POST',
+      body: JSON.stringify({
+        previous_response: previousResponse,
+        question_number: questionNumber
+      }),
+    });
+  }
+
+  async getInterviewSummary(interviewId: string): Promise<ApiResponse<any>> {
+    return this.request<any>(`/orchestration/interviews/${interviewId}/summary`);
+  }
+
+  // =========================================
   // AI Logic Service Methods (Question Generation, Resume Parsing)
   // =========================================
 
@@ -352,15 +428,15 @@ class ApiClient {
   }
 
   // Use interview-service resume upload/parsing instead of text-service
-  async uploadResumeForParsing(files: File | File[], organizationId: string = "e5d2d50b-6c07-43cd-8a78-ffd7b5b377bb"): Promise<ApiResponse<any>> {
+  async uploadResumeForParsing(files: File | File[], organizationId: string): Promise<ApiResponse<any>> {
     const formData = new FormData();
     const fileArray = Array.isArray(files) ? files : [files];
-    
+
     // Append all files to formData
     fileArray.forEach((file) => {
       formData.append('files', file);
     });
-    
+
     // Append organization_id (use default UUID if not provided)
     formData.append('organization_id', organizationId);
 
@@ -416,15 +492,15 @@ class ApiClient {
       return (payload && typeof payload === 'object' && 'success' in payload)
         ? payload
         : {
-            success: false,
-            data: null,
-            error: `Upload failed with status ${response.status}`,
-            meta: {
-              timestamp: new Date().toISOString(),
-              request_id: '',
-              version: 'v1',
-            },
-          };
+          success: false,
+          data: null,
+          error: `Upload failed with status ${response.status}`,
+          meta: {
+            timestamp: new Date().toISOString(),
+            request_id: '',
+            version: 'v1',
+          },
+        };
     }
 
     return payload as ApiResponse<any>;
@@ -441,7 +517,7 @@ class ApiClient {
   }): Promise<ApiResponse<any>> {
     const url = `${this.baseUrl}/text-service/candidates`;
     const token = this.getToken();
-    
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -463,7 +539,7 @@ class ApiClient {
   }): Promise<ApiResponse<any>> {
     const url = `${this.baseUrl}/text-service/jobs`;
     const token = this.getToken();
-    
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -485,7 +561,7 @@ class ApiClient {
   }): Promise<ApiResponse<any>> {
     const url = `${this.baseUrl}/text-service/interviews/start`;
     const token = this.getToken();
-    
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -508,7 +584,7 @@ class ApiClient {
   async getInterviewQuestions(sessionId: string): Promise<ApiResponse<any>> {
     const url = `${this.baseUrl}/text-service/interviews/${sessionId}/questions`;
     const token = this.getToken();
-    
+
     const response = await fetch(url, {
       method: 'GET',
       headers: {
@@ -526,13 +602,14 @@ class ApiClient {
     candidate_id: string;
     session_id: string;
     job_position_id?: string;
+    job_title?: string;
     recruiter_name?: string;
     company_name?: string;
     expires_in_hours?: number;
   }): Promise<ApiResponse<any>> {
     const url = `${this.baseUrl}/interview/api/email/send-invitation`;
     const token = this.getToken();
-    
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -550,7 +627,53 @@ class ApiClient {
   // =========================================
 
   async getJobPositions(organizationId: string): Promise<ApiResponse<{ job_positions: any[]; total: number }>> {
-    return this.request<{ job_positions: any[]; total: number }>(`/interview/job-positions?organization_id=${organizationId}`);
+    return this.request<ApiResponse<{ job_positions: any[]; total: number }>>(`/interview/job-positions?organization_id=${organizationId}`);
+  }
+
+  async createJobPosition(data: {
+    organization_id: string;
+    title: string;
+    description?: string;
+    required_skills?: string[];
+    department?: string;
+    is_active?: boolean;
+  }): Promise<ApiResponse<any>> {
+    return this.request<any>('/interview/job-positions', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateJobPosition(id: string, data: {
+    title?: string;
+    description?: string;
+    required_skills?: string[];
+    department?: string;
+    is_active?: boolean;
+  }): Promise<ApiResponse<any>> {
+    return this.request<any>(`/interview/job-positions/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteJobPosition(id: string): Promise<ApiResponse<any>> {
+    return this.request<any>(`/interview/job-positions/${id}`, {
+      method: 'DELETE',
+    });
+  }
+  async runCode(data: { languageId: number; sourceCode: string; testCases: any[] }) {
+    return this.request('/coding/run', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async evaluateCode(data: { languageId: number; sourceCode: string; testCases: any[] }) {
+    return this.request('/coding/evaluate', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   }
 }
 

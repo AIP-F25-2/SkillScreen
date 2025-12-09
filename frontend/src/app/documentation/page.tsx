@@ -57,7 +57,7 @@ export default function DocumentationPage() {
   const guides = [
     {
       title: 'Getting Started',
-      description: 'Learn the basics of integrating IntervuAI into your application.',
+      description: 'Learn the basics of integrating SkillScreen into your application.',
       time: '10 min read'
     },
     {
@@ -67,7 +67,7 @@ export default function DocumentationPage() {
     },
     {
       title: 'Webhooks',
-      description: 'Set up and handle webhook events from IntervuAI.',
+      description: 'Set up and handle webhook events from SkillScreen.',
       time: '8 min read'
     }
   ];
@@ -75,7 +75,7 @@ export default function DocumentationPage() {
   return (
     <div className="min-h-screen bg-black">
       <NavBar />
-      
+
       <main className="pt-32 pb-20 px-6">
         <div className="max-w-7xl mx-auto">
           {/* Header & Search */}
@@ -178,7 +178,7 @@ export default function DocumentationPage() {
               <div className="hidden md:block glass p-4 rounded-xl overflow-x-auto flex-shrink-0" style={{ minWidth: '400px' }}>
                 <pre className="text-sm">
                   <code className="text-white/80">
-{`const interview = await intervuai.interviews.create({
+                    {`const interview = await intervuai.interviews.create({
   candidate: {
     email: "candidate@example.com",
     name: "John Doe"

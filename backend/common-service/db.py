@@ -12,7 +12,7 @@ class DBFactory:
         if not db_url:
                 raise ValueError("DATABASE_URL is not set")
         try:
-                cls._engine = create_engine(db_url, echo=True)
+                cls._engine = create_engine(db_url, echo=True, pool_size=5, max_overflow=0)
                 cls._SessionFactory = sessionmaker(bind=cls._engine)
                 print(f"Connected to database: {db_url}")
         except Exception as e:

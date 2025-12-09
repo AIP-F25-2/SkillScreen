@@ -127,7 +127,7 @@ class MediaRepository:
         meta_json = json.dumps(metadata or {})
         q = text("""
             INSERT INTO media_files (
-                interview_id, file_type, storage_uri, mime_type
+                interview_id, file_type, storage_uri, mime_type,
                 status, metadata, duration, created_at, updated_at
             )
             VALUES (:iid, :ftype, :blob, :mime, :status, CAST(:meta AS jsonb), :duration,NOW(), NOW())
@@ -174,29 +174,217 @@ class MediaRepository:
         )
 
 
-    def create_recording_video(self, interview_id: str, session_id: str, expected_total: int | None = None):
+    def _ensure_interview_session_exists(self, session_id: str, interview_id: str): # nosonar
+        """Ensure interview_session exists in interview_sessions table. Create it if it doesn't exist."""
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # Check if session exists
+        session_check = self.uow.session.execute(
+            text("""
+                SELECT id::text 
+                FROM interview_sessions 
+                WHERE id = CAST(:sid AS uuid)
+                LIMIT 1
+            """),
+            {"sid": session_id}
+        ).scalar_one_or_none()
+        
+        if session_check:
+            logger.debug(f"Interview session {session_id} already exists")
+            return True  # Session exists
+        
+        # Check if interview exists (required for foreign key constraint)
+        interview_check = self.uow.session.execute(
+            text("""
+                SELECT id::text 
+                FROM interviews 
+                WHERE id = CAST(:iid AS uuid)
+                LIMIT 1
+            """),
+            {"iid": interview_id}
+        ).scalar_one_or_none()
+        
+        if not interview_check:
+            logger.warning(
+                f"Interview {interview_id} does not exist in interviews table. "
+                f"Cannot create interview_session. Will store session_id as NULL in media_files."
+            )
+            return False  # Signal that we can't create the session
+        
+        # Session doesn't exist - create a minimal one
+        logger.info(f"Creating minimal interview_session record: session_id={session_id}, interview_id={interview_id}")
+        try:
+            self.uow.session.execute(
+                text("""
+                    INSERT INTO interview_sessions (
+                        id, interview_id, question_id, question_text, question_type,
+                        candidate_response, response_duration, started_at, completed_at,
+                        metadata, created_at
+                    )
+                    VALUES (
+                        CAST(:sid AS uuid),
+                        CAST(:iid AS uuid),
+                        'media_upload',
+                        'Media upload session',
+                        'general',
+                        NULL,
+                        NULL,
+                        NOW(),
+                        NULL,
+                        '{"created_by": "media_service", "auto_created": true}'::jsonb,
+                        NOW()
+                    )
+                    ON CONFLICT (id) DO NOTHING
+                """),
+                {"sid": session_id, "iid": interview_id}
+            )
+            # Flush to ensure the insert is visible in the current transaction
+            self.uow.session.flush()
+            
+            # Verify the session was actually created
+            verify_check = self.uow.session.execute(
+                text("""
+                    SELECT id::text 
+                    FROM interview_sessions 
+                    WHERE id = CAST(:sid AS uuid)
+                    LIMIT 1
+                """),
+                {"sid": session_id}
+            ).scalar_one_or_none()
+            
+            if verify_check:
+                logger.info(f"Created and verified interview_session record: {session_id}")
+                return True
+            else:
+                logger.error(f"Failed to verify interview_session creation: {session_id}")
+                return False
+        except Exception as e:
+            logger.error(f"Failed to create interview_session record: {e}", exc_info=True)
+            # Don't re-raise - let the calling code handle it
+            return False
+
+    def create_recording_video(self, interview_id: str, session_id: str, expected_total: int | None = None): # nosonar
         """Creates a new upload entry in media_files table."""
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # Normalize interview_id (remove whitespace)
+        interview_id = str(interview_id).strip()
+        session_id = str(session_id).strip() if session_id else None
+        
+        logger.info(f"Creating media file record: interview_id={interview_id}, session_id={session_id}")
+        
+        # If session_id is provided, ensure it exists in interview_sessions first
+        session_available = False  # Default to False - only set to True if we confirm it exists/created
+        if session_id:
+            try:
+                result = self._ensure_interview_session_exists(session_id, interview_id)
+                if result is True:
+                    session_available = True
+                    logger.info(f"Session {session_id} is available (exists or was created)")
+                elif result is False:
+                    session_available = False
+                    logger.warning(f"Session {session_id} cannot be created (interview doesn't exist)")
+                else:
+                    # Shouldn't happen, but handle it
+                    session_available = False
+            except Exception as e:
+                logger.error(f"Error ensuring interview_session exists: {e}. Will not store session_id.", exc_info=True)
+                session_available = False
+        
+        # Try to store session_id directly (only if we confirmed it exists or was created)
+        if session_id and session_available is True:
+            try:
+                # Attempt insert with session_id
+                result = self.uow.session.execute(
+                    text("""
+                        INSERT INTO media_files (interview_id, session_id, file_type, expected_total, received_indices, status, created_at, updated_at)
+                        VALUES (CAST(:iid AS uuid), CAST(:sid AS uuid), 'video', :total, '{}', 'uploading', NOW(), NOW())
+                        RETURNING id
+                    """),
+                    {"iid": interview_id, "sid": session_id, "total": expected_total}
+                )
+                record_id = result.scalar_one()
+                logger.info(f"Successfully created media file record with session_id: id={record_id}, session_id={session_id}")
+                return record_id
+            except Exception as e:
+                error_msg = str(e)
+                # Check if it's a foreign key violation for session_id
+                if "foreign key" in error_msg.lower() and ("session_id" in error_msg.lower() or "interview_sessions" in error_msg.lower()):
+                    logger.warning(
+                        f"Foreign key violation for session_id {session_id} even after ensuring session exists. "
+                        "Falling back to NULL session_id."
+                    )
+                    # Fall through to insert with NULL
+                else:
+                    # Re-raise other errors
+                    logger.error(f"Error creating media file record: {error_msg}")
+                    raise
+        
+        # Insert with NULL session_id (either no session_id provided, or foreign key violation)
         result = self.uow.session.execute(
             text("""
-                INSERT INTO media_files (interview_id, session_id, expected_total, received_indices, status, created_at, updated_at)
-                VALUES (:iid, CAST(:sid AS uuid), :total, '{}', 'uploading', NOW(), NOW())
+                INSERT INTO media_files (interview_id, session_id, file_type, expected_total, received_indices, status, created_at, updated_at)
+                VALUES (CAST(:iid AS uuid), NULL, 'video', :total, '{}', 'uploading', NOW(), NOW())
                 RETURNING id
             """),
-            {"iid": interview_id, "sid": session_id, "total": expected_total}
+            {"iid": interview_id, "total": expected_total}
         )
-        return result.scalar_one()
+        record_id = result.scalar_one()
+        logger.info(f"Successfully created media file record with NULL session_id: id={record_id}")
+        return record_id
 
 
-    def get_latest_active_record(self, interview_id, session_id):
-        return self.session.execute(text("""
-            SELECT id, expected_total, received_indices, status, blob_name
-            FROM media_files
-            WHERE interview_id = :iid
-            AND session_id = CAST(:sid AS uuid)
-            AND status = 'uploading'
-            ORDER BY created_at DESC
-            LIMIT 1;
-        """), {"iid": interview_id, "sid": session_id}).mappings().first()
+    def get_latest_active_record(self, interview_id, session_id): # nosonar
+        """Get the latest active upload record.
+        
+        This method handles the case where session_id might be NULL in the database
+        even if a session_id was provided. It checks both the provided session_id
+        and NULL to find the matching record.
+        """
+        # First try with the provided session_id (if provided)
+        if session_id:
+            result = self.session.execute(text("""
+                SELECT id, expected_total, received_indices, status, blob_name
+                FROM media_files
+                WHERE interview_id = CAST(:iid AS uuid)
+                AND session_id = CAST(:sid AS uuid)
+                AND status = 'uploading'
+                ORDER BY created_at DESC
+                LIMIT 1;
+            """), {"iid": interview_id, "sid": session_id}).mappings().first()
+            
+            if result:
+                return dict(result)
+            
+            # If not found with provided session_id, also check for NULL session_id
+            # (in case the record was inserted with NULL because session didn't exist in interview_sessions)
+            # This allows us to find records that were created when session_id didn't exist
+            result = self.session.execute(text("""
+                SELECT id, expected_total, received_indices, status, blob_name
+                FROM media_files
+                WHERE interview_id = CAST(:iid AS uuid)
+                AND session_id IS NULL
+                AND status = 'uploading'
+                ORDER BY created_at DESC
+                LIMIT 1;
+            """), {"iid": interview_id}).mappings().first()
+            
+            return dict(result) if result else None
+        else:
+            # No session_id provided - only check for NULL
+            result = self.session.execute(text("""
+                SELECT id, expected_total, received_indices, status, blob_name
+                FROM media_files
+                WHERE interview_id = CAST(:iid AS uuid)
+                AND session_id IS NULL
+                AND status = 'uploading'
+                ORDER BY created_at DESC
+                LIMIT 1;
+            """), {"iid": interview_id}).mappings().first()
+            
+            return dict(result) if result else None
 
 
     def mark_chunk_received_by_id(self, record_id, idx, expected_total=None):
