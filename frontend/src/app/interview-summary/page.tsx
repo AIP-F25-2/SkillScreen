@@ -118,6 +118,107 @@ export default function InterviewSummaryPage() {
         return;
       }
 
+      if (interviewId === '661f9511-f3ac-52e5-b827-557766551111') {
+        setInterview({
+          interview_id: '661f9511-f3ac-52e5-b827-557766551111',
+          candidate_id: 'Dimantha Goonewardena',
+          created_at: '2025-12-07T14:30:00',
+          status: 'completed',
+          transcript: {
+            duration_seconds: 1200,
+            text: "Interviewer: Can you explain the difference between a process and a thread?\n\nCandidate: Um, I think a process is like a program running, and a thread is... part of it? I'm not entirely sure about the details.\n\nInterviewer: Okay. How about database indexing? When would you use it?\n\nCandidate: Indexing makes searches faster. I use it on all columns usually."
+          },
+          analysis: {
+            overall_score: 45,
+            categories: [
+              { name: 'Technical Proficiency', score: 40, feedback: 'Lacks fundamental knowledge of OS concepts and database optimization.' },
+              { name: 'Communication', score: 55, feedback: 'Answers were brief and lacked confidence.' },
+              { name: 'Problem Solving', score: 42, feedback: 'Struggled to apply theoretical concepts to practical scenarios.' },
+              { name: 'Cultural Fit', score: 60, feedback: 'Polite but seemed disengaged during the technical deep dive.' }
+            ],
+            key_strengths: [
+              'Basic understanding of web development terminology',
+              'Polite and respectful demeanor'
+            ],
+            areas_for_improvement: [
+              'Deepen understanding of core computer science concepts',
+              'Avoid "indexing everything" - learn about trade-offs',
+              'Improve confidence in technical explanations'
+            ],
+            executive_summary: "The candidate struggled with foundational backend concepts. While they showed some basic knowledge, they lacked the depth required for a Junior Backend Developer role. Significant upskilling would be needed."
+          }
+        });
+        setLoading(false);
+        return;
+      }
+
+      if (interviewId === '772g0622-g4bd-63f6-c938-668877662222') {
+        setInterview({
+          interview_id: '772g0622-g4bd-63f6-c938-668877662222',
+          candidate_id: 'Dimantha Goonewardena',
+          created_at: '2025-12-06T09:15:00',
+          status: 'completed',
+          transcript: {
+            duration_seconds: 2400,
+            text: "Interviewer: How would you design a CI/CD pipeline for a microservices architecture?\n\nCandidate: I would use Jenkins or GitHub Actions. Each service would have its own pipeline. We'd run unit tests, build the Docker image, push to a registry, and then deploy to Kubernetes using Helm charts.\n\nInterviewer: Good. How do you handle secrets?\n\nCandidate: We can use Kubernetes Secrets or something like HashiCorp Vault. Never commit them to git."
+          },
+          analysis: {
+            overall_score: 78,
+            categories: [
+              { name: 'Technical Proficiency', score: 82, feedback: 'Solid grasp of modern DevOps tools and practices.' },
+              { name: 'Communication', score: 75, feedback: 'Clear but could be more detailed in explaining the "why" behind choices.' },
+              { name: 'Problem Solving', score: 80, feedback: 'Good practical approach to pipeline design.' },
+              { name: 'Cultural Fit', score: 75, feedback: 'Aligned with agile practices.' }
+            ],
+            key_strengths: [
+              'Strong practical knowledge of Kubernetes and Docker',
+              'Correct security practices regarding secrets management',
+              'Familiarity with standard CI/CD tools'
+            ],
+            areas_for_improvement: [
+              'Could elaborate more on monitoring and observability in the pipeline',
+              'Discussion on rollback strategies was brief'
+            ],
+            executive_summary: "A solid candidate for the DevOps role. They have the necessary technical skills and practical experience. With a bit more focus on observability and incident management, they would be a very strong addition to the team."
+          }
+        });
+        setLoading(false);
+        return;
+      }
+
+      if (interviewId === '883h1733-h5ce-74g7-d049-779988773333') {
+        setInterview({
+          interview_id: '883h1733-h5ce-74g7-d049-779988773333',
+          candidate_id: 'Dimantha Goonewardena',
+          created_at: '2025-12-05T16:45:00',
+          status: 'completed',
+          transcript: {
+            duration_seconds: 1500,
+            text: "Interviewer: Tell me about a time you had to prioritize features under a tight deadline.\n\nCandidate: We had a launch coming up and too many features. I used the RICE scoring model to objectively rank them. I also met with stakeholders to manage expectations. We cut 20% of the scope but hit the deadline with a stable release."
+          },
+          analysis: {
+            overall_score: 88,
+            categories: [
+              { name: 'Product Sense', score: 90, feedback: 'Excellent use of frameworks to make data-driven decisions.' },
+              { name: 'Communication', score: 92, feedback: 'Very persuasive and clear stakeholder management.' },
+              { name: 'Leadership', score: 85, feedback: 'Took ownership of the difficult decision to cut scope.' },
+              { name: 'Technical Understanding', score: 70, feedback: 'Good enough to communicate with engineers, but not deep technical.' }
+            ],
+            key_strengths: [
+              'Data-driven prioritization (RICE model)',
+              'Strong stakeholder management skills',
+              'Focus on delivery and impact'
+            ],
+            areas_for_improvement: [
+              'Could improve technical vocabulary to better interface with engineering leads'
+            ],
+            executive_summary: "An excellent Product Manager candidate. They demonstrated strong leadership and prioritization skills essential for the role. Their ability to manage stakeholders and deliver under pressure is a major asset."
+          }
+        });
+        setLoading(false);
+        return;
+      }
+
       try {
         // Use the new summary endpoint
         const response = await apiClient.getInterviewSummary(interviewId);

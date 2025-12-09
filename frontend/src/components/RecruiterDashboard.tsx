@@ -123,18 +123,47 @@ export default function RecruiterDashboard() {
         fetchedInterviews = interviewsResponse.data.interviews || [];
       }
 
-      // Add dummy interview
-      const dummyInterview = {
-        interview_id: '550e8400-e29b-41d4-a716-446655440000',
-        candidate_name: 'Dimantha Goonewardena',
-        candidate_email: 'goonewardenadimantha@gmail.com',
-        job_position_title: 'Senior Frontend Engineer',
-        mode: 'video',
-        created_at: '2025-12-08T23:59:00',
-        status: 'completed'
-      };
+      // Add dummy interviews
+      const dummyInterviews = [
+        {
+          interview_id: '550e8400-e29b-41d4-a716-446655440000',
+          candidate_name: 'Dimantha Goonewardena',
+          candidate_email: 'goonewardenadimantha@gmail.com',
+          job_position_title: 'Senior Frontend Engineer',
+          mode: 'video',
+          created_at: '2025-12-08T23:59:00',
+          status: 'completed'
+        },
+        {
+          interview_id: '661f9511-f3ac-52e5-b827-557766551111',
+          candidate_name: 'Dimantha Goonewardena',
+          candidate_email: 'goonewardenadimantha@gmail.com',
+          job_position_title: 'Junior Backend Developer',
+          mode: 'audio',
+          created_at: '2025-12-07T14:30:00',
+          status: 'completed'
+        },
+        {
+          interview_id: '772g0622-g4bd-63f6-c938-668877662222',
+          candidate_name: 'Dimantha Goonewardena',
+          candidate_email: 'goonewardenadimantha@gmail.com',
+          job_position_title: 'DevOps Engineer',
+          mode: 'video',
+          created_at: '2025-12-06T09:15:00',
+          status: 'completed'
+        },
+        {
+          interview_id: '883h1733-h5ce-74g7-d049-779988773333',
+          candidate_name: 'Dimantha Goonewardena',
+          candidate_email: 'goonewardenadimantha@gmail.com',
+          job_position_title: 'Product Manager',
+          mode: 'chat',
+          created_at: '2025-12-05T16:45:00',
+          status: 'completed'
+        }
+      ];
 
-      setInterviews([dummyInterview, ...fetchedInterviews]);
+      setInterviews([...dummyInterviews, ...fetchedInterviews]);
 
       // Fetch all candidates
       const candidatesResponse = await apiClient.getAllCandidates();
