@@ -99,7 +99,7 @@ class InterviewService:
             }
             
         except Exception as e:
-            log_error(f"Error generating initial question: {e}")
+            log_error("Error generating initial question: %s", e)
             return {
                 'id': str(uuid.uuid4()),
                 'question_index': 0,
@@ -182,7 +182,7 @@ class InterviewService:
             }
             
         except Exception as e:
-            log_error(f"Error generating next question: {e}")
+            log_error("Error generating next question: %s", e)
             # Return fallback question
             return {
                 'id': str(uuid.uuid4()),
@@ -301,12 +301,12 @@ class InterviewService:
             
             db.commit()
             
-            log_info(f"Generated interview summary for {interview_id}")
+            log_info("Generated interview summary for %s", interview_id)
             
             return summary_data
             
         except Exception as e:
-            log_error(f"Error generating interview summary: {e}")
+            log_error("Error generating interview summary: %s", e)
             return self._fallback_summary()
     
     async def generate_pdf_report(
@@ -321,7 +321,7 @@ class InterviewService:
             return f"reports/interview_{interview_id}_report.pdf"
             
         except Exception as e:
-            log_error(f"Error generating PDF report: {e}")
+            log_error("Error generating PDF report: %s", e)
             raise
     
     def _determine_question_type(self, question_index: int) -> tuple:
@@ -371,11 +371,11 @@ class InterviewService:
                 question_number=question_number
             )
             
-            log_info(f"✅ Generated personalized {question_type} question")
+            log_info("✅ Generated personalized %s question", question_type)
             return question
             
         except Exception as e:
-            log_error(f"Error generating personalized question: {e}")
+            log_error("Error generating personalized question: %s", e)
             # Fallback to template-based approach
             return self._get_template_question(question_type, context)
     
@@ -437,7 +437,7 @@ class InterviewService:
             }
             
         except Exception as e:
-            log_warning(f"Error generating technical assessment: {e}")
+            log_warning("Error generating technical assessment: %s", e)
             return {
                 'score': 5.0,
                 'summary': 'Technical assessment completed'
@@ -478,7 +478,7 @@ class InterviewService:
             }
             
         except Exception as e:
-            log_warning(f"Error generating communication assessment: {e}")
+            log_warning("Error generating communication assessment: %s", e)
             return {
                 'score': 5.0,
                 'summary': 'Communication assessment completed'
@@ -521,7 +521,7 @@ class InterviewService:
             }
             
         except Exception as e:
-            log_warning(f"Error generating cultural fit assessment: {e}")
+            log_warning("Error generating cultural fit assessment: %s", e)
             return {
                 'score': 5.0,
                 'summary': 'Cultural fit assessment completed'
@@ -563,7 +563,7 @@ class InterviewService:
             return ". ".join(summary_parts) + "."
             
         except Exception as e:
-            log_warning(f"Error generating executive summary: {e}")
+            log_warning("Error generating executive summary: %s", e)
             return f"Interview completed for {candidate.name} with overall score of {overall_score:.1f}/10"
     
     async def _determine_recommendation(
@@ -593,7 +593,7 @@ class InterviewService:
                 return "Do Not Hire", "Below-average performance with significant areas for improvement"
             
         except Exception as e:
-            log_warning(f"Error determining recommendation: {e}")
+            log_warning("Error determining recommendation: %s", e)
             return "Consider", "Standard evaluation completed"
     
     async def _generate_strengths_weaknesses(
@@ -644,7 +644,7 @@ class InterviewService:
             return strengths, weaknesses
             
         except Exception as e:
-            log_warning(f"Error generating strengths/weaknesses: {e}")
+            log_warning("Error generating strengths/weaknesses: %s", e)
             return ["Interview completed"], ["Continue professional development"]
     
     async def _generate_improvement_tips(
@@ -683,7 +683,7 @@ class InterviewService:
             return tips[:5]  # Limit to 5 tips
             
         except Exception as e:
-            log_warning(f"Error generating improvement tips: {e}")
+            log_warning("Error generating improvement tips: %s", e)
             return [
                 "Provide more specific examples from your experience",
                 "Structure responses more clearly",
@@ -717,7 +717,7 @@ class InterviewService:
             return highlights
             
         except Exception as e:
-            log_warning(f"Error generating key highlights: {e}")
+            log_warning("Error generating key highlights: %s", e)
             return ["Interview completed successfully"]
     
     async def _generate_red_flags(
@@ -745,7 +745,7 @@ class InterviewService:
             return red_flags
             
         except Exception as e:
-            log_warning(f"Error generating red flags: {e}")
+            log_warning("Error generating red flags: %s", e)
             return []
     
     async def _generate_next_steps(
@@ -785,7 +785,7 @@ class InterviewService:
             return next_steps
             
         except Exception as e:
-            log_warning(f"Error generating next steps: {e}")
+            log_warning("Error generating next steps: %s", e)
             return ["Review interview results", "Make hiring decision"]
     
     async def _generate_interviewer_notes(

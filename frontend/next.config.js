@@ -17,6 +17,14 @@ const nextConfig = {
     config.cache = false;
     return config;
   },
+  async rewrites() {
+    return [
+      {
+        source: '/api-proxy/:path*',
+        destination: 'http://4.206.209.183:80/:path*',
+      },
+    ]
+  },
 }
 
 module.exports = nextConfig

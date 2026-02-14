@@ -3,10 +3,24 @@
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Github, Twitter, Linkedin, Mail } from 'lucide-react';
+import { FRONTEND_URL } from '@/lib/config';
 
-export default function Footer() {
+interface FooterProps {
+  readonly isPortfolio?: boolean;
+}
+
+export default function Footer({ isPortfolio = false }: FooterProps) {
   const router = useRouter();
   const currentYear = new Date().getFullYear();
+
+  const MAIN_URL = FRONTEND_URL;
+
+  const getLinkUrl = (path: string) => {
+    if (isPortfolio) {
+      return `${MAIN_URL}${path}`;
+    }
+    return path;
+  };
 
   const footerSections = [
     {
@@ -58,13 +72,13 @@ export default function Footer() {
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-8 mb-12">
             {/* Brand Column */}
             <div className="col-span-2 md:col-span-4 lg:col-span-1">
-              <Link href="/" className="inline-block mb-4">
+              <Link href={getLinkUrl("/")} className="inline-block mb-4">
                 <h2 className="text-2xl font-bold text-white">SkillScreen</h2>
               </Link>
               <p className="text-white/60 text-sm mb-6">
                 Transforming recruitment with AI-powered interviews and intelligent assessments.
               </p>
-              
+
               {/* Social Links */}
               <div className="flex space-x-3">
                 {socialLinks.map((social, index) => (
@@ -90,7 +104,7 @@ export default function Footer() {
                   {section.links.map((link, linkIndex) => (
                     <li key={linkIndex}>
                       <Link
-                        href={link.href}
+                        href={getLinkUrl(link.href)}
                         className="text-white/60 hover:text-white text-sm transition-colors duration-200"
                       >
                         {link.name}
@@ -121,10 +135,10 @@ export default function Footer() {
               </div>
               {/* Additional Links */}
               <div className="flex space-x-6">
-                <Link href="/cookies" className="text-white/60 hover:text-white text-sm transition-colors">
+                <Link href={getLinkUrl("/cookies")} className="text-white/60 hover:text-white text-sm transition-colors">
                   Cookies
                 </Link>
-                <Link href="/sitemap" className="text-white/60 hover:text-white text-sm transition-colors">
+                <Link href={getLinkUrl("/sitemap")} className="text-white/60 hover:text-white text-sm transition-colors">
                   Sitemap
                 </Link>
               </div>

@@ -30,7 +30,7 @@ except ImportError:
     REPORTLAB_AVAILABLE = False
 
 # Configuration
-API_BASE_URL = "http://localhost:8000"
+API_BASE_URL = "http://4.206.209.183:80"
 
 # Page configuration
 st.set_page_config(
@@ -62,7 +62,7 @@ def make_api_request(method: str, endpoint: str, data: Optional[Dict] = None) ->
             return None
             
     except requests.exceptions.ConnectionError:
-        st.error("❌ Cannot connect to FastAPI backend. Please ensure it's running on http://localhost:8000")
+        st.error("❌ Cannot connect to FastAPI backend. Please ensure it's running on http://4.206.209.183:80")
         return None
     except Exception as e:
         st.error(f"❌ Error making API request: {str(e)}")
@@ -158,7 +158,7 @@ def main():
            python SkillScreen/simple_fastapi_app.py
            ```
         
-        2. **Ensure it's running** on `http://localhost:8000`
+        2. **Ensure it's running** on `http://4.206.209.183:80`
         
         3. **Refresh this page** once the backend is running
         """)

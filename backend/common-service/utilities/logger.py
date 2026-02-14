@@ -37,6 +37,36 @@ def init_logger(service_name: str) -> logging.Logger:
     root.setLevel(logging.DEBUG)
     root.handlers.clear()
 
+    # ----- Determine log format -----
+    use_json_format = os.getenv("LOG_FORMAT", "text").lower() == "json"
+    
+    # ----- Filter out verbose third-party logs -----
+    # Reduce verbosity of SQLAlchemy (only show WARNING and above)
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+    logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
+    # Reduce verbosity of httpx/httpcore debug logs (only show INFO and above)
+    logging.getLogger("httpx").setLevel(logging.INFO)
+    logging.getLogger("httpcore").setLevel(logging.INFO)
+    
+    # ----- Console handler (always enabled for better visibility) -----
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(level)
+    
+    if use_json_format and jsonlogger:
+        console_formatter = jsonlogger.JsonFormatter(
+            fmt="%(asctime)s %(levelname)s %(name)s %(message)s %(module)s %(funcName)s %(lineno)d",
+            rename_fields={"levelname": "level", "name": "logger"},
+        )
+    else:
+        # Clean, readable format: TIMESTAMP LEVEL [Service] Message
+        console_formatter = logging.Formatter(
+            "%(asctime)s | %(levelname)-7s | [%(name)-20s] | %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S"
+        )
+    
+    console_handler.setFormatter(console_formatter)
+    root.addHandler(console_handler)
+    
     # ----- File handler -----
     if os.getenv("LOG_TO_FILE", "true").lower() == "true":
         log_dir = os.getenv("LOG_DIR", "/var/log/app")
@@ -54,15 +84,19 @@ def init_logger(service_name: str) -> logging.Logger:
             encoding="utf-8"
         )
 
-        if jsonlogger:
-            formatter = jsonlogger.JsonFormatter(
+        if use_json_format and jsonlogger:
+            file_formatter = jsonlogger.JsonFormatter(
                 fmt="%(asctime)s %(levelname)s %(name)s %(message)s %(module)s %(funcName)s %(lineno)d",
                 rename_fields={"levelname": "level", "name": "logger"},
             )
         else:
-            formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s - %(message)s")
+            # Clean, readable file format with location info
+            file_formatter = logging.Formatter(
+                "%(asctime)s | %(levelname)-7s | [%(name)-20s] | %(message)s | (%(funcName)s:%(lineno)d)",
+                datefmt="%Y-%m-%d %H:%M:%S"
+            )
 
-        fh.setFormatter(formatter)
+        fh.setFormatter(file_formatter)
         fh.setLevel(level)
         root.addHandler(fh)
 

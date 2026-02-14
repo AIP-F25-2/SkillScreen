@@ -4,3 +4,7 @@ python-dotenv==1.0.0
 httpx==0.27.0
 seqlog==0.3.31
 python-json-logger==2.0.7
+requests>=2.31.0
+# Dependencies for text-service's llm_service (when imported by coding-service)
+aiohttp>=3.9.0
+google-generativeai==0.3.2

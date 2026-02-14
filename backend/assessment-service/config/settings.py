@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     assessment_grace_period_minutes: int = Field(default=5, alias="ASSESSMENT_GRACE_PERIOD_MINUTES")
     
     # LLM Configuration (Groq API)
-    groq_api_key: str = Field(..., alias="GROQ_API_KEY")
+    groq_api_key: str = Field(default="", alias="GROQ_API_KEY")
     groq_model: str = Field(default="llama-3.1-70b-versatile", alias="GROQ_MODEL")
     llm_max_tokens: int = Field(default=4096, alias="LLM_MAX_TOKENS")
     llm_temperature: float = Field(default=0.3, alias="LLM_TEMPERATURE")
@@ -63,10 +63,9 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> list[str]:
         """Convert comma-separated CORS origins to list"""
         if not self.allowed_origins:
-            raise ValueError(
-                "ALLOWED_ORIGINS environment variable is required. "
-                "Example: ALLOWED_ORIGINS=https://app.example.com"
-        )
+            # Return empty list if not set (CORS middleware will allow no origins)
+            # This is safe for internal services that don't need CORS
+            return []
         return [origin.strip() for origin in self.allowed_origins.split(",")]
 
     

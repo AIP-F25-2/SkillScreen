@@ -196,7 +196,7 @@ class ResumeService:
                 
                 # Create interview record matching the sample format
                 interview_data = {
-                    'organization_id': organization_id or "e5d2d50b-6c07-43cd-8a78-ffd7b5b377bb",  # Use hardcoded org if not provided
+                    'organization_id': organization_id,
                     'candidate_id': candidate_id,
                     'status': 'scheduled',  # Start as scheduled
                     'mode': 'chat',  # Default mode

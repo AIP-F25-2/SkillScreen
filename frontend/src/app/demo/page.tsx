@@ -32,7 +32,7 @@ export default function DemoPage() {
   return (
     <div className="min-h-screen bg-black">
       <NavBar />
-      
+
       <main className="pt-32 pb-20 px-6">
         <div className="max-w-7xl mx-auto">
           {/* Header */}
@@ -43,10 +43,10 @@ export default function DemoPage() {
               transition={{ duration: 0.6 }}
             >
               <h1 className="text-4xl md:text-6xl font-bold text-white mb-6">
-                Experience IntervuAI in Action
+                Experience SkillScreen in Action
               </h1>
               <p className="text-xl text-white/70 max-w-3xl mx-auto">
-                Schedule a personalized demo with our team and see how IntervuAI can transform your hiring process.
+                Schedule a personalized demo with our team and see how SkillScreen can transform your hiring process.
               </p>
             </motion.div>
           </div>
@@ -218,7 +218,7 @@ export default function DemoPage() {
               </div>
             </motion.div>
           </div>
-      </div>
+        </div>
       </main>
 
       <Footer />

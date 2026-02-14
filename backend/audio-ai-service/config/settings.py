@@ -66,9 +66,9 @@ class Settings(BaseSettings):
     AZURE_TTS_REGION: Optional[str] = None
 
       # Azure Blob Storage
-    AZURE_STORAGE_ACCOUNT_NAME: str = "skillscreenstorage"
-    AZURE_STORAGE_CONTAINER_NAME: str = "video-recordings"
-    AZURE_STORAGE_SAS_TOKEN: str = ""
+    AZURE_STORAGE_ACCOUNT_NAME: str = "skillscreenstorage00"
+    AZURE_STORAGE_CONTAINER_NAME: str = "audio-recordings"
+    AZURE_STORAGE_SAS_TOKEN: str = "sp=racwdl&st=2025-11-18T21:59:51Z&se=2026-01-01T06:14:51Z&spr=https&sv=2024-11-04&sr=c&sig=JpSO0RP%2Bd2jaQfpUWNcjmgunr9ty22YAvehAogh4ifU%3D"
     
     # AWS Polly (if using AWS)
     AWS_ACCESS_KEY: Optional[str] = None

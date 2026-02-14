@@ -24,7 +24,7 @@ export default function CommunityPage() {
       time: '5 hours ago'
     },
     {
-      title: 'Integrating IntervuAI with existing ATS systems',
+      title: 'Integrating SkillScreen with existing ATS systems',
       author: 'Geeneth Kulatunge',
       replies: 31,
       views: 1.500,
@@ -42,7 +42,7 @@ export default function CommunityPage() {
       attendees: 234
     },
     {
-      title: 'IntervuAI User Conference 2024',
+      title: 'SkillScreen User Conference 2024',
       date: 'April 15-16, 2024',
       time: 'All Day',
       type: 'Hybrid',
@@ -83,7 +83,7 @@ export default function CommunityPage() {
   return (
     <div className="min-h-screen bg-black">
       <NavBar />
-      
+
       <main className="pt-32 pb-20 px-6">
         <div className="max-w-7xl mx-auto">
           {/* Header */}
@@ -168,13 +168,12 @@ export default function CommunityPage() {
                   className="glass-dark rounded-xl p-6"
                 >
                   <div className="flex items-center justify-between mb-4">
-                    <span className={`px-3 py-1 rounded-full text-sm ${
-                      event.type === 'Online'
+                    <span className={`px-3 py-1 rounded-full text-sm ${event.type === 'Online'
                         ? 'bg-green-500/20 text-green-400'
                         : event.type === 'Hybrid'
-                        ? 'bg-purple-500/20 text-purple-400'
-                        : 'bg-blue-500/20 text-blue-400'
-                    }`}>
+                          ? 'bg-purple-500/20 text-purple-400'
+                          : 'bg-blue-500/20 text-blue-400'
+                      }`}>
                       {event.type}
                     </span>
                     <div className="flex items-center text-white/60">
@@ -212,7 +211,7 @@ export default function CommunityPage() {
               </button>
             </div>
           </motion.div>
-      </div>
+        </div>
       </main>
 
       <Footer />

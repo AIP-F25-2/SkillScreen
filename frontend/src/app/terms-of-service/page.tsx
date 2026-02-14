@@ -8,11 +8,11 @@ export default function TermsOfServicePage() {
   const sections = [
     {
       title: 'Agreement to Terms',
-      content: `By accessing or using IntervuAI's services, you agree to be bound by these Terms of Service ("Terms"). If you disagree with any part of the terms, you may not access the service.`
+      content: `By accessing or using SkillScreen's services, you agree to be bound by these Terms of Service ("Terms"). If you disagree with any part of the terms, you may not access the service.`
     },
     {
       title: 'Description of Service',
-      content: `IntervuAI provides an AI-powered technical interview platform that includes:
+      content: `SkillScreen provides an AI-powered technical interview platform that includes:
 • Video interviewing capabilities
 • Technical assessment tools
 • AI-driven analysis and feedback
@@ -60,7 +60,7 @@ export default function TermsOfServicePage() {
     },
     {
       title: 'Limitation of Liability',
-      content: `In no event shall IntervuAI, nor its directors, employees, partners, agents, suppliers, or affiliates, be liable for any indirect, incidental, special, consequential, or punitive damages resulting from your use or inability to use the service.`
+      content: `In no event shall SkillScreen, nor its directors, employees, partners, agents, suppliers, or affiliates, be liable for any indirect, incidental, special, consequential, or punitive damages resulting from your use or inability to use the service.`
     },
     {
       title: 'Changes to Terms',
@@ -75,7 +75,7 @@ export default function TermsOfServicePage() {
   return (
     <div className="min-h-screen bg-black">
       <NavBar />
-      
+
       <main className="pt-32 pb-20 px-6">
         <div className="max-w-4xl mx-auto">
           {/* Header */}

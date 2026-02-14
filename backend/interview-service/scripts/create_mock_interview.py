@@ -101,5 +101,5 @@ if __name__ == "__main__":
     if interview_id:
         print(f"\n🎉 Mock interview created successfully!")
         print(f"   Interview ID: {interview_id}")
-        print(f"   View at: http://localhost:3000/interview-summary?id={interview_id}")
+        print(f"   View at: https://skillscreen.dev/interview-summary?id={interview_id}")
 

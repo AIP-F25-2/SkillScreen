@@ -35,6 +35,7 @@ export default function InterviewSetup() {
   const [error, setError] = useState('');
   const [fromToken, setFromToken] = useState(false);
   const [sessionId, setSessionId] = useState('');
+  const [mode, setMode] = useState<'chat' | 'audio' | 'video'>('video');
 
   // Check if coming from email token
   useEffect(() => {
@@ -47,6 +48,7 @@ export default function InterviewSetup() {
       if (tokenData) {
         setCandidateName(tokenData.candidateName);
         setSessionId(tokenData.sessionId);
+        if (tokenData.mode) setMode(tokenData.mode);
       } else {
         // No valid token, redirect to error
         router.push('/');
@@ -79,9 +81,9 @@ export default function InterviewSetup() {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const cameras = devices.filter(d => d.kind === 'videoinput');
       const microphones = devices.filter(d => d.kind === 'audioinput');
-      
+
       setDevices({ cameras, microphones });
-      
+
       if (cameras.length > 0 && !selectedDevices.camera) {
         setSelectedDevices(prev => ({ ...prev, camera: cameras[0].deviceId }));
       }
@@ -97,7 +99,7 @@ export default function InterviewSetup() {
   const requestMediaPermissions = async () => {
     try {
       setError('');
-      
+
       // Stop any existing streams first
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
@@ -109,13 +111,19 @@ export default function InterviewSetup() {
         cancelAnimationFrame(animationFrameRef.current);
       }
 
+      // Skip media request for chat mode
+      if (mode === 'chat') {
+        setPermissions({ camera: true, microphone: true });
+        return;
+      }
+
       const constraints: MediaStreamConstraints = {
-        video: selectedDevices.camera 
-          ? { deviceId: { exact: selectedDevices.camera } } 
-          : { facingMode: 'user' },
-        audio: selectedDevices.microphone 
-          ? { deviceId: { exact: selectedDevices.microphone } } 
-          : true,
+        video: mode === 'video'
+          ? (selectedDevices.camera ? { deviceId: { exact: selectedDevices.camera } } : { facingMode: 'user' })
+          : false,
+        audio: (mode as string) !== 'chat'
+          ? (selectedDevices.microphone ? { deviceId: { exact: selectedDevices.microphone } } : true)
+          : false,
       };
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -134,8 +142,8 @@ export default function InterviewSetup() {
       setupAudioMonitoring(stream);
 
       setPermissions({
-        camera: true,
-        microphone: true,
+        camera: mode === 'video',
+        microphone: (mode as string) !== 'chat',
       });
 
       // Reload devices to get labels
@@ -143,7 +151,7 @@ export default function InterviewSetup() {
     } catch (error: any) {
       console.error('Error requesting permissions:', error);
       let errorMessage = 'Please allow camera and microphone access to continue';
-      
+
       if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
         errorMessage = 'Camera and microphone access was denied. Please allow access in your browser settings.';
       } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
@@ -151,7 +159,7 @@ export default function InterviewSetup() {
       } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
         errorMessage = 'Camera or microphone is already in use by another application.';
       }
-      
+
       setError(errorMessage);
       setPermissions({
         camera: false,
@@ -167,15 +175,15 @@ export default function InterviewSetup() {
       const audioContext = new AudioContextClass();
       const analyser = audioContext.createAnalyser();
       const microphone = audioContext.createMediaStreamSource(stream);
-      
+
       analyser.smoothingTimeConstant = 0.8;
       analyser.fftSize = 1024;
-      
+
       microphone.connect(analyser);
-      
+
       audioContextRef.current = audioContext;
       analyserRef.current = analyser;
-      
+
       // Start monitoring
       updateAudioLevel();
     } catch (error) {
@@ -188,10 +196,10 @@ export default function InterviewSetup() {
 
     const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
     analyserRef.current.getByteFrequencyData(dataArray);
-    
+
     const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
     const normalized = Math.min(100, (average / 255) * 200);
-    
+
     setAudioLevel(normalized);
     animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
   };
@@ -203,11 +211,11 @@ export default function InterviewSetup() {
 
     try {
       setError('');
-      
+
       // Update selected device
       const newSelectedDevices = { ...selectedDevices, [type]: deviceId };
       setSelectedDevices(newSelectedDevices);
-      
+
       // Stop current stream
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
@@ -221,7 +229,7 @@ export default function InterviewSetup() {
 
       // Request new stream with updated device
       const constraints: MediaStreamConstraints = {
-        video: type === 'camera' 
+        video: type === 'camera'
           ? { deviceId: { exact: deviceId } }
           : (newSelectedDevices.camera ? { deviceId: { exact: newSelectedDevices.camera } } : true),
         audio: type === 'microphone'
@@ -269,8 +277,9 @@ export default function InterviewSetup() {
       return;
     }
 
-    if (!permissions.camera || !permissions.microphone) {
-      setError('Please enable camera and microphone access');
+    if ((mode === 'video' && (!permissions.camera || !permissions.microphone)) ||
+      (mode === 'audio' && !permissions.microphone)) {
+      setError('Please enable required devices');
       return;
     }
 
@@ -288,11 +297,11 @@ export default function InterviewSetup() {
     // Navigate to interview with secure token-based flow
     if (fromToken) {
       // Token-based flow - use token data from session storage, no sensitive data in URL
-      router.push('/interview?fromToken=true');
+      router.push(`/interview?fromToken=true&mode=${mode}`);
     } else {
       // Regular flow - still use ID for non-token users
       const interviewId = searchParams?.get('id') || 'interview-123';
-      router.push(`/interview?id=${interviewId}&name=${encodeURIComponent(candidateName)}`);
+      router.push(`/interview?id=${interviewId}&name=${encodeURIComponent(candidateName)}&mode=${mode}`);
     }
   };
 
@@ -361,7 +370,7 @@ export default function InterviewSetup() {
                       <p className="text-white/60 text-sm">Camera preview will appear here</p>
                     </div>
                   )}
-                  
+
                   {/* Status Badge */}
                   {permissions.camera && (
                     <div className="absolute top-4 right-4">
@@ -459,9 +468,8 @@ export default function InterviewSetup() {
                   </label>
                   <div className="h-3 bg-white/5 rounded-full overflow-hidden border border-white/10">
                     <motion.div
-                      className={`h-full rounded-full transition-all duration-100 ${
-                        audioLevel > 60 ? 'bg-green-500' : audioLevel > 30 ? 'bg-yellow-500' : 'bg-blue-500'
-                      }`}
+                      className={`h-full rounded-full transition-all duration-100 ${audioLevel > 60 ? 'bg-green-500' : audioLevel > 30 ? 'bg-yellow-500' : 'bg-blue-500'
+                        }`}
                       style={{ width: `${audioLevel}%` }}
                       animate={{
                         opacity: permissions.microphone ? 1 : 0.3,
@@ -473,43 +481,39 @@ export default function InterviewSetup() {
                 {/* Permission Status */}
                 <div className="space-y-3">
                   <h3 className="text-white font-medium">Permission Status</h3>
-                  
+
                   <div className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-xl">
                     <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                        permissions.camera ? 'bg-green-500/20' : 'bg-red-500/20'
-                      }`}>
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${permissions.camera ? 'bg-green-500/20' : 'bg-red-500/20'
+                        }`}>
                         <svg className={`w-5 h-5 ${permissions.camera ? 'text-green-400' : 'text-red-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                         </svg>
                       </div>
                       <span className="text-white">Camera</span>
                     </div>
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      permissions.camera
-                        ? 'bg-green-500/20 text-green-300 border border-green-500/30'
-                        : 'bg-red-500/20 text-red-300 border border-red-500/30'
-                    }`}>
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${permissions.camera
+                      ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+                      : 'bg-red-500/20 text-red-300 border border-red-500/30'
+                      }`}>
                       {permissions.camera ? 'Granted' : 'Required'}
                     </span>
                   </div>
 
                   <div className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-xl">
                     <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                        permissions.microphone ? 'bg-green-500/20' : 'bg-red-500/20'
-                      }`}>
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${permissions.microphone ? 'bg-green-500/20' : 'bg-red-500/20'
+                        }`}>
                         <svg className={`w-5 h-5 ${permissions.microphone ? 'text-green-400' : 'text-red-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
                         </svg>
                       </div>
                       <span className="text-white">Microphone</span>
                     </div>
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      permissions.microphone
-                        ? 'bg-green-500/20 text-green-300 border border-green-500/30'
-                        : 'bg-red-500/20 text-red-300 border border-red-500/30'
-                    }`}>
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${permissions.microphone
+                      ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+                      : 'bg-red-500/20 text-red-300 border border-red-500/30'
+                      }`}>
                       {permissions.microphone ? 'Granted' : 'Required'}
                     </span>
                   </div>
@@ -535,21 +539,20 @@ export default function InterviewSetup() {
                   <button
                     onClick={requestMediaPermissions}
                     disabled={permissions.camera && permissions.microphone}
-                    className={`w-full px-6 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98] ${
-                      permissions.camera && permissions.microphone
-                        ? 'bg-green-500/20 text-green-300 border border-green-500/30 cursor-default'
-                        : 'bg-white text-black hover:bg-white/90'
-                    }`}
+                    className={`w-full px-6 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98] ${permissions.camera && permissions.microphone
+                      ? 'bg-green-500/20 text-green-300 border border-green-500/30 cursor-default'
+                      : 'bg-white text-black hover:bg-white/90'
+                      }`}
                   >
                     {permissions.camera && permissions.microphone ? (
                       <span className="flex items-center justify-center gap-2">
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
-                        Camera & Microphone Enabled
+                        {mode === 'chat' ? 'Ready to Join' : 'Devices Enabled'}
                       </span>
                     ) : (
-                      'Enable Camera & Microphone'
+                      mode === 'chat' ? 'Join Chat' : `Enable ${mode === 'video' ? 'Camera & Microphone' : 'Microphone'}`
                     )}
                   </button>
 

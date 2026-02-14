@@ -5,14 +5,14 @@ Email controller for sending interview invitations
 import logging
 from flask import Blueprint, request, jsonify
 from services.email_service import email_service
-import requests
+from services.token_service import token_service
 import os
 
 logger = logging.getLogger(__name__)
 
 email_bp = Blueprint('email', __name__)
 
-API_BASE_URL = os.getenv('API_BASE_URL', 'http://localhost:5001')
+API_BASE_URL = os.getenv('API_BASE_URL', 'http://4.206.209.183:80')
 
 @email_bp.route('/api/email/send-invitation', methods=['POST'])
 def send_invitation():
@@ -59,27 +59,26 @@ def send_invitation():
             candidate_name=data['candidate_name'],
             candidate_id=data['candidate_id'],
             session_id=data['session_id'],
+            interview_id=data.get('interview_id'),
             recruiter_name=data.get('recruiter_name'),
             company_name=data.get('company_name'),
+            job_title=data.get('job_title'),
             expires_in_hours=data.get('expires_in_hours', 48)
         )
         
-        # Store token in token service
+        # Store token directly in token service (no HTTP call needed)
         try:
-            token_response = requests.post(
-                f'{API_BASE_URL}/interview/api/token/store',
-                json={
-                    'token': result['token'],
-                    'candidate_id': result['candidate_id'],
-                    'candidate_name': result['candidate_name'],
-                    'candidate_email': result['candidate_email'],
-                    'session_id': result['session_id'],
-                    'expires_at': result['expires_at']
-                }
-            )
+            token_data = {
+                'candidate_id': result['candidate_id'],
+                'candidate_name': result['candidate_name'],
+                'candidate_email': result['candidate_email'],
+                'session_id': result['session_id'],
+                'interview_id': result.get('interview_id'),
+                'expires_at': result['expires_at']
+            }
             
-            if not token_response.ok:
-                logger.error(f"Failed to store token: {token_response.text}")
+            if not token_service.store_token(result['token'], token_data):
+                logger.error("Failed to store token in memory")
                 
         except Exception as e:
             logger.error(f"Error storing token: {str(e)}")

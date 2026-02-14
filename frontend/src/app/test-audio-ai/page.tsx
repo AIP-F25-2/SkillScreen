@@ -90,7 +90,7 @@ export default function TestAudioAIPage() {
         )}
 
         <div className="text-sm text-white/60">
-          Gateway: http://localhost:3001 → /audio-ai/api/v1/audio/{mode}
+          Gateway: {apiClient['baseUrl']} → /audio-ai/api/v1/audio/{mode}
         </div>
       </div>
     </div>

@@ -8,7 +8,7 @@ export default function PrivacyPolicyPage() {
   const sections = [
     {
       title: 'Introduction',
-      content: `This Privacy Policy explains how IntervuAI ("we," "us," or "our") collects, uses, and protects your personal information. By using our services, you agree to the collection and use of information in accordance with this policy.`
+      content: `This Privacy Policy explains how SkillScreen ("we," "us," or "our") collects, uses, and protects your personal information. By using our services, you agree to the collection and use of information in accordance with this policy.`
     },
     {
       title: 'Information We Collect',
@@ -72,7 +72,7 @@ You can control cookie settings in your browser.`
   return (
     <div className="min-h-screen bg-black">
       <NavBar />
-      
+
       <main className="pt-32 pb-20 px-6">
         <div className="max-w-4xl mx-auto">
           {/* Header */}
@@ -122,7 +122,7 @@ You can control cookie settings in your browser.`
           >
             <p className="text-white/70">
               Have questions about our privacy practices?{' '}
-              <a href="mailto:privacy@intervuai.com" className="text-blue-400 hover:text-blue-300 transition-colors">
+              <a href="mailto:privacy@skillscreen.dev" className="text-blue-400 hover:text-blue-300 transition-colors">
                 Contact our Privacy Team
               </a>
             </p>
